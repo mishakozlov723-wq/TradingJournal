@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' file:; style-src 'unsafe-inline'">
+<title>SYTER</title>
+<style>
+  /* The page is as big as the whole window (the site sits on top of it), so ONLY the 36px strip may be a drag area. */
+  html, body { margin: 0; height: 36px; background: #000; overflow: hidden; user-select: none; -webkit-user-select: none; }
+  /* The whole strip drags the window. The native Windows buttons are drawn over its right edge. */
+  .bar { height: 36px; display: flex; align-items: center; gap: 9px; padding-left: 12px; -webkit-app-region: drag; }
+  .bar img { width: 16px; height: 16px; display: block; }
+  .bar span { color: #91a0b7; font: 600 12px/1 system-ui, "Segoe UI", sans-serif; letter-spacing: .08em; }
+</style>
+</head>
+<body>
+  <div class="bar"><img src="build/titlebar-icon.png" alt=""><span>SYTER</span></div>
+</body>
+</html>

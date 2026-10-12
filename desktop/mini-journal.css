@@ -1,0 +1,54 @@
+/* Uses the journal's own variables, form controls and typeface. */
+.syter-mini-header { display: none; }
+.syter-to-mini { margin-left: auto; font-size: 11px; padding: 6px 10px; }
+#tradeForm.syter-backtest-form .syter-trade-notes { display: none; }
+.syter-trade-notes textarea { box-sizing: border-box; width: 100%; resize: vertical; min-height: 60px; max-height: 180px; font: inherit; font-size: 12px; color: var(--text, #dce5ef); background: var(--inputBg, #101319); border: 1px solid var(--cardBorder, #242b36); border-radius: 10px; padding: 10px 12px; }
+#syterPasteImage { font: inherit; font-size: 11px; cursor: pointer; }
+#tradeScreenshotField .custom-file-picker { flex-wrap: wrap; gap: 8px; }
+.syter-image-hint { color: #718096; font-size: 10px; line-height: 1.6; margin-top: 8px; }
+#syterMiniStatus { font-size: 11px; color: #70dbb6; margin-top: 8px; text-align: center; }
+.syter-drop-active { outline: 1px dashed #70dbb6; outline-offset: 5px; border-radius: 10px; }
+body.syter-mini { background: #080a0e !important; overflow: hidden !important; min-width: 0 !important; }
+body.syter-mini #appRoot { display: none !important; }
+body.syter-mini #modalOverlay { padding: 0 !important; background: #080a0e !important; backdrop-filter: none; align-items: stretch; }
+body.syter-mini #modalOverlay > .modal-box { box-sizing: border-box; width: 100% !important; max-width: none !important; height: 100%; max-height: 100% !important; margin: 0; border: 0; border-radius: 0; padding: 0 18px 18px; background: #080a0e; overflow: auto; box-shadow: none; transform: none !important; }
+body.syter-mini .syter-mini-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 0 10px; margin-bottom: 10px; border-bottom: 1px solid #222831; background: #080a0e; }
+.syter-mini-brand { color: #e5edf8; font-size: 16px; font-weight: 800; letter-spacing: .12em; }
+.syter-mini-brand small { color: #72d7b6; font-size: 9px; vertical-align: middle; letter-spacing: .08em; margin-left: 5px; }
+#syterMiniOwner { color: #8190a5; font-size: 10px; margin-top: 5px; overflow-wrap: anywhere; }
+.syter-mini-actions { display: flex; gap: 5px; }
+.syter-mini-actions button { background: #11161d; border: 1px solid #28323d; border-radius: 8px; color: #aebdd0; padding: 7px 8px; font: inherit; font-size: 9px; cursor: pointer; }
+.syter-mini-actions button[aria-pressed="true"] { border-color: #305648; color: #80dfbd; }
+body.syter-mini #modalOverlay .modal-box > .row { display: none; }
+body.syter-mini #tradeForm { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
+body.syter-mini #tradeForm > * { min-width: 0; margin: 0; }
+body.syter-mini #tradeForm > .toggle-row, body.syter-mini #tradeForm > .grid2,
+body.syter-mini #tradeScreenshotField, body.syter-mini .syter-trade-notes,
+body.syter-mini #tradeModalSubmitBtn, body.syter-mini #saveError, body.syter-mini #syterMiniStatus { grid-column: 1 / -1; }
+body.syter-mini .syter-save-footer { grid-column: 1 / -1; position: sticky; bottom: -18px; padding: 10px 0 12px; background: #080a0e; z-index: 2; }
+.syter-save-footer .submit-btn { width: 100%; }
+body.syter-mini .field-label { font-size: 10px; margin-bottom: 6px; }
+body.syter-mini #tradeForm input, body.syter-mini .trade-asset-trigger { font-size: 12px; min-height: 36px; }
+body.syter-mini .toggle-btn { padding: 8px; font-size: 11px; }
+body.syter-mini #tradeModelRow { gap: 4px; }
+body.syter-mini #tradeModelCTA { font-size: 10px; line-height: 1.3; }
+body.syter-mini #tradeScreenshotField { padding: 12px; border: 1px dashed #2b3642; border-radius: 12px; background: #0d1117; }
+body.syter-mini #screenshotFileName { flex-basis: 100%; font-size: 10px; overflow-wrap: anywhere; }
+body.syter-mini #screenshotPreview { max-height: 140px; object-fit: contain; background: #000; }
+body.syter-mini #tradeModalSubmitBtn { padding: 11px; font-size: 12px; }
+body.syter-mini .datetime-picker-box { max-height: calc(100vh - 24px); overflow: auto; }
+body.syter-mini #tjSavePill { max-width: calc(100vw - 40px); }
+.syter-capture-toggle{display:flex;align-items:center;gap:6px;font-size:11px;color:#9baabd;margin-bottom:5px}.syter-capture-toggle input{accent-color:#70dbb6}.syter-capture-toggle span{margin-left:auto;font-size:9px;color:#70dbb6}
+body.syter-mini #tradeScreenshotField{padding:8px;border-style:solid}body.syter-mini .syter-trade-notes textarea{min-height:38px;height:42px}body.syter-mini .field-label{margin-bottom:3px}body.syter-mini #tradeForm{gap:6px 8px}body.syter-mini #modalOverlay>.modal-box{padding-left:12px;padding-right:12px}body.syter-mini .syter-mini-header{margin-bottom:5px;padding:8px 0}
+
+/* Compact, dark controls with no instructional copy. */
+#syterMiniOwner,.syter-image-hint{display:none!important}
+body.syter-mini #tradeScreenshotField > .field-label{display:none}
+body.syter-mini #tradeModelCTA{font-size:0}
+body.syter-mini #tradeModelCTA::after{content:'Модель +';font-size:10px}
+#syterModeNotice{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:100000;max-width:85vw;padding:10px 14px;border:1px solid #303944;border-radius:9px;background:#141a22;color:#c4cedb;font-size:12px;pointer-events:none}
+#syterModeNotice[hidden]{display:none}
+body #tradeForm #syterCaptureImages{appearance:none;-webkit-appearance:none;box-sizing:border-box;width:14px;height:14px;min-height:14px;flex:0 0 14px;margin:0;border:1px solid #46515d;border-radius:4px;background:#141a21;display:grid;place-content:center;cursor:pointer}
+body #tradeForm #syterCaptureImages:checked{background:#70dbb6;border-color:#70dbb6}
+body #tradeForm #syterCaptureImages:checked::after{content:'';width:6px;height:3px;border-left:2px solid #10251d;border-bottom:2px solid #10251d;transform:rotate(-45deg) translateY(-1px)}
+body #tradeForm #syterCaptureImages:focus-visible{outline:2px solid #70dbb6;outline-offset:3px}

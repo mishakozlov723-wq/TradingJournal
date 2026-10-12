@@ -1,0 +1,1674 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<title>Trading Journal</title>
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="48x48" href="favicon-48x48.png">
+<link rel="shortcut icon" href="favicon.ico">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<link rel="manifest" href="site.webmanifest">
+<meta name="theme-color" content="#000000">
+<link rel="stylesheet" href="accounts-space.css?v=a8eac3b11e">
+<link rel="stylesheet" href="replay-space.css?v=e85ff94d08">
+<script>
+/* v3.43: Accounts and Replay are not needed to show the journal, so their code
+   (~450 KB) loads right after the page is ready instead of before it. Their menu
+   entries stay hidden until the code has loaded, exactly as before. */
+(function(){
+  var files=['accounts-config.js?v=1053adb163','accounts-space.js?v=23eb807462','vendor/lightweight-charts.js?v=37e5f4fe8b','replay-data-config.js?v=a87b6ba84a','replay-space.js?v=f3a6da2b3c'];
+  var started=false;
+  function next(i){
+    if(i>=files.length)return;
+    var el=document.createElement('script');el.src=files[i];el.async=false;
+    el.onload=el.onerror=function(){next(i+1);};
+    document.head.appendChild(el);
+  }
+  function start(){if(started)return;started=true;next(0);}
+  window.tjLoadDeferredSpaces=start;
+  function later(){var go=function(){setTimeout(start,0);};if(window.requestIdleCallback)requestIdleCallback(go,{timeout:1500});else setTimeout(start,200);}
+  if(document.readyState==='complete')later();else window.addEventListener('load',later);
+})();
+</script>
+<script>
+  // Apply the saved theme before CSS performs its first paint.
+  // This prevents the default version from flashing during a reload.
+  (function() {
+    try {
+      document.documentElement.classList.toggle('mobile-performance', localStorage.getItem('journalDeviceMode') === 'mobile');
+      var earlyVersion = localStorage.getItem('tj_site_version_global');
+      if (earlyVersion === 'autumn' || earlyVersion === 'winter' || earlyVersion === 'spring' || earlyVersion === 'summer') {
+        document.documentElement.classList.add('season-' + earlyVersion);
+      }
+    } catch (e) {}
+  })();
+</script>
+<link rel="stylesheet" href="app.css?v=9e36d10642">
+
+
+
+<link rel="stylesheet" href="trade-media.css?v=4dd63ff2f5">
+</head>
+<body>
+
+<div class="login-particles" id="appParticles"></div>
+<div class="autumn-particles" id="autumnParticles" aria-hidden="true"></div>
+<div class="winter-particles" id="winterParticles" aria-hidden="true"></div>
+<div class="spring-particles" id="springParticles" aria-hidden="true"></div>
+<div class="summer-particles" id="summerParticles" aria-hidden="true"></div>
+
+<div class="login-screen" id="loginScreen">
+  <div class="login-particles" id="loginParticles"></div>
+  <div class="login-card">
+    <div class="login-logo"><img class="autumn-logo-img" src="images/logo-autumn.webp" alt="" aria-hidden="true" draggable="false"><img class="spring-logo-img" src="images/logo-spring.webp" alt="" aria-hidden="true" draggable="false" loading="lazy" decoding="async" onerror="this.parentNode.classList.add('no-spring-icon');this.remove()"><img class="summer-logo-img" src="images/logo-summer.webp" alt="" aria-hidden="true" draggable="false" loading="lazy" decoding="async" onerror="this.parentNode.classList.add('no-summer-icon');this.remove()"><span class="winter-logo-wrap" aria-hidden="true"><img src="images/logo-winter.webp" alt="" draggable="false"><img class="winter-logo-pom" src="images/logo-winter-pom.webp" alt="" draggable="false"></span><div class="login-logo-dot">悟</div></div>
+    <div class="login-title">Welcome back</div>
+    <div class="login-sub">Trading Journal</div>
+    <form id="loginForm">
+      <div class="login-field">
+        <label class="field-label">Login</label>
+        <input type="text" id="loginUserInput" autocomplete="off">
+      </div>
+      <div class="login-field">
+        <label class="field-label">Password</label>
+        <div class="pass-wrap">
+          <input type="password" id="loginPassInput" autocomplete="off">
+          <button type="button" class="pass-eye-hold" id="loginPassEyeHold" tabindex="-1" aria-label="Hold to show password">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="device-switch-wrap">
+        <label class="field-label">Site version</label>
+        <div class="device-switch">
+          <button type="button" class="device-switch-btn active" id="deviceDesktopBtn" data-mode="desktop"><span class="device-switch-icon desktop" aria-hidden="true"></span><span>Desktop</span></button>
+          <button type="button" class="device-switch-btn" id="deviceMobileBtn" data-mode="mobile"><span class="device-switch-icon mobile" aria-hidden="true"></span><span>Mobile</span></button>
+        </div>
+        <div class="device-hint" id="deviceHint"><div class="device-hint-inner"></div></div>
+      </div>
+      <button type="submit" class="submit-btn" id="loginSubmitBtn">
+        <span class="btn-text">Sign in</span>
+        <span class="btn-spinner"></span>
+      </button>
+      <div class="save-error" id="loginError" style="display:none; margin-top:10px;"></div>
+
+    </form>
+  </div>
+</div>
+
+<div class="rebuild-overlay" id="rebuildOverlay">
+  <div class="rebuild-spinner"></div>
+  <div class="rebuild-text" id="rebuildText">Adapting layout for mobile…</div>
+</div>
+
+<div class="backtest-transition-overlay" id="backtestTransitionOverlay" aria-hidden="true">
+  <div class="backtest-transition-text" id="backtestTransitionText">Your backtest space is almost ready</div>
+</div>
+
+<div class="wrap" id="appRoot" style="display:none;">
+        <section class="notes-workspace" id="notesWorkspace" aria-hidden="true">
+    <aside class="notes-sidebar">
+      <div class="notes-sidebar-top">
+        <div class="notes-space-label"><img class="notes-space-logo" src="images/syter-icon-64.png" alt="" width="32" height="32" decoding="async"><span>Notes</span></div>
+        <button class="notes-new-page" id="notesNewPageBtn" type="button" title="New page" aria-label="New page">+</button>
+      </div>
+      <div class="notes-sidebar-search-wrap">
+        <span aria-hidden="true">⌕</span><input id="notesPageSearch" type="search" placeholder="Search pages and blocks" autocomplete="off" aria-label="Search notes">
+      </div>
+      <div class="notes-sidebar-scroll">
+        <div class="notes-pages-list" id="notesPagesList"></div>
+      </div>
+      <div class="notes-sidebar-bottom">
+        <button class="notes-back-btn" id="exitNotesWorkspaceBtn" type="button"><span>←</span><span>Back to Journal</span></button>
+      </div>
+    </aside>
+    <main class="notes-editor-shell">
+      <div class="notes-editor-topbar">
+        <div class="notes-editor-breadcrumb" id="notesBreadcrumb">Notes</div>
+        <div class="notes-topbar-right">
+          <span class="notes-readonly-badge" id="notesReadonlyBadge">Read only</span>
+          <div class="notes-save-controls" id="notesSaveControls" hidden>
+            <div class="notes-save-state" id="notesSaveState" role="status" aria-live="polite" hidden>Saved</div>
+            <button class="notes-topbar-btn notes-save-toggle" id="notesSaveToggle" type="button" aria-label="Show save status" title="Show save status" aria-expanded="false" aria-controls="notesSaveState"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14 7-5 5 5 5"/></svg></button>
+          </div>
+          <button class="notes-topbar-btn notes-settings-btn" id="notesPageSettingsBtn" type="button" title="Page settings" aria-label="Page settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+        </div>
+      </div>
+      <div class="notes-page-wrap" id="notesPageWrap">
+        <div class="notes-empty-state" id="notesEmptyState">
+          <div class="notes-empty-mark" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><path d="M14 8h15l7 7v23a3 3 0 0 1-3 3H14a3 3 0 0 1-3-3V11a3 3 0 0 1 3-3Z" stroke="currentColor" stroke-width="1.5"/><path d="M28 8v9h8M18 24h11M18 30h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div class="notes-empty-title">Your notes space</div>
+          <div class="notes-empty-sub">A quiet place for your ideas, trade reviews and the lessons worth keeping.</div>
+          <button class="notes-empty-create" id="notesEmptyCreateBtn" type="button"><span aria-hidden="true">+</span> New page</button>
+        </div>
+        <div class="notes-page" id="notesPage" style="display:none;">
+          <div class="notes-page-cover" id="notesPageCover" style="display:none;">
+            <div class="notes-cover-actions">
+              <button type="button" id="notesChangeCoverBtn">Change cover</button>
+              <button type="button" id="notesRemoveCoverBtn">Remove</button>
+            </div>
+          </div>
+          <div class="notes-page-inner">
+            <div class="notes-page-quick-actions" id="notesPageQuickActions">
+              <button type="button" id="notesAddIconBtn"><span class="notes-qa-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M16.472 15a6 6 0 01-8.943 0"/><path d="M15 10V9"/><path d="M9 10V9"/></svg></span><span class="notes-qa-label">Add icon</span></button>
+              <button type="button" id="notesAddCoverBtn"><span class="notes-qa-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg></span><span class="notes-qa-label">Add cover</span></button>
+              <button type="button" id="notesToggleCommentsBtn"><span class="notes-qa-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/><path d="M7 8h10"/><path d="M7 12h6"/></svg></span><span class="notes-qa-label">Add comment</span></button>
+            </div>
+            <button class="notes-page-icon-large" id="notesPageIconButton" type="button" title="Change icon" style="display:none;"></button>
+            <input class="notes-page-title" id="notesPageTitle" value="" placeholder="Untitled" autocomplete="off" spellcheck="false">
+            <div class="notes-comments-panel" id="notesCommentsPanel" style="display:none;">
+              <div class="notes-comments-list" id="notesCommentsList"></div>
+              <div class="notes-comment-compose">
+                <span class="notes-comment-avatar" id="notesComposeAvatar" aria-hidden="true">?</span>
+                <input id="notesCommentInput" class="notes-comment-input" type="text" maxlength="600" placeholder="Add a comment…" autocomplete="off">
+                <button type="button" class="notes-comment-tool" id="notesMentionBtn" title="Mention" aria-label="Mention"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M16 12v1.5a2.5 2.5 0 0 0 5 0V12a9 9 0 1 0-3.5 7.1"/></svg></button>
+                <button type="button" class="notes-comment-send" id="notesAddCommentBtn" title="Send" aria-label="Send comment" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+              </div>
+            </div>
+            <div class="notes-blocks" id="notesBlocks"></div>
+            <button class="notes-add-block" id="notesAddTextBtn" type="button"><span>+</span><span>Add block</span></button>
+            <div class="notes-editor-hint">Type <kbd>/</kbd> for commands · <kbd>#</kbd> for headings · <kbd>[[</kbd> to link a page</div>
+          </div>
+        </div>
+      </div>
+    </main>
+    <div class="notes-menu-layer" id="notesMenuLayer" aria-hidden="true"></div>
+    <div class="notes-toast" id="notesToast" aria-live="polite"></div>
+  </section>
+<div class="notes-transition-overlay" id="notesTransitionOverlay" aria-hidden="true">
+  <div class="notes-loading-stack">
+    <div class="notes-transition-mark"><span>Your Notes Space</span></div>
+    <div class="notes-loading-track" aria-hidden="true"><div class="notes-loading-progress"></div></div>
+  </div>
+</div>
+
+<section class="accounts-workspace" id="accountsWorkspace" aria-hidden="true">
+  <div class="accounts-space-header">
+    <div class="accounts-space-identity">
+      <button class="back-link" id="exitAccountsWorkspaceBtn" type="button"><span class="back-arrow" style="font-size:15px;"><svg class="tj-ui-icon" data-icon="arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg></span> Back to Journal</button>
+      <div class="accounts-space-title">Accounts Space</div>
+    </div>
+    <div class="accounts-space-actions">
+      <div class="accounts-sync-copy" id="accountsSyncCopy">Myfxbook · синхронизация с задержкой</div>
+      <button class="ghost-btn accounts-connection-btn" id="accountsConnectionBtn" type="button"><span class="accounts-connection-dot" aria-hidden="true"></span><span>Connection</span></button>
+      <button class="ghost-btn accounts-refresh-btn" id="accountsRefreshBtn" type="button"><span class="accounts-refresh-icon" aria-hidden="true"><svg class="tj-ui-icon" data-icon="refresh-cw" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></span><span>Refresh</span></button>
+    </div>
+  </div>
+
+  <div class="accounts-error" id="accountsError" role="status" aria-live="polite"></div>
+  <div class="accounts-warning" id="accountsWarning" role="status" aria-live="polite"></div>
+
+  <div id="accountsListView">
+    <div class="accounts-intro">
+      <div class="accounts-intro-title">Trading accounts</div>
+      <div class="accounts-intro-sub" hidden></div>
+    </div>
+    <div class="card accounts-setup-card" id="accountsSetupCard">
+      <div class="accounts-setup-row">
+        <div class="accounts-setup-main">
+          <div class="accounts-setup-title" id="accountsSetupTitle">Connect Myfxbook</div>
+          <div class="accounts-setup-copy" id="accountsSetupCopy" hidden></div>
+          <div class="accounts-connect-form" id="accountsConnectForm">
+            <input class="accounts-api-input" id="accountsMyfxEmailInput" type="email" inputmode="email" autocomplete="username" spellcheck="false" placeholder="Myfxbook email">
+            <input class="accounts-api-input" id="accountsMyfxPasswordInput" type="password" autocomplete="current-password" placeholder="Myfxbook password">
+            <div class="accounts-api-actions"><button class="accounts-api-save" id="accountsMyfxConnectBtn" type="button">Connect Myfxbook</button></div>
+          </div>
+          <div class="accounts-connected-actions" id="accountsConnectedActions" hidden>
+            <div class="accounts-connected-pill"><span class="account-status-dot"></span><span>Connected for this Trading Journal user</span></div>
+            <button class="accounts-api-clear" id="accountsMyfxDisconnectBtn" type="button">Disconnect</button>
+          </div>
+          <div class="accounts-setup-hint" id="accountsSetupHint" hidden></div>
+        </div>
+      </div>
+    </div>
+    <div class="accounts-skeleton-grid" id="accountsSkeletonGrid" aria-hidden="true">
+      <div class="accounts-skeleton-card"><div class="accounts-skeleton-line short"></div><div class="accounts-skeleton-line big"></div><div class="accounts-skeleton-line"></div><div class="accounts-skeleton-line"></div></div>
+      <div class="accounts-skeleton-card"><div class="accounts-skeleton-line short"></div><div class="accounts-skeleton-line big"></div><div class="accounts-skeleton-line"></div><div class="accounts-skeleton-line"></div></div>
+    </div>
+    <div class="accounts-grid" id="accountsGrid"></div>
+  </div>
+
+  <div id="accountDetailView" style="display:none;">
+    <button class="back-link accounts-back-to-list" id="accountsBackToListBtn" type="button"><span class="back-arrow" style="font-size:15px;"><svg class="tj-ui-icon" data-icon="arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg></span> Accounts</button>
+    <div class="accounts-detail-head">
+      <div><div class="accounts-detail-name" id="accountsDetailName">Account</div><div class="accounts-detail-meta" id="accountsDetailMeta">—</div></div>
+      <div class="accounts-detail-actions"><span class="account-status"><span class="account-status-dot"></span><span>Myfxbook connected</span></span></div>
+    </div>
+
+    <div class="accounts-detail-loading" id="accountsDetailLoading">Updating account statistics…</div>
+    <div class="accounts-detail-content" id="accountsDetailContent">
+      <div class="top-stats accounts-hero-stats">
+        <div class="stat-card"><div class="stat-label">Balance</div><div class="stat-value mono" id="accountsBalance">—</div><div class="stat-sub" id="accountsBalanceSub">Balance</div></div>
+        <div class="stat-card"><div class="stat-label">Equity</div><div class="stat-value mono" id="accountsEquity">—</div><div class="stat-sub" id="accountsEquitySub">Equity</div></div>
+        <div class="stat-card"><div class="stat-label">Profit / Loss</div><div class="stat-value mono accounts-profit" id="accountsProfit">—</div><div class="stat-sub" id="accountsProfitSub">Gain</div></div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="margin-bottom:12px;">
+          <div class="card-title" style="margin-bottom:0;">Balance Curve</div>
+          <div class="accounts-chart-legend"><span class="accounts-chart-legend-item"><span class="accounts-chart-legend-line"></span>Balance</span><span class="card-sub mono" id="accountsTradeCount">0 trades</span></div>
+        </div>
+        <div class="accounts-chart-wrap"><div class="accounts-chart-empty" id="accountsChartEmpty">Данные Myfxbook появятся здесь после первой синхронизации</div><svg id="accountsChartSvg" aria-label="Account balance curve"></svg></div>
+      </div>
+
+      <div class="section-title-row"><div class="section-title">Account Statistics</div></div>
+      <div class="accounts-stat-grid" id="accountsStatGrid"></div>
+
+      <div class="section-title-row" style="margin-top:16px;"><div class="section-title">Open Positions</div><div class="accounts-table-meta mono" id="accountsOpenTradesCount">0 open</div></div>
+      <div class="card"><div class="table-scroll"><table class="accounts-table"><thead><tr><th>Open</th><th>Asset</th><th>Direction</th><th>Lots</th><th>Open price</th><th>Floating P/L</th><th>Pips</th></tr></thead><tbody id="accountsOpenTradesBody"><tr><td class="accounts-empty-row" colspan="7">No open positions in the latest Myfxbook sync</td></tr></tbody></table></div></div>
+
+      <div class="section-title-row"><div class="section-title">Trade History</div><div class="accounts-table-meta mono" id="accountsHistoryCount">0 saved trades</div></div>
+      <div class="card"><div class="table-scroll"><table class="accounts-table"><thead><tr><th>#</th><th>Open</th><th>Close</th><th>Asset</th><th>Direction</th><th>Lots</th><th>P/L</th><th>Pips</th></tr></thead><tbody id="accountsHistoryBody"><tr><td class="accounts-empty-row" colspan="8">No closed trades saved yet</td></tr></tbody></table></div></div>
+    </div>
+  </div>
+</section>
+
+<div class="modal-overlay accounts-stat-info-overlay" id="accountsStatInfoOverlay" aria-hidden="true">
+  <div class="modal-box accounts-stat-info-modal" role="dialog" aria-modal="true" aria-labelledby="accountsStatInfoTitle" aria-describedby="accountsStatInfoDescription">
+    <button class="modal-close accounts-stat-info-close" id="accountsStatInfoClose" type="button" aria-label="Закрыть">×</button>
+    <div class="accounts-stat-info-kicker">Статистика аккаунта</div>
+    <div class="accounts-stat-info-title" id="accountsStatInfoTitle">Average Win</div>
+    <div class="accounts-stat-info-value mono" id="accountsStatInfoValue">—</div>
+    <div class="accounts-stat-info-description" id="accountsStatInfoDescription">—</div>
+    <div class="accounts-stat-info-detail" id="accountsStatInfoDetail">—</div>
+  </div>
+</div>
+
+  <div class="backtest-workspace-header" id="backtestWorkspaceHeader">
+    <div class="backtest-workspace-identity">
+      <button class="back-link" id="exitBacktestWorkspaceBtn" type="button"><span class="back-arrow" style="font-size:15px;"><svg class="tj-ui-icon" data-icon="arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg></span> Back to Journal</button>
+      <div class="backtest-workspace-title">Backtest Space</div>
+    </div>
+    <div class="backtest-workspace-action">
+      <button class="add-btn" id="addBacktestBtn" type="button">+ Add backtest</button>
+    </div>
+  </div>
+  <div class="header row" id="journalHeader">
+    <div class="logo">
+      <div class="logo-box"><img class="autumn-logo-img" src="images/logo-autumn.webp" alt="" aria-hidden="true" draggable="false"><img class="spring-logo-img" src="images/logo-spring.webp" alt="" aria-hidden="true" draggable="false" loading="lazy" decoding="async" onerror="this.parentNode.classList.add('no-spring-icon');this.remove()"><img class="summer-logo-img" src="images/logo-summer.webp" alt="" aria-hidden="true" draggable="false" loading="lazy" decoding="async" onerror="this.parentNode.classList.add('no-summer-icon');this.remove()"><span class="winter-logo-wrap" aria-hidden="true"><img src="images/logo-winter.webp" alt="" draggable="false"><img class="winter-logo-pom" src="images/logo-winter-pom.webp" alt="" draggable="false"></span><div class="logo-dot">悟</div></div>
+      <div>
+        <div class="title-input" id="titleInput" aria-label="Trading Journal">Trading Journal</div>
+      </div>
+      <button class="go-backtest-btn" id="goBacktestBtn" type="button">Go backtest</button>
+    </div>
+    <div class="header-actions">
+      <div class="admin-panel-wrap" id="adminPanelWrap" style="display:none;">
+        <div class="admin-panel-inner hidden" id="adminPanelInner">
+          <div class="admin-account-picker" id="adminAccountPicker">
+            <button type="button" class="admin-account-trigger" id="adminAccountTrigger" aria-haspopup="listbox" aria-expanded="false">
+              <span id="adminAccountLabel"></span><span class="admin-account-arrow"><svg class="tj-ui-icon" data-icon="chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
+            </button>
+            <div class="admin-account-menu" id="adminAccountMenu" role="listbox"></div>
+          </div>
+          <select class="filter-select" id="adminUserSelect" aria-hidden="true" tabindex="-1" style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none;"></select>
+        </div>
+        <button class="admin-ghost-trigger" id="adminGhostBtn" title=""></button>
+      </div>
+      <button class="chevron-btn" id="secondaryToggleBtn" title="More"><svg class="tj-ui-icon" data-icon="chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+      <div class="secondary-actions-wrap" id="secondaryActionsWrap">
+      <div class="secondary-actions" id="secondaryActions">
+        <button class="ghost-btn" id="changePassBtn">Change password</button>
+        <div class="curve-color-control" id="curveColorControl">
+          <button class="ghost-btn curve-color-trigger" id="curveColorTrigger" type="button" aria-expanded="false">Curve colour</button>
+          <div class="curve-color-popover" id="curveColorPopover" role="dialog" aria-label="Equity curve colour">
+            <div class="curve-color-popover-title">Choose colour</div>
+            <div class="curve-color-presets">
+              <button class="curve-color-btn active-green" id="curveGreenBtn" type="button"><span class="curve-color-dot" style="background:#34d399;"></span>Green</button>
+              <button class="curve-color-btn" id="curveGreyBtn" type="button"><span class="curve-color-dot" style="background:#8fa3b8;"></span>Grey</button>
+              <button class="curve-color-btn curve-color-custom-btn" id="curveCustomBtn" type="button"><span class="curve-color-dot" id="curveCustomDot" style="background:#a78bfa;"></span>Custom</button>
+            </div>
+            <div class="curve-color-wheel-wrap" id="curveColorWheelWrap">
+              <canvas class="curve-color-wheel" id="curveColorWheel" width="264" height="264"></canvas>
+              <span class="curve-color-knob" id="curveColorKnob"></span>
+            </div>
+            <div class="curve-color-preview"><span class="curve-color-preview-dot" id="curveColorPreviewDot"></span><span id="curveColorHex">#34D399</span></div>
+            <button class="curve-color-save" id="curveColorSaveBtn" type="button">Save custom colour</button>
+          </div>
+        </div>
+        <div class="settings-wrap" id="settingsWrap" style="display:none;">
+          <button class="settings-btn" id="settingsBtn" type="button" title="Settings" aria-label="Settings" aria-expanded="false" aria-controls="versionPanel">
+            <svg class="settings-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+          <div class="version-panel" id="versionPanel" role="dialog" aria-label="Settings">
+            <div class="usage-panel-section">
+              <div class="version-title">Local time</div>
+              <div class="usage-clock"><div class="usage-clock-time mono" id="usageClock"><span id="usageClockH">--</span><span class="usage-clock-sep">:</span><span id="usageClockM">--</span><span class="usage-clock-sep">:</span><span class="usage-clock-sec" id="usageClockS">--</span></div><div class="usage-clock-date" id="usageClockDate"> </div></div>
+              <div class="usage-divider"></div>
+              <div class="version-title">Usage statistics</div>
+              <div class="usage-grid">
+                <div class="usage-stat"><div class="usage-stat-label">Today</div><div class="usage-stat-value mono" id="usageToday">—</div></div>
+                <div class="usage-stat"><div class="usage-stat-label">This week</div><div class="usage-stat-value mono" id="usageWeek">—</div></div>
+                <div class="usage-stat"><div class="usage-stat-label">Total</div><div class="usage-stat-value mono" id="usageTotal">—</div></div>
+                <div class="usage-stat"><div class="usage-stat-label">Sessions</div><div class="usage-stat-value mono" id="usageSessions">—</div></div>
+              </div>
+              <div class="usage-last" id="usageLastVisit">Last visit —</div>
+            </div>
+            <div class="notes-workspace-settings-section" id="notesWorkspaceSettingsSection">
+              <div class="usage-divider"></div>
+              <div class="version-title">Workspace</div>
+              <button class="version-option notes-workspace-open-option" type="button" id="openNotesWorkspaceBtn"><span>Notes</span><span class="notes-workspace-open-arrow"><svg class="workspace-arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span></button>
+              <button class="version-option notes-workspace-open-option" type="button" id="openAccountsWorkspaceBtn" style="display:none;"><span>Accounts</span><span class="notes-workspace-open-arrow"><svg class="workspace-arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span></button>
+              <button class="version-option notes-workspace-open-option" type="button" id="openReplayWorkspaceBtn" style="display:none;"><span>Replay</span><span class="notes-workspace-open-arrow"><svg class="workspace-arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span></button>
+            </div>
+            <div class="version-admin-section" id="versionAdminSection">
+              <div class="usage-divider"></div>
+              <div class="version-title">Site version</div>
+              <button class="version-option" type="button" data-version="default"><span>Default</span><span class="version-check"><svg class="tj-ui-icon" data-icon="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span></button>
+              <button class="version-option" type="button" data-version="autumn"><span>Autumn</span><span class="version-check"><svg class="tj-ui-icon" data-icon="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span></button>
+              <button class="version-option" type="button" data-version="winter"><span>Winter</span><span class="version-check"><svg class="tj-ui-icon" data-icon="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span></button>
+              <button class="version-option" type="button" data-version="spring"><span>Spring</span><span class="version-check"><svg class="tj-ui-icon" data-icon="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span></button>
+              <button class="version-option" type="button" data-version="summer"><span>Summer</span><span class="version-check"><svg class="tj-ui-icon" data-icon="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+      <button class="add-btn" id="openAddModal"><span class="winter-add-trade-text">+ Add Trade</span><img class="winter-add-trade-img" src="images/icon-add-trade-winter.webp" alt="" draggable="false" aria-hidden="true"></button>
+    </div>
+  </div>
+
+  <div class="tabs" id="journalTabs">
+    <button class="tab-btn active" id="tabOverviewBtn">Overview</button>
+    <button class="tab-btn" id="tabCalendarBtn">Calendar</button>
+    <button class="tab-btn" id="tabMonthlyBtn">Monthly</button>
+    <button class="tab-btn" id="tabQuarterlyBtn">Quarterly</button>
+    <button class="tab-btn" id="tabYearlyBtn">Yearly</button>
+    <button class="tab-btn" id="tabGalleryBtn">Gallery</button>
+    <button class="tab-btn" id="tabNotesBtn">Small notes</button>
+    <button class="tab-btn" id="tabBacktestsBtn">Backtests</button>
+  </div>
+
+  <div class="filter-toggle-wrap" id="journalFilterWrap">
+    <button class="filter-toggle-btn is-collapsed" id="filterToggleBtn" type="button" aria-controls="assetFilterPanel" aria-expanded="false" title="Show filters"><span class="filter-toggle-icon"><svg class="tj-ui-icon" data-icon="chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></span></button>
+    <div class="filter-panel is-collapsed" id="assetFilterPanel">
+      <div class="filter-panel-inner">
+        <div class="filters-row">
+          <span class="filters-label">FILTERS</span>
+          <select class="filter-select asset-filter-native" id="assetFilterSelect" aria-hidden="true" tabindex="-1">
+            <option value="ALL">All Assets</option>
+            <option value="EURUSD">EURUSD</option>
+            <option value="GBPUSD">GBPUSD</option>
+            <option value="XAUUSD">XAUUSD</option>
+            <option value="GER40">GER40</option>
+          </select>
+          <div class="asset-filter-control" id="assetFilterControl">
+            <button class="asset-filter-trigger" id="assetFilterTrigger" type="button" aria-haspopup="listbox" aria-controls="assetFilterMenu" aria-expanded="false"><span id="assetFilterValue">All Assets</span><span class="asset-filter-arrow" aria-hidden="true"><svg class="tj-ui-icon" data-icon="chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></span></button>
+            <div class="asset-filter-menu" id="assetFilterMenu" role="listbox">
+              <button class="asset-filter-option active" type="button" data-value="ALL" data-label="All Assets">All</button>
+              <button class="asset-filter-option" type="button" data-value="EURUSD">EURUSD</button>
+              <button class="asset-filter-option" type="button" data-value="GBPUSD">GBPUSD</button>
+              <button class="asset-filter-option" type="button" data-value="XAUUSD">XAUUSD</button>
+              <button class="asset-filter-option" type="button" data-value="GER40">GER40</button>
+            </div>
+            <div class="asset-filter-scrollbar" id="assetFilterScrollbar" aria-hidden="true"><div class="asset-filter-scrollbar-thumb" id="assetFilterScrollbarThumb"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="filter-divider" aria-hidden="true"></div>
+  </div>
+
+  <div class="modal-overlay asset-custom-overlay" id="assetCustomOverlay">
+    <div class="modal-box asset-custom-box" role="dialog" aria-modal="true" aria-labelledby="assetCustomTitle">
+      <div class="row" style="margin-bottom:14px;">
+        <div class="card-title" style="margin-bottom:0;" id="assetCustomTitle">Add asset</div>
+        <button type="button" class="modal-close" id="assetCustomCloseBtn">✕</button>
+      </div>
+      <div class="field" style="margin-top:14px;">
+        <label class="field-label" for="assetCustomName">Asset name</label>
+        <input type="text" id="assetCustomName" maxlength="16" autocomplete="off" placeholder="NASDAQ">
+      </div>
+      <div class="asset-custom-color-row">
+        <div class="asset-color-wheel-wrap" id="assetColorWheelWrap">
+          <canvas class="asset-color-wheel" id="assetColorWheel" width="272" height="272" aria-label="Circular asset color palette"></canvas>
+          <span class="asset-color-knob" id="assetColorKnob"></span>
+        </div>
+        <div>
+          <div class="asset-color-preview"><span class="asset-color-preview-dot" id="assetColorPreviewDot"></span><span id="assetColorHex">#34D399</span></div>
+          <div class="asset-color-copy">Choose any color from the circular palette. A color already assigned to another asset cannot be reused.</div>
+        </div>
+      </div>
+      <div class="asset-custom-error" id="assetCustomError"></div>
+      <div class="asset-custom-actions">
+        <button type="button" class="ghost-btn" id="assetCustomCancelBtn">Cancel</button>
+        <button type="button" class="add-btn" id="assetCustomSaveBtn">Add asset</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay asset-custom-overlay" id="assetDeleteOverlay">
+    <div class="modal-box asset-delete-box" role="dialog" aria-modal="true" aria-labelledby="assetDeleteTitle">
+      <div class="row" style="margin-bottom:10px;"><div class="card-title" style="margin-bottom:0;" id="assetDeleteTitle">Delete asset</div></div>
+      <div class="asset-delete-message">Do you really want to delete asset <strong id="assetDeleteName"></strong>?</div>
+      <div class="asset-delete-check"><input type="checkbox" id="assetDeleteAcknowledge"><span>Yes, I understand that deleting this asset will permanently delete all statistics, trades and photos connected to it, and this action cannot be undone.</span></div>
+      <div class="asset-delete-actions"><button type="button" class="ghost-btn" id="assetDeleteCancelBtn">Cancel</button><button type="button" class="add-btn" id="assetDeleteConfirmBtn">Confirm deletion</button></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay asset-custom-overlay" id="backtestNameOverlay">
+    <div class="modal-box asset-delete-box" role="dialog" aria-modal="true" aria-labelledby="backtestNameTitle">
+      <div class="row" style="margin-bottom:14px;"><div class="card-title" style="margin-bottom:0;" id="backtestNameTitle">Rename backtest</div><button type="button" class="modal-close" id="backtestNameCloseBtn">✕</button></div>
+      <div class="field"><label class="field-label" for="backtestNameInput">Backtest name</label><input type="text" id="backtestNameInput" maxlength="48" autocomplete="off"></div>
+      <div class="asset-delete-actions"><button type="button" class="ghost-btn" id="backtestNameCancelBtn">Cancel</button><button type="button" class="add-btn" id="backtestNameSaveBtn">Save name</button></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay asset-custom-overlay" id="backtestDeleteOverlay">
+    <div class="modal-box asset-delete-box" role="dialog" aria-modal="true" aria-labelledby="backtestDeleteTitle">
+      <div class="row" style="margin-bottom:10px;"><div class="card-title" style="margin-bottom:0;" id="backtestDeleteTitle">Delete backtest</div></div>
+      <div class="asset-delete-message">Delete <strong id="backtestDeleteName"></strong> and all of its trades? This action cannot be undone.</div>
+      <div class="asset-delete-actions"><button type="button" class="ghost-btn" id="backtestDeleteCancelBtn">Cancel</button><button type="button" class="add-btn" id="backtestDeleteConfirmBtn">Confirm deletion</button></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay asset-custom-overlay" id="backtestExportOverlay">
+    <div class="modal-box backtest-export-box" role="dialog" aria-modal="true" aria-labelledby="backtestExportTitle">
+      <div class="row" style="margin-bottom:14px;"><div class="card-title" style="margin-bottom:0;" id="backtestExportTitle">Export preview</div><button type="button" class="modal-close" id="backtestExportCloseBtn">✕</button></div>
+      <div class="backtest-export-preview-wrap"><img id="backtestExportPreviewImg" alt="Backtest statistics preview"></div>
+      <div class="asset-delete-actions"><button type="button" class="ghost-btn" id="backtestExportCancelBtn">Cancel</button><button type="button" class="add-btn" id="backtestExportDownloadBtn">Download PNG</button></div>
+    </div>
+  </div>
+
+  <!-- OVERVIEW TAB -->
+  <div id="overviewTab">
+    <div id="overviewSkeleton" style="display:none;">
+      <div class="card">
+        <div class="row" style="margin-bottom:12px;">
+          <div class="skel-block" style="width:110px; height:16px;"></div>
+          <div class="skel-block" style="width:60px; height:12px;"></div>
+        </div>
+        <div class="skel-block" style="width:100%; height:220px; border-radius:14px;"></div>
+      </div>
+      <div class="top-stats">
+        <div class="stat-card"><div class="skel-block" style="width:70px; height:11px; margin-bottom:10px;"></div><div class="skel-block" style="width:90px; height:26px;"></div></div>
+        <div class="stat-card"><div class="skel-block" style="width:70px; height:11px; margin-bottom:10px;"></div><div class="skel-block" style="width:90px; height:26px;"></div></div>
+        <div class="stat-card"><div class="skel-block" style="width:70px; height:11px; margin-bottom:10px;"></div><div class="skel-block" style="width:90px; height:26px;"></div></div>
+      </div>
+      <div class="card">
+        <div class="skel-block" style="width:140px; height:14px; margin-bottom:16px;"></div>
+        <div class="skel-block" style="width:100%; height:44px; border-radius:12px; margin-bottom:8px;"></div>
+        <div class="skel-block" style="width:100%; height:44px; border-radius:12px; margin-bottom:8px;"></div>
+        <div class="skel-block" style="width:100%; height:44px; border-radius:12px;"></div>
+      </div>
+      <div class="card">
+        <div class="skel-block" style="width:120px; height:14px; margin-bottom:16px;"></div>
+        <div class="skel-block" style="width:100%; height:36px; border-radius:10px; margin-bottom:8px;"></div>
+        <div class="skel-block" style="width:100%; height:36px; border-radius:10px; margin-bottom:8px;"></div>
+        <div class="skel-block" style="width:100%; height:36px; border-radius:10px;"></div>
+      </div>
+    </div>
+    <div id="overviewReal">
+    <div class="card">
+      <div class="row" style="margin-bottom:12px;">
+        <div class="card-title" style="margin-bottom:0;">Equity Curve</div>
+        <div class="card-sub mono" id="tradeCountLabel">0 trades</div>
+      </div>
+      <div class="chart-wrap">
+        <div class="empty-chart" id="emptyChart">Add your first trade — equity curve will appear here</div>
+        <svg id="chartSvg" style="display:none;"></svg>
+        <div class="tooltip" id="tooltip"></div>
+
+      </div>
+    </div>
+
+    <div class="top-stats">
+      <div class="stat-card">
+        <div class="stat-label">Total Gain</div>
+        <div class="stat-value mono" id="totalRR" style="color:var(--green)">+0.00%</div>
+        <div class="stat-sub" id="totalTradesSub">0 trades</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Win Rate</div>
+        <div class="stat-value mono" id="winRate" style="color:var(--blue)">0.0%</div>
+        <div class="stat-sub" id="winLossSub">0W / 0L</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg Winning RR</div>
+        <div class="stat-value mono" id="avgWinRR" style="color:var(--green)">—</div>
+        <div class="stat-sub">winning trades only</div>
+      </div>
+    </div>
+
+    <div class="mini-groups">
+      <div class="stat-group">
+        <div class="group-label">Trading performance</div>
+        <div class="group-items">
+          <div class="mini-box"><div class="mini-box-label">Winning</div><div class="mini-box-value mono" id="winCount" style="color:var(--green)">0</div></div>
+          <div class="mini-box"><div class="mini-box-label">Losing</div><div class="mini-box-value mono" id="loseCount" style="color:var(--red)">0</div></div>
+        </div>
+      </div>
+      <div class="stat-group">
+        <div class="group-label">Streaks</div>
+        <div class="group-items">
+          <div class="mini-box"><div class="mini-box-label">Max win</div><div class="mini-box-value mono" id="maxWinStreak" style="color:var(--green)">0</div></div>
+          <div class="mini-box"><div class="mini-box-label">Max lose</div><div class="mini-box-value mono" id="maxLoseStreak" style="color:var(--red)">0</div></div>
+        </div>
+      </div>
+      <div class="stat-group">
+        <div class="group-label">Monthly Statistics</div>
+        <div class="group-items">
+          <div class="mini-box"><div class="mini-box-label">Trades/mo</div><div class="mini-box-value mono" id="tradesPerMonth">0.0</div></div>
+          <div class="mini-box"><div class="mini-box-label">Gain/mo</div><div class="mini-box-value mono" id="rrPerMonth" style="color:var(--green)">+0.00%</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title-row">
+      <div class="section-title">Assets Statistics</div>
+    </div>
+    <div class="card">
+      <div class="table-scroll">
+        <table id="assetsStatsTable">
+          <thead>
+            <tr><th>Asset</th><th>Trades</th><th>Win Rate</th><th>Avg Winning RR</th><th>Total Gain</th></tr>
+          </thead>
+          <tbody id="assetsStatsBody" class="stagger-in"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section-title-row">
+      <div class="section-title">All Trades</div>
+      <div class="card-sub" id="showingLabel">Showing 0 of 0 trades</div>
+    </div>
+    <div class="card">
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th class="th-editable" data-col="screenshot">Chart<span class="th-pencil" data-col="screenshot"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+              <th>#</th>
+              <th class="th-editable" data-col="open">Open<span class="th-pencil" data-col="open"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+              <th class="th-editable" data-col="close">Close<span class="th-pencil" data-col="close"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+              <th>Holding</th>
+              <th class="th-editable" data-col="asset">Asset<span class="th-pencil" data-col="asset"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+              <th class="th-editable" data-col="direction">Direction<span class="th-pencil" data-col="direction"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+              <th class="th-editable" data-col="result">Result<span class="th-pencil" data-col="result"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+              <th class="th-editable" data-col="model">Model<span class="th-pencil" data-col="model"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th class="th-editable" data-col="rr">Gain<span class="th-pencil" data-col="rr"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="allTradesBody" class="stagger-in"></tbody>
+        </table>
+      </div>
+      <div class="empty-state" id="tradesEmptyState" style="display:none;">No trades yet</div>
+      <div class="table-pagination" id="tradesPagination"></div>
+    </div>
+    </div>
+  </div>
+
+  <!-- BACKTESTS TAB -->
+  <div id="backtestsTab" style="display:none;">
+    <div class="save-error" id="backtestSyncError" style="display:none; margin-bottom:10px;"></div>
+    <div id="backtestsListView">
+      <div class="section-title-row"><div class="section-title">Backtests</div></div>
+      <div class="card"><div class="backtests-empty" id="backtestsEmpty"><div class="empty-title">No backtests yet</div><div>Add a backtest to track a historical strategy range.</div></div><div class="backtest-list" id="backtestsList"></div></div>
+    </div>
+    <div id="backtestDetailView" style="display:none;">
+      <button class="back-link" id="backtestsBackBtn" type="button"><span class="back-arrow" style="font-size:15px;"><svg class="tj-ui-icon" data-icon="arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg></span> Backtests</button>
+      <div class="backtest-detail-head"><div><div class="backtest-detail-name-row"><div class="backtest-detail-title" id="backtestDetailTitle">Backtest</div><button class="backtest-icon-btn" id="renameActiveBacktestBtn" type="button" title="Rename backtest" aria-label="Rename backtest"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></button><button class="backtest-icon-btn delete" id="deleteActiveBacktestBtn" type="button" title="Delete backtest" aria-label="Delete backtest">×</button></div><div class="backtest-detail-range" id="backtestDetailRange"></div></div><div class="backtest-curve-colour" id="backtestCurveColour"><button class="ghost-btn curve-color-trigger" id="backtestCurveTrigger" type="button" aria-expanded="false">Curve colour</button><div class="backtest-curve-popover" id="backtestCurvePopover" role="dialog" aria-label="Backtest curve colour"><div class="curve-color-popover-title">Choose colour</div><div class="curve-color-presets"><button class="curve-color-btn" type="button" data-bt-colour="#34d399">Green</button><button class="curve-color-btn" type="button" data-bt-colour="#8fa3b8">Grey</button><button class="curve-color-btn curve-color-custom-btn" type="button" id="backtestCustomBtn">Custom</button></div><div class="curve-color-wheel-wrap"><canvas class="curve-color-wheel" id="backtestColorWheel" width="264" height="264"></canvas><span class="curve-color-knob" id="backtestColorKnob"></span></div><div class="curve-color-preview"><span class="curve-color-preview-dot" id="backtestColorPreviewDot"></span><span id="backtestColorHex">#34D399</span></div><button class="curve-color-save" id="backtestColorSaveBtn" type="button">Save custom colour</button></div></div></div>
+      <div class="backtest-builder">
+        <div class="card backtest-input-panel" id="backtestInputPanel">
+          <div class="backtest-panel-head-row"><div class="card-title" style="margin-bottom:0;">Backtest Data</div><button class="backtest-drawer-toggle" id="backtestDrawerToggle" type="button" title="Collapse panel" aria-label="Collapse panel" aria-expanded="true"><svg class="tj-ui-icon" data-icon="chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button></div>
+          <div class="backtest-panel-hint">Paste your trade results in RR — the stats and chart on the right will update instantly.</div>
+          <div class="backtest-field-label-row"><span>TRADE RESULTS</span><span class="mono" id="backtestRRCount">0 values</span></div>
+          <textarea id="backtestRRInput" class="backtest-rr-textarea" placeholder="+2, -1, +3, -1, +2, +1.5, -1, +4, -2
+
+each value is a trade result in RR,
+separated by commas or new lines"></textarea>
+          <div class="backtest-field-label" style="margin-top:16px;">BACKTEST INFO</div>
+          <div class="backtest-info-row"><span>Days Tested</span><input type="number" id="backtestDaysTested" class="backtest-days-input" min="0" step="1" placeholder="0"></div>
+          <div class="backtest-info-row" id="backtestReplayFilterRow" style="display:none;"><span id="backtestReplayFilterLabel">Replay trades</span><div class="bt-replay-seg" role="group" aria-label="Replay trades filter"><button type="button" id="backtestFilterAll">All</button><button type="button" id="backtestFilterClean">Clean</button></div></div>
+          <div class="backtest-panel-actions"><button class="ghost-btn" id="backtestClearBtn" type="button" style="flex:1;">Clear</button></div>
+          <div class="backtest-panel-footnote">Stats and chart recalculate automatically.</div>
+        </div>
+        <button class="backtest-drawer-open-tab" id="backtestDrawerOpenTab" type="button" title="Show backtest data" aria-label="Show backtest data"><svg class="tj-ui-icon" data-icon="chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+        <div class="backtest-preview-panel">
+          <div class="backtest-preview-card" id="backtestPreviewCard">
+            <div class="backtest-preview-brand-row"><span class="backtest-preview-dot"></span><span class="backtest-preview-brand-title">Backtest Statistics</span><span class="backtest-preview-brand-sub" id="backtestDaysTestedDisplay"></span><button class="backtest-export-btn" id="backtestExportBtn" type="button"><span class="backtest-export-btn-label">Export PNG</span></button></div>
+            <div class="card" style="margin-bottom:0;"><div class="row" style="margin-bottom:10px;"><div class="card-title" style="margin-bottom:0;">Equity Curve</div><div class="card-sub mono" id="backtestTradeCount">0 trades</div></div><div class="chart-wrap"><div class="empty-chart" id="backtestEmptyChart">Paste your trade list on the left to see the equity curve</div><svg class="backtest-chart" id="backtestChart" style="display:none;"></svg></div></div>
+            <div class="top-stats">
+              <div class="stat-card"><div class="stat-label">Total Gain (%)</div><div class="stat-value mono" id="backtestTotalRR">0.0%</div><div class="stat-sub" id="backtestTotalRRSub">0 trades</div></div>
+              <div class="stat-card"><div class="stat-label">Win Rate</div><div class="stat-value mono" id="backtestWinRate">0.0%</div><div class="stat-sub" id="backtestWinRateSub">0W / 0L</div></div>
+              <div class="stat-card"><div class="stat-label">Average Winning Trade</div><div class="stat-value mono" id="backtestAvgWinRR">0.0R</div><div class="stat-sub">winning trades only</div></div>
+            </div>
+            <div class="mini-groups" style="margin-bottom:0;">
+              <div class="stat-group">
+                <div class="group-label">Trading Performance</div>
+                <div class="group-items">
+                  <div class="mini-box"><div class="mini-box-label">Winning Trades</div><div class="mini-box-value mono" id="backtestWinningTrades" style="color:var(--green)">0</div></div>
+                  <div class="mini-box"><div class="mini-box-label">Losing Trades</div><div class="mini-box-value mono" id="backtestLosingTrades" style="color:var(--red)">0</div></div>
+                </div>
+              </div>
+              <div class="stat-group">
+                <div class="group-label">Streaks</div>
+                <div class="group-items">
+                  <div class="mini-box"><div class="mini-box-label">Max Win Streak</div><div class="mini-box-value mono" id="backtestMaxWinStreak" style="color:var(--green)">0</div></div>
+                  <div class="mini-box"><div class="mini-box-label">Max Lose Streak</div><div class="mini-box-value mono" id="backtestMaxLoseStreak" style="color:var(--red)">0</div></div>
+                </div>
+              </div>
+              <div class="stat-group">
+                <div class="group-label">Monthly Statistics</div>
+                <div class="group-items">
+                  <div class="mini-box"><div class="mini-box-label">Avg Trades / Month</div><div class="mini-box-value mono" id="backtestAvgTradesMonth">—</div></div>
+                  <div class="mini-box"><div class="mini-box-label">Avg Gain / Month</div><div class="mini-box-value mono" id="backtestAvgGainMonth" style="color:var(--green)">—</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <input type="hidden" id="backtestDateInput">
+  </div>
+
+  <!-- CALENDAR TAB -->
+  <div id="calendarTab" style="display:none;">
+    <div class="section-title-row">
+      <div class="section-title">PnL Calendar</div>
+      <div class="card-sub mono" id="calTotalLabel">0.00%</div>
+    </div>
+    <div class="card">
+      <div class="year-nav" style="margin-bottom:16px;">
+        <button class="year-nav-btn" id="calPrevBtn"><svg class="tj-ui-icon" data-icon="chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+        <div class="year-label" id="calLabel">January 2026</div>
+        <button class="year-nav-btn" id="calNextBtn"><svg class="tj-ui-icon" data-icon="chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+      </div>
+      <div class="cal-scroll-frame">
+        <div class="cal-scroll-inner">
+          <div class="cal-weekdays">
+            <div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div><div class="cal-weekdays-week">Week</div>
+          </div>
+          <div class="cal-grid" id="calGrid"></div>
+        </div>
+      </div>
+      <div class="cal-legend">
+        <div class="card-sub" id="calStreakLabel">Current streak: 0 days</div>
+        <div class="card-sub" id="calBestStreakLabel">Best streak: 0 days</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- WEEKLY TAB -->
+  <div id="weeklyTab" style="display:none;">
+    <div id="weeklyYearView">
+      <div class="card">
+        <div class="year-nav">
+          <button class="year-nav-btn" id="prevWeeklyYearBtn"><svg class="tj-ui-icon" data-icon="chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+          <div class="year-label" id="weeklyYearLabel">2026</div>
+          <button class="year-nav-btn" id="nextWeeklyYearBtn"><svg class="tj-ui-icon" data-icon="chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+        </div>
+        <div class="card-title">Weekly Results</div>
+        <div id="weeklyList"></div>
+        <div class="empty-state" id="weeklyEmptyState" style="display:none;">No trades yet this year</div>
+      </div>
+    </div>
+
+    <div id="weekDetailView" style="display:none;">
+      <button class="back-link" id="backToWeeks"><span class="back-arrow" style="font-size:15px;"><svg class="tj-ui-icon" data-icon="arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg></span> All weeks</button>
+      <div class="card-title" id="weekDetailTitle" style="font-size:16px; margin-bottom:12px;">Week 1 · April 2026</div>
+
+      <div class="mini-groups" style="grid-template-columns: repeat(4, 1fr);">
+        <div class="mini-box">
+          <div class="mini-box-label">Trades</div>
+          <div class="mini-box-value mono" id="wdTrades">0</div>
+        </div>
+        <div class="mini-box">
+          <div class="mini-box-label">Win Rate</div>
+          <div class="mini-box-value mono" id="wdWinRate" style="color:var(--blue)">0%</div>
+        </div>
+        <div class="mini-box">
+          <div class="mini-box-label">Avg RR</div>
+          <div class="mini-box-value mono" id="wdAvgRR" style="color:var(--green)">—</div>
+        </div>
+        <div class="mini-box">
+          <div class="mini-box-label">Total Gain</div>
+          <div class="mini-box-value mono" id="wdTotalRR" style="color:var(--green)">+0.00%</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="margin-bottom:8px;">
+          <div class="card-title" style="margin-bottom:0;">Trades this week</div>
+          <button class="add-btn" id="openAddModalWeek" style="padding:6px 12px; font-size:12px;">+ Add Trade</button>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th class="th-editable" data-col="screenshot">Chart<span class="th-pencil" data-col="screenshot"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th>#</th>
+                <th class="th-editable" data-col="open">Open<span class="th-pencil" data-col="open"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th class="th-editable" data-col="close">Close<span class="th-pencil" data-col="close"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th>Holding</th>
+                <th class="th-editable" data-col="asset">Asset<span class="th-pencil" data-col="asset"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th class="th-editable" data-col="direction">Direction<span class="th-pencil" data-col="direction"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th class="th-editable" data-col="result">Result<span class="th-pencil" data-col="result"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th class="th-editable" data-col="model">Model<span class="th-pencil" data-col="model"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th class="th-editable" data-col="rr">Gain<span class="th-pencil" data-col="rr"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="weekTradesBody" class="stagger-in"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="weekEmptyState" style="display:none;">No trades this week yet</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MONTHLY TAB -->
+  <div id="monthlyTab" style="display:none;">
+    <div id="monthlyYearView">
+      <div class="card">
+        <div class="year-nav">
+          <button class="year-nav-btn" id="prevYearBtn"><svg class="tj-ui-icon" data-icon="chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+          <div class="year-label" id="yearLabel">2026</div>
+          <button class="year-nav-btn" id="nextYearBtn"><svg class="tj-ui-icon" data-icon="chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+        </div>
+        <div class="card-title">Monthly Performance</div>
+        <div class="bar-chart" id="barChart"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Monthly Results</div>
+        <div id="monthList"></div>
+      </div>
+    </div>
+
+    <div id="monthDetailView" style="display:none;">
+      <button class="back-link" id="backToMonths"><span class="back-arrow" style="font-size:15px;"><svg class="tj-ui-icon" data-icon="arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg></span> All months</button>
+      <div class="month-detail-shell">
+        <div class="month-detail-head">
+          <button class="month-detail-nav" id="monthDetailPrev" type="button" aria-label="Previous month"><svg class="tj-ui-icon" data-icon="chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+          <div class="month-detail-title" id="monthDetailTitle">April 2026</div>
+          <button class="month-detail-nav" id="monthDetailNext" type="button" aria-label="Next month"><svg class="tj-ui-icon" data-icon="chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+          <div class="month-detail-trades"><span id="monthDetailTradeCount">0 trades</span></div>
+        </div>
+
+        <div class="month-detail-chart-card">
+          <div class="month-detail-chart-title">Equity Curve</div>
+          <svg id="monthChartSvg" viewBox="0 0 800 390" role="img" aria-label="Monthly equity curve"></svg>
+          <div class="empty-state" id="monthChartEmpty" style="display:none; min-height:160px;">No trades this month yet</div>
+        </div>
+
+        <div class="month-detail-primary-grid">
+          <div class="month-detail-stat-card">
+            <div class="month-detail-stat-label">Total Gain (%)</div>
+            <div class="month-detail-stat-value mono" id="mdTotalGain">+0.0%</div>
+            <div class="month-detail-stat-sub" id="mdTotalGainSub">0 trades</div>
+          </div>
+          <div class="month-detail-stat-card">
+            <div class="month-detail-stat-label">Win Rate</div>
+            <div class="month-detail-stat-value mono" id="mdMonthWinRate">0.0%</div>
+            <div class="month-detail-stat-sub" id="mdWinLossSub">0W / 0L</div>
+          </div>
+          <div class="month-detail-stat-card">
+            <div class="month-detail-stat-label">Average Winning Trade</div>
+            <div class="month-detail-stat-value mono" id="mdAvgWinning">—</div>
+            <div class="month-detail-stat-sub">only profitable trades</div>
+          </div>
+        </div>
+
+        <div class="month-detail-secondary-grid">
+          <div class="month-detail-total-card">
+            <div>
+              <div class="month-detail-stat-label">Total Trades</div>
+              <div class="month-detail-total-value mono" id="mdTotalTrades">0</div>
+            </div>
+            <div class="month-detail-winloss">
+              <span class="win">● Winning: <strong id="mdWinningTrades">0</strong></span>
+              <span class="loss">● Losing: <strong id="mdLosingTrades">0</strong></span>
+            </div>
+          </div>
+          <div class="month-detail-streak-card">
+            <div class="month-detail-streak-title">Streaks</div>
+            <div class="month-detail-streaks">
+              <div class="month-detail-streak win-streak">
+                <div class="month-detail-streak-label">Max win streak</div>
+                <div class="month-detail-streak-value mono" id="mdMaxWinStreak">0</div>
+              </div>
+              <div class="month-detail-streak loss-streak">
+                <div class="month-detail-streak-label">Max lose streak</div>
+                <div class="month-detail-streak-value mono" id="mdMaxLoseStreak">0</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="best-wrap" id="mdBestWrap"></div>
+
+      <div class="card">
+        <div class="row" style="margin-bottom:8px;">
+          <div class="card-title" style="margin-bottom:0;">Trades this month</div>
+          <button class="add-btn" id="openAddModalMonth" style="padding:6px 12px; font-size:12px;">+ Add Trade</button>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th class="th-editable" data-col="screenshot">Chart<span class="th-pencil" data-col="screenshot"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th>#</th>
+                <th class="th-editable" data-col="open">Open<span class="th-pencil" data-col="open"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th class="th-editable" data-col="close">Close<span class="th-pencil" data-col="close"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th>Holding</th>
+                <th class="th-editable" data-col="asset">Asset<span class="th-pencil" data-col="asset"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th class="th-editable" data-col="direction">Direction<span class="th-pencil" data-col="direction"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th class="th-editable" data-col="result">Result<span class="th-pencil" data-col="result"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th class="th-editable" data-col="model">Model<span class="th-pencil" data-col="model"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th class="th-editable" data-col="rr">Gain<span class="th-pencil" data-col="rr"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="monthTradesBody" class="stagger-in"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="monthEmptyState" style="display:none;">No trades this month yet</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- QUARTERLY TAB -->
+  <div id="quarterlyTab" style="display:none;">
+    <div id="quarterListView">
+      <div class="card">
+        <div class="card-title">Quarterly Results</div>
+        <div id="quarterList"></div>
+      </div>
+    </div>
+    <div id="quarterDetailView" style="display:none;">
+      <button class="back-link" id="backToQuarters"><span class="back-arrow" style="font-size:15px;"><svg class="tj-ui-icon" data-icon="arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg></span> All quarters</button>
+      <div class="month-detail-shell">
+        <div class="month-detail-head">
+          <button class="month-detail-nav" id="quarterDetailPrev" type="button" aria-label="Previous quarter"><svg class="tj-ui-icon" data-icon="chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+          <div class="month-detail-title" id="quarterDetailTitle">April 2026</div>
+          <button class="month-detail-nav" id="quarterDetailNext" type="button" aria-label="Next quarter"><svg class="tj-ui-icon" data-icon="chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+          <div class="month-detail-trades"><span id="quarterDetailTradeCount">0 trades</span></div>
+        </div>
+
+        <div class="month-detail-chart-card">
+          <div class="month-detail-chart-title">Equity Curve</div>
+          <svg id="quarterChartSvg" viewBox="0 0 800 390" role="img" aria-label="Quarter equity curve"></svg>
+          <div class="empty-state" id="quarterChartEmpty" style="display:none; min-height:160px;">No trades this quarter yet</div>
+        </div>
+
+        <div class="month-detail-primary-grid">
+          <div class="month-detail-stat-card">
+            <div class="month-detail-stat-label">Total Gain (%)</div>
+            <div class="month-detail-stat-value mono" id="qdTotalGain">+0.0%</div>
+            <div class="month-detail-stat-sub" id="qdTotalGainSub">0 trades</div>
+          </div>
+          <div class="month-detail-stat-card">
+            <div class="month-detail-stat-label">Win Rate</div>
+            <div class="month-detail-stat-value mono" id="qdMonthWinRate">0.0%</div>
+            <div class="month-detail-stat-sub" id="qdWinLossSub">0W / 0L</div>
+          </div>
+          <div class="month-detail-stat-card">
+            <div class="month-detail-stat-label">Average Winning Trade</div>
+            <div class="month-detail-stat-value mono" id="qdAvgWinning">—</div>
+            <div class="month-detail-stat-sub">only profitable trades</div>
+          </div>
+        </div>
+
+        <div class="month-detail-secondary-grid">
+          <div class="month-detail-total-card">
+            <div>
+              <div class="month-detail-stat-label">Total Trades</div>
+              <div class="month-detail-total-value mono" id="qdTotalTrades">0</div>
+            </div>
+            <div class="month-detail-winloss">
+              <span class="win">● Winning: <strong id="qdWinningTrades">0</strong></span>
+              <span class="loss">● Losing: <strong id="qdLosingTrades">0</strong></span>
+            </div>
+          </div>
+          <div class="month-detail-streak-card">
+            <div class="month-detail-streak-title">Streaks</div>
+            <div class="month-detail-streaks">
+              <div class="month-detail-streak win-streak">
+                <div class="month-detail-streak-label">Max win streak</div>
+                <div class="month-detail-streak-value mono" id="qdMaxWinStreak">0</div>
+              </div>
+              <div class="month-detail-streak loss-streak">
+                <div class="month-detail-streak-label">Max lose streak</div>
+                <div class="month-detail-streak-value mono" id="qdMaxLoseStreak">0</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="best-wrap" id="qdBestWrap"></div>
+
+      <div class="card">
+        <div class="row" style="margin-bottom:8px;">
+          <div class="card-title" style="margin-bottom:0;">Trades this quarter</div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th class="th-editable" data-col="screenshot">Chart<span class="th-pencil" data-col="screenshot"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th>#</th>
+                <th class="th-editable" data-col="open">Open<span class="th-pencil" data-col="open"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th class="th-editable" data-col="close">Close<span class="th-pencil" data-col="close"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th>Holding</th>
+                <th class="th-editable" data-col="asset">Asset<span class="th-pencil" data-col="asset"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th class="th-editable" data-col="direction">Direction<span class="th-pencil" data-col="direction"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th class="th-editable" data-col="result">Result<span class="th-pencil" data-col="result"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th class="th-editable" data-col="model">Model<span class="th-pencil" data-col="model"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th class="th-editable" data-col="rr">Gain<span class="th-pencil" data-col="rr"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="quarterTradesBody" class="stagger-in"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="quarterEmptyState" style="display:none;">No trades this quarter yet</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- YEARLY TAB -->
+  <div id="yearlyTab" style="display:none;">
+    <div id="yearListView">
+      <div class="card">
+        <div class="card-title">Yearly Results</div>
+        <div id="yearlyList"></div>
+      </div>
+    </div>
+    <div id="yearDetailView" style="display:none;">
+      <button class="back-link" id="backToYears"><span class="back-arrow" style="font-size:15px;"><svg class="tj-ui-icon" data-icon="arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg></span> All years</button>
+      <div class="month-detail-shell">
+        <div class="month-detail-head">
+          <button class="month-detail-nav" id="yearDetailPrev" type="button" aria-label="Previous year"><svg class="tj-ui-icon" data-icon="chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+          <div class="month-detail-title" id="yearDetailTitle">April 2026</div>
+          <button class="month-detail-nav" id="yearDetailNext" type="button" aria-label="Next year"><svg class="tj-ui-icon" data-icon="chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+          <div class="month-detail-trades"><span id="yearDetailTradeCount">0 trades</span></div>
+        </div>
+
+        <div class="month-detail-chart-card">
+          <div class="month-detail-chart-title">Equity Curve</div>
+          <svg id="yearChartSvg" viewBox="0 0 800 390" role="img" aria-label="Year equity curve"></svg>
+          <div class="empty-state" id="yearChartEmpty" style="display:none; min-height:160px;">No trades this year yet</div>
+        </div>
+
+        <div class="month-detail-primary-grid">
+          <div class="month-detail-stat-card">
+            <div class="month-detail-stat-label">Total Gain (%)</div>
+            <div class="month-detail-stat-value mono" id="ydTotalGain">+0.0%</div>
+            <div class="month-detail-stat-sub" id="ydTotalGainSub">0 trades</div>
+          </div>
+          <div class="month-detail-stat-card">
+            <div class="month-detail-stat-label">Win Rate</div>
+            <div class="month-detail-stat-value mono" id="ydMonthWinRate">0.0%</div>
+            <div class="month-detail-stat-sub" id="ydWinLossSub">0W / 0L</div>
+          </div>
+          <div class="month-detail-stat-card">
+            <div class="month-detail-stat-label">Average Winning Trade</div>
+            <div class="month-detail-stat-value mono" id="ydAvgWinning">—</div>
+            <div class="month-detail-stat-sub">only profitable trades</div>
+          </div>
+        </div>
+
+        <div class="month-detail-secondary-grid">
+          <div class="month-detail-total-card">
+            <div>
+              <div class="month-detail-stat-label">Total Trades</div>
+              <div class="month-detail-total-value mono" id="ydTotalTrades">0</div>
+            </div>
+            <div class="month-detail-winloss">
+              <span class="win">● Winning: <strong id="ydWinningTrades">0</strong></span>
+              <span class="loss">● Losing: <strong id="ydLosingTrades">0</strong></span>
+            </div>
+          </div>
+          <div class="month-detail-streak-card">
+            <div class="month-detail-streak-title">Streaks</div>
+            <div class="month-detail-streaks">
+              <div class="month-detail-streak win-streak">
+                <div class="month-detail-streak-label">Max win streak</div>
+                <div class="month-detail-streak-value mono" id="ydMaxWinStreak">0</div>
+              </div>
+              <div class="month-detail-streak loss-streak">
+                <div class="month-detail-streak-label">Max lose streak</div>
+                <div class="month-detail-streak-value mono" id="ydMaxLoseStreak">0</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="best-wrap" id="ydBestWrap"></div>
+
+      <div class="card">
+        <div class="row" style="margin-bottom:8px;">
+          <div class="card-title" style="margin-bottom:0;">Trades this year</div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th class="th-editable" data-col="screenshot">Chart<span class="th-pencil" data-col="screenshot"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th>#</th>
+                <th class="th-editable" data-col="open">Open<span class="th-pencil" data-col="open"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th class="th-editable" data-col="close">Close<span class="th-pencil" data-col="close"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th>Holding</th>
+                <th class="th-editable" data-col="asset">Asset<span class="th-pencil" data-col="asset"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th class="th-editable" data-col="direction">Direction<span class="th-pencil" data-col="direction"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th class="th-editable" data-col="result">Result<span class="th-pencil" data-col="result"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th class="th-editable" data-col="model">Model<span class="th-pencil" data-col="model"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th class="th-editable" data-col="rr">Gain<span class="th-pencil" data-col="rr"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></span></th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="yearTradesBody" class="stagger-in"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="yearEmptyState" style="display:none;">No trades this year yet</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="galleryTab" style="display:none;">
+    <div class="card">
+      <div class="card-title">Gallery</div>
+      <div class="gallery-grid" id="galleryGrid"></div>
+      <div class="empty-state" id="galleryEmptyState" style="display:none;">No trades with screenshots yet. Add a chart screenshot in the "Add Trade" form.</div>
+    </div>
+  </div>
+
+  <div id="notesTab" style="display:none;">
+    <div class="card">
+      <div class="card-title">Small notes</div>
+
+      <div class="field" style="position:relative;">
+        <textarea id="newDiaryText" rows="4" placeholder="" style="width:100%; background:#0a0c10; border:1px solid rgba(255,255,255,0.1); color:var(--textMain); border-radius:12px; padding:10px 12px 38px 12px; font-size:13px; outline:none; resize:vertical; font-family:inherit;"></textarea>
+        <button type="button" id="addDiaryBtn" style="position:absolute; bottom:8px; right:8px; padding:5px 14px; border-radius:8px; border:none; background:var(--green); color:#052e1e; font-weight:700; font-size:12px; cursor:pointer; transition:opacity .2s ease, transform .15s ease;">Save</button>
+              </div>
+      <div class="save-error" id="diaryError" style="display:none;"></div>
+
+      <div id="diaryList"></div>
+      <div class="empty-state" id="diaryEmptyState" style="display:none; min-height:60px;">No notes yet</div>
+    </div>
+  </div>
+</div>
+
+<!-- Gallery Lightbox -->
+<div class="lightbox-overlay" id="galleryLightbox">
+  <div class="lightbox-box">
+    <div class="row" style="margin-bottom:12px;">
+      <div class="card-title" style="margin-bottom:0;" id="lightboxTitle">EURUSD · LONG</div>
+      <button class="modal-close" id="lightboxCloseBtn">✕</button>
+    </div>
+    <div class="img-frame">
+      <img id="lightboxImg" src="" alt="Chart screenshot">
+      <button class="expand-btn" id="lightboxExpandBtn" title="Open full size">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 3 3 3 3 9"></polyline><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><polyline points="15 21 21 21 21 15"></polyline></svg>
+      </button>
+    </div>
+    <div class="lightbox-meta">
+      <div class="card-sub" id="lightboxDate">17.08.2026, 20:48</div>
+      <div id="lightboxModel" class="trade-model-meta"></div>
+      <div id="lightboxR" class="mono" style="font-weight:700;">+1.00R</div>
+    </div>
+  </div>
+</div>
+
+<!-- Best trade details -->
+<div class="modal-overlay" id="bestTradeOverlay">
+  <div class="modal-box best-trade-box" role="dialog" aria-modal="true" aria-labelledby="btTitle">
+    <div class="bt-head">
+      <div class="bt-badges" id="btTitle"></div>
+      <button type="button" class="modal-close" id="btCloseX" aria-label="Close">✕</button>
+    </div>
+    <div class="bt-info">
+      <div class="bt-label">Trade information</div>
+      <div class="bt-grid" id="btGrid"></div>
+    </div>
+    <div class="bt-label" style="margin-top:16px;">Notes</div>
+    <textarea id="btNotes" class="bt-notes" placeholder="Notes about the trade..."></textarea>
+    <div class="note-panel-saved" id="btSaved"></div>
+    <div class="bt-label" style="margin-top:10px;">Screenshot</div>
+    <div class="bt-shot" id="btShot"></div>
+    <div class="bt-foot"><button type="button" class="back-link" id="btClose" style="margin:0;">Close</button></div>
+  </div>
+</div>
+
+<!-- Trade Note Panel -->
+<div class="note-panel" id="notePanel">
+  <div class="note-panel-head">
+    <div class="note-panel-title" id="notePanelTitle">EURUSD · LONG</div>
+    <button class="note-panel-close" id="notePanelCloseBtn">✕</button>
+  </div>
+  <div class="img-frame">
+    <img id="notePanelImg" src="" alt="Chart screenshot">
+    <button class="expand-btn" id="notePanelExpandBtn" title="Open full size">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 3 3 3 3 9"></polyline><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><polyline points="15 21 21 21 21 15"></polyline></svg>
+    </button>
+  </div>
+  <div id="notePanelModel" class="trade-model-meta"></div>
+  <textarea id="notePanelText" placeholder="Notes about the trade..."></textarea>
+  <div class="note-panel-saved" id="notePanelSaved"></div>
+</div>
+
+<!-- Streak celebration -->
+<div class="modal-overlay streak-celebrate-overlay" id="streakCelebrateOverlay">
+  <div class="streak-celebrate-box">
+    <div class="streak-celebrate-icon" id="streakCelebrateIcon"></div>
+    <div class="streak-celebrate-title" id="streakCelebrateTitle">5 wins in a row</div>
+    <div class="streak-celebrate-sub" id="streakCelebrateSub">You're on fire — keep it disciplined.</div>
+    <button class="streak-thanks-btn" id="streakThanksBtn">Thanks</button>
+  </div>
+</div>
+
+<!-- Fullscreen image viewer -->
+<div class="fullscreen-img-overlay" id="fullscreenImgOverlay">
+  <button class="fullscreen-img-close" id="fullscreenImgCloseBtn">✕</button>
+  <img id="fullscreenImg" src="" alt="Chart screenshot full size">
+</div>
+
+<!-- Calendar day detail modal -->
+<div class="lightbox-overlay" id="calDayModal">
+  <div class="lightbox-box">
+    <div class="row" style="margin-bottom:12px;">
+      <div class="card-title" style="margin-bottom:0;" id="calDayTitle">1 Jan 2026</div>
+      <button class="modal-close" id="calDayCloseBtn">✕</button>
+    </div>
+    <div id="calDayTradesList"></div>
+  </div>
+</div>
+
+<!-- Change Password Modal -->
+<div class="modal-overlay" id="passModalOverlay">
+  <div class="modal-box">
+    <div class="row" style="margin-bottom:14px;">
+      <div class="card-title" style="margin-bottom:0;">Change password</div>
+      <button class="modal-close" id="closePassModalBtn">✕</button>
+    </div>
+    <form id="passForm">
+      <div class="field">
+        <label class="field-label">New password (minimum 6 characters)</label>
+        <div class="pass-wrap">
+          <input type="password" id="newPass1Input" required minlength="6">
+          <button type="button" class="pass-eye" data-target="newPass1Input">👁</button>
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label">Repeat new password</label>
+        <div class="pass-wrap">
+          <input type="password" id="newPass2Input" required minlength="6">
+          <button type="button" class="pass-eye" data-target="newPass2Input">👁</button>
+        </div>
+      </div>
+      <button type="submit" class="submit-btn">Save password</button>
+      <div class="save-error" id="passError" style="display:none;"></div>
+      <div class="card-sub" id="passSuccess" style="display:none; color:var(--green); margin-top:8px;">Password changed.</div>
+    </form>
+  </div>
+</div>
+
+<!-- Add Trade Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-box">
+    <div class="row" style="margin-bottom:14px;">
+      <div class="card-title" style="margin-bottom:0;" id="tradeModalTitle">Add Trade</div>
+      <button class="modal-close" id="closeModalBtn">✕</button>
+    </div>
+    <form id="tradeForm">
+      <div class="field">
+        <label class="field-label">Asset</label>
+        <div class="trade-asset-control" id="tradeAssetControl">
+        <select id="assetInput" class="trade-asset-native" tabindex="-1" aria-hidden="true">
+          <option value="EURUSD">EURUSD</option>
+          <option value="GBPUSD">GBPUSD</option>
+          <option value="XAUUSD">XAUUSD</option>
+          <option value="GER40">GER40</option>
+        </select>
+        <button type="button" class="trade-asset-trigger" id="tradeAssetTrigger" aria-haspopup="listbox" aria-controls="tradeAssetMenu" aria-expanded="false"><span id="tradeAssetValue">EURUSD</span><span class="trade-asset-arrow" aria-hidden="true"><svg class="tj-ui-icon" data-icon="chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span></button>
+        <div class="trade-asset-menu" id="tradeAssetMenu" role="listbox">
+          <button type="button" class="trade-asset-option active" role="option" aria-selected="true" data-value="EURUSD" style="--asset-color:#a78bfa">EURUSD</button>
+          <button type="button" class="trade-asset-option" role="option" aria-selected="false" data-value="GBPUSD" style="--asset-color:#fbbf24">GBPUSD</button>
+          <button type="button" class="trade-asset-option" role="option" aria-selected="false" data-value="XAUUSD" style="--asset-color:#22d3ee">XAUUSD</button>
+          <button type="button" class="trade-asset-option" role="option" aria-selected="false" data-value="GER40" style="--asset-color:#f472b6">GER40</button>
+        </div>
+        </div>
+      </div>
+
+      <div class="field" id="tradeModelField">
+        <label class="field-label" id="tradeModelLabel" for="tradeModelTrigger">Модель</label>
+        <div id="tradeModelRow" style="display:none;">
+          <div class="trade-asset-control" id="tradeModelControl" style="display:none;">
+          <button type="button" class="trade-asset-trigger" id="tradeModelTrigger" aria-labelledby="tradeModelLabel tradeModelValue" aria-haspopup="menu" aria-controls="tradeModelMenu" aria-expanded="false"><span id="tradeModelValue">Без модели</span><span class="trade-asset-arrow" aria-hidden="true"><svg class="tj-ui-icon" data-icon="chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span></button>
+          <div class="trade-asset-menu" id="tradeModelMenu" role="menu" aria-labelledby="tradeModelLabel"></div>
+          </div>
+          <button type="button" class="trade-asset-trigger" id="tradeModelAddBtn" title="Добавить модель" aria-label="Добавить модель">+</button>
+        </div>
+        <button type="button" class="trade-asset-trigger" id="tradeModelCTA">Добавьте свои торговые модели</button>
+      </div>
+
+      <div class="toggle-row">
+        <button type="button" class="toggle-btn active-long" id="btnLong">LONG</button>
+        <button type="button" class="toggle-btn" id="btnShort">SHORT</button>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label class="field-label">Open</label>
+          <div class="datetime-field">
+            <input type="text" id="openInput" class="trade-datetime-input" readonly required data-iso="">
+            <button type="button" class="datetime-calendar-trigger" aria-label="Choose open date"></button>
+          </div>
+        </div>
+        <div>
+          <label class="field-label">Close</label>
+          <div class="datetime-field">
+            <input type="text" id="closeInput" class="trade-datetime-input" readonly required data-iso="">
+            <button type="button" class="datetime-calendar-trigger" aria-label="Choose close date"></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="toggle-row">
+        <button type="button" class="toggle-btn active-win" id="btnWin">Take</button>
+        <button type="button" class="toggle-btn" id="btnLoss">Lose</button>
+      </div>
+
+      <div class="field">
+        <label class="field-label">RR</label>
+        <input type="number" step="0.01" min="0" id="magnitudeInput" class="no-spin" placeholder="1.0" required>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Risk %</label>
+        <input type="number" step="0.01" min="0" id="riskPercentInput" class="no-spin" value="1" placeholder="1" required>
+      </div>
+
+      <div class="field" id="tradeScreenshotField">
+        <label class="field-label">Add screenshot</label>
+        <div class="custom-file-picker">
+          <input class="custom-file-picker-input" type="file" accept="image/*" id="screenshotInput">
+          <label class="custom-file-picker-btn" for="screenshotInput">Choose file</label>
+          <span class="custom-file-picker-name" id="screenshotFileName">No file chosen</span>
+        </div>
+        <div id="screenshotPreviewWrap" style="display:none; margin-top:8px; position:relative;">
+          <img id="screenshotPreview" style="width:100%; border-radius:12px; border:1px solid var(--cardBorder); display:block;">
+          <button type="button" id="screenshotRemoveBtn" style="position:absolute; top:6px; right:6px; background:rgba(0,0,0,0.6); border:none; color:#fff; width:24px; height:24px; border-radius:50%; cursor:pointer; font-size:13px; line-height:1;">✕</button>
+        </div>
+      </div>
+
+      <button type="submit" class="submit-btn" id="tradeModalSubmitBtn">Add Trade</button>
+      <div class="save-error" id="saveError" style="display:none;"></div>
+    </form>
+  </div>
+</div>
+
+<!-- Compact trading model panel, separate from the trade form. -->
+<div class="modal-overlay" id="modelCreateOverlay">
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modelCreateTitle">
+    <div class="row" style="margin-bottom:14px;">
+      <div class="card-title" id="modelCreateTitle" style="margin-bottom:0;">Добавить модель</div>
+      <button type="button" class="modal-close" id="modelCreateClose" aria-label="Закрыть">✕</button>
+    </div>
+    <form id="modelCreateForm" novalidate>
+      <div class="field">
+        <label class="field-label" for="modelNameInput">Название модели</label>
+        <input type="text" id="modelNameInput" maxlength="10" required autocomplete="off" aria-describedby="modelCreateError">
+      </div>
+      <div class="field">
+        <label class="field-label" for="modelUrlInput">Ссылка на общую заметку Notes</label>
+        <input type="text" inputmode="url" id="modelUrlInput" required autocomplete="off" spellcheck="false" placeholder="Ссылка из Notes: …/?note=…" aria-describedby="modelUrlHint modelCreateError">
+      </div>
+      <div class="card-sub" id="modelUrlHint">Только ссылки из Notes журнала: откройте страницу в Notes → шестерёнка → Generate link, и вставьте её сюда</div>
+      <div class="save-error" id="modelCreateError" role="alert" style="display:none;"></div>
+      <button type="submit" class="submit-btn" id="modelCreateSubmit">Добавить модель</button>
+    </form>
+  </div>
+</div>
+
+<!-- Model deletion removes references, never the trades themselves. -->
+<div class="modal-overlay" id="modelDeleteOverlay">
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modelDeleteTitle" aria-describedby="modelDeleteDescription">
+    <div class="card-title" id="modelDeleteTitle">Удалить модель?</div>
+    <div class="card-sub" id="modelDeleteDescription">Модель «<span id="modelDeleteName"></span>» и её привязки будут удалены из обычных и backtest-сделок. Сами сделки и статистика останутся.</div>
+    <div class="save-error" id="modelDeleteError" role="alert" style="display:none;"></div>
+    <div class="model-delete-actions">
+      <button type="button" class="ghost-btn" id="modelDeleteCancel">Отмена</button>
+      <button type="button" class="ghost-btn" id="modelDeleteConfirm">Удалить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Site DateTime Picker -->
+<div class="datetime-picker-overlay" id="datetimePickerOverlay">
+  <div class="datetime-picker-box">
+    <div class="datetime-picker-head">
+      <div class="datetime-picker-title" id="datetimePickerTitle">Select date and time</div>
+      <button type="button" class="modal-close" id="datetimePickerCloseBtn">✕</button>
+    </div>
+    <div class="datetime-picker-head" style="margin-bottom:10px;">
+       <div class="year-nav datetime-month-nav" style="margin:0;">
+        <button type="button" class="year-nav-btn" id="dtPrevMonthBtn"><svg class="tj-ui-icon" data-icon="chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+        <div class="year-label" id="dtMonthLabel">January 2026</div>
+        <button type="button" class="year-nav-btn" id="dtNextMonthBtn"><svg class="tj-ui-icon" data-icon="chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+      </div>
+    </div>
+    <div class="datetime-picker-calendar" id="datetimePickerWeekdays">
+      <div class="datetime-picker-weekday">M</div><div class="datetime-picker-weekday">T</div><div class="datetime-picker-weekday">W</div><div class="datetime-picker-weekday">T</div><div class="datetime-picker-weekday">F</div><div class="datetime-picker-weekday">S</div><div class="datetime-picker-weekday">S</div>
+    </div>
+    <div class="datetime-picker-calendar" id="datetimePickerGrid" style="margin-top:6px;"></div>
+    <div class="datetime-picker-time">
+      <div class="datetime-time-field" id="datetimeTimeField">
+        <div class="datetime-time-wheel" id="datetimeHourWheel" aria-label="Adjust hour">
+          <div class="datetime-time-track" id="datetimeHourTrack"></div>
+        </div>
+        <div class="datetime-time-separator">:</div>
+        <div class="datetime-time-wheel" id="datetimeMinuteWheel" aria-label="Adjust minute">
+          <div class="datetime-time-track" id="datetimeMinuteTrack"></div>
+        </div>
+      </div>
+    </div>
+    <div class="datetime-picker-actions">
+      <button type="button" class="ghost-btn" id="datetimePickerTodayBtn">Today</button>
+      <button type="button" class="add-btn" id="datetimePickerApplyBtn">Apply</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+
+<script>
+/* v3.41: quiet save watcher. Nothing is shown while saves succeed.
+   If a save waits for the network for more than a few seconds, a small pill appears
+   (Firestore keeps retrying by itself); if the server rejects a save, the pill says so. */
+(function() {
+  if (typeof firebase === 'undefined' || !firebase.firestore) return;
+  var pending = 0, shownWaiting = false, waitTimer = null, hideTimer = null, pill = null;
+  function el() {
+    if (pill) return pill;
+    pill = document.createElement('div');
+    pill.id = 'tjSavePill';
+    pill.setAttribute('role', 'status');
+    pill.setAttribute('aria-live', 'polite');
+    document.body.appendChild(pill);
+    return pill;
+  }
+  function show(text, kind) {
+    var p = el();
+    clearTimeout(hideTimer);
+    p.textContent = text;
+    p.className = 'show ' + (kind || '');
+  }
+  function hideSoon(ms) {
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(function() { if (pill) pill.className = ''; }, ms);
+  }
+  function begin() {
+    pending++;
+    if (!waitTimer) waitTimer = setTimeout(function() {
+      waitTimer = null;
+      if (pending > 0) { shownWaiting = true; show(navigator.onLine === false ? 'No connection \u2014 will save when you are back online' : 'Not saved yet \u2014 retrying\u2026', 'wait'); }
+    }, 6000);
+  }
+  function end(ok, path) {
+    pending = Math.max(0, pending - 1);
+    if (!ok && !/^notesImages\//.test(path || '')) { shownWaiting = false; show('Could not save to the server', 'error'); hideSoon(6000); }
+    else if (pending === 0) {
+      clearTimeout(waitTimer); waitTimer = null;
+      if (shownWaiting) { shownWaiting = false; show('Saved', 'ok'); hideSoon(1600); }
+    }
+  }
+  function wrap(proto, name, getPath) {
+    if (!proto || typeof proto[name] !== 'function' || proto[name].__tjWrapped) return;
+    var original = proto[name];
+    var wrapped = function() {
+      var p = original.apply(this, arguments), path = '';
+      try { path = getPath ? getPath(this) : ''; } catch (e) {}
+      if (p && typeof p.then === 'function') {
+        begin();
+        p.then(function() { end(true, path); }, function() { end(false, path); });
+      }
+      return p;
+    };
+    wrapped.__tjWrapped = true;
+    proto[name] = wrapped;
+  }
+  try {
+    var DR = firebase.firestore.DocumentReference && firebase.firestore.DocumentReference.prototype;
+    var getPath = function(ref) { return ref.path || ''; };
+    wrap(DR, 'set', getPath); wrap(DR, 'update', getPath); wrap(DR, 'delete', getPath);
+    var WB = firebase.firestore.WriteBatch && firebase.firestore.WriteBatch.prototype;
+    wrap(WB, 'commit', null);
+    var CR = firebase.firestore.CollectionReference && firebase.firestore.CollectionReference.prototype;
+    wrap(CR, 'add', function(ref) { return (ref.path || '') + '/'; });
+  } catch (e) { console.warn('Save watcher unavailable:', e); }
+  window.addEventListener('online', function() { if (pending > 0 && shownWaiting) show('Back online \u2014 saving\u2026', 'wait'); });
+})();
+</script>
+<script>
+  var firebaseConfig = {
+    apiKey: "AIzaSyCOm05pM6agcruZ-g7JqAElnhoWAlZnVa8",
+    authDomain: "retocker.firebaseapp.com",
+    projectId: "retocker",
+    storageBucket: "retocker.firebasestorage.app",
+    messagingSenderId: "756278446004",
+    appId: "1:756278446004:web:e7ddb505d8e5f065b854e1",
+    measurementId: "G-Z4LJL79QN6"
+  };
+  firebase.initializeApp(firebaseConfig);
+  var db = firebase.firestore();
+</script>
+<script src="app.js?v=9ea2c1d976"></script>
+<script src="trade-media.js?v=703d21b514"></script>
+<script src="desktop-autologin.js?v=8c2de5be35"></script>
+
+<script id="replay-bridge">
+/* Bridge between the journal (Backtest Space data) and Replay Space. Replay never touches journal internals directly. */
+(function(){
+  function owner(){ return findUser(viewingUser); }
+  /* Replay settings (templates, position style, tool defaults, prefs) always belong to the person who is signed in,
+     never to the account being viewed - the same rule the on-device copies already follow. */
+  function replayMe(){ try { var u = firebase.auth().currentUser; return u ? { uid: u.uid, login: (currentUser && currentUser.login) || '' } : null; } catch(_) { return null; } }
+  function pad(n){ return n < 10 ? '0' + n : '' + n; }
+  window.TJReplayBridge = {
+    ready: function(){ return !!(typeof db !== 'undefined' && currentUser && viewingUser); },
+    isOwnAccount: function(){ return !!(currentUser && viewingUser && currentUser.login === viewingUser); },
+    viewingLogin: function(){ return viewingUser; },
+    /* Opens the Backtest Space start→end calendar; cb(startYMD, endYMD) is called on confirm. */
+    pickRange: function(cb, minYMD, maxYMD){
+      replayRangePick = cb; backtestCreationStep = 'start'; backtestDraftStart = null;
+      var input = document.getElementById('backtestDateInput'); input.value = '';
+      openDateTimePicker(input);
+      if (minYMD) { datetimePickerState.minDate = minYMD; }
+      if (maxYMD && maxYMD < datetimePickerState.maxDate) { datetimePickerState.maxDate = maxYMD; }
+      renderDateTimePicker();
+    },
+    models: function(){ try { return tradeModelChoices().map(function(m){ return { id: m.id || '', name: m.name || '' }; }); } catch(_) { return [{ id: '', name: 'Без модели' }]; } },
+    createBacktest: function(o){
+      var ow = owner(); if (!ow) return null;
+      var bt = { id: Date.now().toString() + Math.random().toString(36).slice(2, 6), name: o.name || 'Replay', uid: ow.uid, ownerLogin: viewingUser,
+        startDate: o.startYMD + 'T00:00:00', endDate: o.endYMD + 'T23:59:59.999', createdAt: new Date().toISOString(),
+        source: 'replay', asset: o.asset || null, rrText: '', daysTested: o.daysTested || 0 };
+      backtests.unshift(bt); saveBacktestLocal();
+      db.collection('backtests').doc(bt.id).set(bt).catch(function(err){ console.error('replay backtest save failed:', err); });
+      return bt;
+    },
+    getBacktest: function(id){ return backtests.filter(function(b){ return b.id === id; })[0] || null; },
+    /* Replay "continue" cards live inside the backtest documents (fields replayState / replayEnd), so they sync between devices and disappear with the backtest */
+    listBacktests: function(){ return backtests.map(function(b){ return { id: b.id, replayState: b.replayState || '', replayEnd: Number(b.replayEnd) || 0 }; }); },
+    backtestsLoaded: function(){ return !!backtestsLoadedFlag; },
+    getTrades: function(btId){ return allBacktestTrades.filter(function(t){ return t.backtestId === btId; }); },
+    /* t: { asset, direction, openDT, closeDT, r, riskPercent, modelId, ...extra } */
+    addTrade: function(btId, t){
+      var bt = backtests.filter(function(b){ return b.id === btId; })[0]; if (!bt) return null;
+      var ow = owner(); if (!ow) return null;
+      var lo = bt.startDate.slice(0, 10) + 'T00:00', hi = bt.endDate.slice(0, 10) + 'T23:59';
+      if (t.openDT < lo) t.openDT = lo; if (t.closeDT > hi) t.closeDT = hi; if (t.closeDT < t.openDT) t.closeDT = t.openDT;
+      var rec = Object.assign({ id: Date.now().toString() + Math.random().toString(36).slice(2, 6), uid: ow.uid, backtestId: btId }, t);
+      var modelId = rec.modelId; delete rec.modelId;
+      applyTradeModel(rec, modelId);
+      allBacktestTrades.push(rec);
+      this.syncRR(bt);
+      saveBacktestLocal();
+      db.collection('backtestTrades').doc(rec.id).set(rec).catch(function(err){
+        console.error('replay trade save failed:', err);
+        if (typeof showBacktestSyncError === 'function') showBacktestSyncError('The trade was saved on this device, but could not be synced. Check your connection.');
+      });
+      return rec;
+    },
+    /* keep rrText mirrored so exports / old views still show the R values */
+    syncRR: function(bt){
+      var list = allBacktestTrades.filter(function(t){ return t.backtestId === bt.id; }).sort(function(a, b){ return String(a.closeDT).localeCompare(String(b.closeDT)); });
+      bt.rrText = list.map(function(t){ var r = Number(t.r) || 0; return (r > 0 ? '+' : '') + r; }).join(', ');
+    },
+    updateBacktest: function(btId, patch){
+      var bt = backtests.filter(function(b){ return b.id === btId; })[0]; if (!bt) return;
+      Object.assign(bt, patch); if (patch.rrText === undefined) this.syncRR(bt);
+      saveBacktestLocal();
+      var payload = Object.assign({}, patch); payload.rrText = bt.rrText;
+      db.collection('backtests').doc(btId).set(payload, { merge: true }).catch(function(err){ console.error('replay backtest update failed:', err); });
+    },
+    /* partial update of a saved trade (e.g. hiddenOnChart) — stats and Backtest Space keep counting it */
+    patchTrade: function(id, patch){
+      var tr = allBacktestTrades.filter(function(t){ return t.id === id; })[0]; if (!tr) return;
+      Object.assign(tr, patch); saveBacktestLocal();
+      db.collection('backtestTrades').doc(id).set(patch, { merge: true }).catch(function(err){ console.error('replay trade patch failed:', err); });
+    },
+    deleteTrade: function(id){
+      var tr = allBacktestTrades.filter(function(t){ return t.id === id; })[0]; if (!tr) return;
+      allBacktestTrades = allBacktestTrades.filter(function(t){ return t.id !== id; });
+      var bt = backtests.filter(function(b){ return b.id === tr.backtestId; })[0]; if (bt) this.syncRR(bt);
+      saveBacktestLocal();
+      db.collection('backtestTrades').doc(id).delete().catch(function(err){ console.error(err); });
+      if (bt) db.collection('backtests').doc(bt.id).set({ rrText: bt.rrText }, { merge: true }).catch(function(){});
+    },
+    /* Replay chart-style templates (collection replayProfiles, one doc per template, owned by uid). */
+    profilesLoad: function(){
+      var ow = replayMe(); if (!ow) return Promise.reject(new Error('no user'));
+      return db.collection('replayProfiles').where('uid', '==', ow.uid).get().then(function(snap){
+        var out = []; snap.forEach(function(d){ var v = d.data() || {}; out.push({ id: d.id, name: v.name || '', style: v.style || null, updatedAt: v.updatedAt || '', kind: v.kind || '' }); });
+        return out;
+      });
+    },
+    profileSave: function(p){
+      var ow = replayMe(); if (!ow) return Promise.reject(new Error('no user'));
+      var now = new Date().toISOString(), doc = { uid: ow.uid, ownerLogin: ow.login, name: String(p.name || '').slice(0, 40), style: JSON.parse(JSON.stringify(p.style || {})), updatedAt: now };
+      var id = p.id;
+      /* service document with the Long / Short position-box style: one per user, never listed as a template */
+      if (p.kind === 'posStyle') { doc.kind = 'posStyle'; id = 'posstyle_' + ow.uid; }
+      else if (p.kind === 'drawUi') { doc.kind = 'drawUi'; id = 'drawui_' + ow.uid; } /* drawing-tool defaults: one per user */
+      else if (p.kind === 'prefs') { doc.kind = 'prefs'; id = 'prefs_' + ow.uid; } /* panel preferences (risk %, model): one per user */
+      if (!p.updateOnly) doc.createdAt = now;
+      return db.collection('replayProfiles').doc(id).set(doc, { merge: true }).then(function(){ return { id: id, name: doc.name, style: doc.style }; });
+    },
+    profileDelete: function(id){
+      return db.collection('replayProfiles').doc(id).delete();
+    }
+  };
+})();
+</script>
+
+<!-- Notes v3.20.3: database runtime and styles are embedded; no additional asset request. -->
+<script src="notes-workspace.js?v=144b04f1b3"></script>
+
+
+
+
+
+
+
+
+
+
+<script>
+(function(){
+  // v3.17.3: block handle hides while you type and comes back on the next mouse move.
+  var typing=false, lx=-1, ly=-1;
+  document.addEventListener('keydown',function(e){
+    if(typing||e.ctrlKey||e.metaKey||e.altKey)return;
+    if(/^(Shift|Control|Alt|Meta|CapsLock|Tab|Escape)$/.test(e.key))return;
+    var t=e.target; if(!t||!t.closest||!t.closest('#notesBlocks'))return;
+    typing=true; document.body.classList.add('notes-typing');
+  },true);
+  document.addEventListener('mousemove',function(e){
+    if(!typing){lx=e.clientX;ly=e.clientY;return;}
+    if(Math.abs(e.clientX-lx)+Math.abs(e.clientY-ly)<3)return;
+    lx=e.clientX;ly=e.clientY; typing=false; document.body.classList.remove('notes-typing');
+  },{passive:true});
+})();
+</script>
+
+
+
+
+<script id="notes-mobile-script">
+/* v3.22 — Mobile Notes navigation drawer. Does nothing unless body.mobile-mode is set,
+   so the desktop layout and behaviour are untouched. No timers, no observers. */
+(function(){
+  'use strict';
+  var ws=document.getElementById('notesWorkspace');if(!ws)return;
+  var topbar=ws.querySelector('.notes-editor-topbar'),sidebar=ws.querySelector('.notes-sidebar');if(!topbar||!sidebar)return;
+  var body=document.body;
+  function mobile(){return body.classList.contains('mobile-mode')&&!body.classList.contains('notes-share-mode');}
+  var btn=document.createElement('button');btn.type='button';btn.className='notes-mobile-nav-btn';btn.id='notesMobileNavBtn';
+  btn.setAttribute('aria-label','Pages');btn.setAttribute('aria-expanded','false');btn.title='Pages';
+  btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h11"/></svg>';
+  topbar.insertBefore(btn,topbar.firstChild);
+  var back=document.createElement('div');back.className='notes-mobile-nav-backdrop';back.setAttribute('aria-hidden','true');ws.appendChild(back);
+  var shell=ws.querySelector('.notes-editor-shell'),shellWasInert=false;
+  sidebar.id=sidebar.id||'notesMobileSidebar';sidebar.tabIndex=-1;
+  btn.setAttribute('aria-controls',sidebar.id);
+  function setOpen(open){
+    open=!!open&&mobile();
+    var wasOpen=body.classList.contains('notes-mobile-nav-open');
+    body.classList.toggle('notes-mobile-nav-open',open);btn.setAttribute('aria-expanded',open?'true':'false');
+    if(open&&!wasOpen){
+      if(shell){shellWasInert=shell.inert;shell.inert=true;}
+      sidebar.focus({preventScroll:true});
+    }else if(!open&&wasOpen){
+      if(shell)shell.inert=shellWasInert;
+      if(sidebar.contains(document.activeElement))btn.focus({preventScroll:true});
+    }
+  }
+  window.addEventListener('keydown',function(e){
+    if(!mobile()||!body.classList.contains('notes-mobile-nav-open'))return;
+    if(document.querySelector('.notes-menu-layer.open,.ndb-popup,.notes-confirm-overlay,.notes-image-viewer'))return;
+    if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();setOpen(false);}
+    if(e.key==='Tab'){
+      var items=Array.prototype.filter.call(sidebar.querySelectorAll('button:not([disabled]),input:not([disabled]),[tabindex="0"]'),function(n){return !n.closest('[inert]')&&n.getClientRects().length&&getComputedStyle(n).visibility!=='hidden';});
+      var first=items[0],last=items[items.length-1];
+      if(!first){e.preventDefault();return;}
+      if(e.shiftKey&&(document.activeElement===first||document.activeElement===sidebar)){e.preventDefault();last.focus();}
+      else if(!e.shiftKey&&(document.activeElement===last||document.activeElement===sidebar)){e.preventDefault();first.focus();}
+    }
+  },true);
+  btn.addEventListener('click',function(e){e.stopPropagation();setOpen(!body.classList.contains('notes-mobile-nav-open'));});
+  back.addEventListener('click',function(){setOpen(false);});
+  // Opening a page (or leaving Notes) closes the drawer; expand/rename/menu controls keep it open.
+  sidebar.addEventListener('click',function(e){
+    if(!mobile()||!body.classList.contains('notes-mobile-nav-open'))return;
+    var t=e.target;if(!t||!t.closest)return;
+    if(t.closest('.notes-page-chevron,.notes-page-more,input,.notes-group-header,.notes-group-btn'))return;
+    if(t.closest('.notes-page-item,.notes-search-result,#notesNewPageBtn,#exitNotesWorkspaceBtn'))setTimeout(function(){setOpen(false);},0);
+  });
+  var openBtn=document.getElementById('openNotesWorkspaceBtn');if(openBtn)openBtn.addEventListener('click',function(){setOpen(false);});
+})();
+</script>
+
+<script>
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('/sw.js').catch(function(err) { console.warn('SW register failed:', err); });
+  });
+}
+</script>
+<script src="floating-panels.js?v=2"></script>
+</body>
+</html>

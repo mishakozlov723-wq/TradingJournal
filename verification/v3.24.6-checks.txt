@@ -1,0 +1,7 @@
+PASS: statistics prefer closeDT
+PASS: period views no longer bucket by new Date(t.openDT)
+PASS: curve change tracking uses closeDT
+PASS: mobile pencils are visible
+PASS: mobile pencil handler is not blocked
+PASS: question marks removed from account stat markup
+PASS: formal account loading copy

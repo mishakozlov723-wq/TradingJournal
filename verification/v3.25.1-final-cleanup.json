@@ -1,0 +1,16 @@
+{
+  "version": "3.25.1",
+  "result": "pass",
+  "focused_checks_passed": 88,
+  "fixed": [
+    "stale local Notes cache can no longer suppress orphan Firestore page recovery",
+    "failed orphan recovery query can no longer masquerade as an empty cloud workspace"
+  ],
+  "unchanged": [
+    "public/accounts-space.js",
+    "public/accounts-space.css",
+    "accounts-proxy/",
+    "accounts-proxy-vercel/"
+  ],
+  "note": "Legacy browser harnesses that require a locally spawned Chromium were not counted in the 88 focused checks; their bootstrap is unreliable in this environment. Static/logic coverage for the affected features passed."
+}

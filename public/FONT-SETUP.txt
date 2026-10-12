@@ -1,0 +1,9 @@
+Trading Journal typography setup
+
+- Text, labels, buttons, headings and symbols: Poppins.
+- Digits 0-9 only: JetBrains Mono.
+- Fonts are self-hosted in public/fonts (Poppins 300-800 latin, JetBrains Mono digits, Montserrat cyrillic); no CDN is used, so they also load without VPN/internet access to jsDelivr (desktop app).
+- No font installation is required on the user's device.
+
+Implementation detail:
+The custom family "TJ Digits" uses unicode-range U+0030-0039, so only numerals are rendered with JetBrains Mono. All other characters fall back to Poppins.

@@ -1,0 +1,90 @@
+{
+  "version": "3.24.8",
+  "checked_at": "2026-09-29",
+  "checks": [
+    {
+      "name": "Vercel backend unchanged from v3.24.7",
+      "passed": true
+    },
+    {
+      "name": "No public Myfxbook plaintext credentials",
+      "passed": true
+    },
+    {
+      "name": "Accounts detail header motion retained",
+      "passed": true
+    },
+    {
+      "name": "Accounts chart renders Balance only",
+      "passed": true
+    },
+    {
+      "name": "50-operation footnote absent",
+      "passed": true
+    },
+    {
+      "name": "Formal account loading copy retained",
+      "passed": true
+    },
+    {
+      "name": "Stat explanation modal retained",
+      "passed": true
+    },
+    {
+      "name": "No visible question-mark badges on statistic tiles",
+      "passed": true
+    },
+    {
+      "name": "Account switch stale-state guard retained",
+      "passed": true
+    },
+    {
+      "name": "Accounts list requests are UID-bound",
+      "passed": true
+    },
+    {
+      "name": "Account history cache is UID-bound",
+      "passed": true
+    },
+    {
+      "name": "Statistics prefer closeDT",
+      "passed": true
+    },
+    {
+      "name": "Monthly and weekly detail tables sort by close/stat date",
+      "passed": true
+    },
+    {
+      "name": "Main trade blocks close-before-open dates",
+      "passed": true
+    },
+    {
+      "name": "Curve invalidation follows closeDT",
+      "passed": true
+    },
+    {
+      "name": "Mobile edit pencils retained",
+      "passed": true
+    },
+    {
+      "name": "Mobile model link yields to inline Model editor",
+      "passed": true
+    },
+    {
+      "name": "iOS/mobile model link same-tab handler retained",
+      "passed": true
+    },
+    {
+      "name": "Model Notes URL canonicalization retained",
+      "passed": true
+    },
+    {
+      "name": "Safari model inputs remain 16px",
+      "passed": true
+    }
+  ],
+  "passed": 20,
+  "failed": 0,
+  "deterministic_test_suite": "80/80",
+  "browser_harness_note": "The legacy raw-Chromium trading-model harness cannot reach its temporary 127.0.0.1 server in this container (chrome-error://chromewebdata/). Inline scripts parse and the focused mobile-model regressions pass; this is an environment/harness limitation, not an observed app exception."
+}

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>SYTER</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; color: #91a0b7; font: 600 15px system-ui, "Segoe UI", sans-serif; }
+  body { display: flex; align-items: center; justify-content: center; text-align: center; }
+  .sub { opacity: .6; font-weight: 400; margin-top: 6px; }
+  button { margin-top: 22px; background: #0d0f14; color: #fff; border: 1px solid #2a2f3a; border-radius: 10px; padding: 9px 20px; font: inherit; cursor: pointer; transition: border-color .2s; }
+  button:hover { border-color: rgba(255,255,255,.3); }
+</style>
+</head>
+<body>
+<div>
+  <div>No internet connection</div>
+  <div class="sub">The journal will open when you are back online.</div>
+  <button id="retry">Retry</button>
+</div>
+<script>
+  var URL_ = 'https://retocker.web.app/';
+  function go() { location.href = URL_; }
+  document.getElementById('retry').addEventListener('click', go);
+  window.addEventListener('online', go);
+  setInterval(function() { if (navigator.onLine) go(); }, 15000);
+</script>
+</body>
+</html>

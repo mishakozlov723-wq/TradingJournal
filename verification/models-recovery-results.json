@@ -1,0 +1,25 @@
+{
+  "version": "3.22.10",
+  "unitTestsPassed": 52,
+  "modelBrowserScenariosPassed": 22,
+  "integrationWidths": [
+    390,
+    1440
+  ],
+  "integration": [
+    "existing models with partial cache and concurrent usage",
+    "unknown references retained on load",
+    "read error and inline retry",
+    "actual Generate link in Notes",
+    "create model with generated URL",
+    "reload retains both models",
+    "shared page opens read-only"
+  ],
+  "usageWidths": [
+    320,
+    390,
+    1440
+  ],
+  "pageErrors": 0,
+  "liveFirebase": false
+}

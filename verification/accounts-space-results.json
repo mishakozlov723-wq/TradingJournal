@@ -1,0 +1,20 @@
+{
+  "version": "3.24.0",
+  "feature": "multi-user Accounts",
+  "focusedNodeSuite": {
+    "passed": 34,
+    "failed": 0
+  },
+  "fullNodeSuite": {
+    "passed": 73,
+    "failed": 1,
+    "note": "Only the pre-existing headless Chromium browser-startup timeout failed; all non-browser tests completed successfully."
+  },
+  "security": [
+    "Firebase authentication required",
+    "per-user AES-256-GCM encrypted connection token",
+    "connection token bound to Firebase UID",
+    "cross-user token replay rejected",
+    "no plaintext Myfxbook credentials stored in frontend code/localStorage"
+  ]
+}

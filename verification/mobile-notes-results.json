@@ -1,0 +1,9 @@
+{
+  "existing_style_blocks_unchanged": 19,
+  "non_notes_script_blocks_unchanged": 9,
+  "mobile_tests": 14,
+  "existing_notes_tests": 24,
+  "browser_tests": "NOT RUN: Chromium/WebKit unavailable; browser downloads returned invalid ZIP",
+  "physical_devices": "NOT TESTED",
+  "data_schema": "unchanged"
+}

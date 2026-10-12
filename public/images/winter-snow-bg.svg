@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" fill="none">
+  <defs>
+    <filter id="snowGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="1.3"/>
+    </filter>
+    <filter id="snowFog" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="12"/>
+    </filter>
+    <linearGradient id="winterWash" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#D9ECFF" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#0B0F16" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1920" height="1080" fill="url(#winterWash)"/>
+
+  <g opacity="0.16" filter="url(#snowFog)">
+    <circle cx="270" cy="220" r="170" fill="#8FC7FF"/>
+    <circle cx="1540" cy="240" r="230" fill="#7FB4FF"/>
+    <circle cx="980" cy="820" r="270" fill="#B3D7FF"/>
+  </g>
+
+  <g opacity="0.95" filter="url(#snowGlow)">
+    <g transform="translate(114 96) rotate(22)">
+      <path d="M0 -18V18M-15 -9L15 9M-15 9L15 -9" stroke="#F9FDFF" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M0 -8L0 -18M0 8L0 18M-7 -4L-15 -9M7 4L15 9M-7 4L-15 9M7 -4L15 -9" stroke="#CFE7FF" stroke-width="1.6" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(290 210) rotate(6)">
+      <path d="M0 -14V14M-12 -7L12 7M-12 7L12 -7" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M0 -6L0 -14M0 6L0 14M-5 -3L-12 -7M5 3L12 7M-5 3L-12 7M5 -3L12 -7" stroke="#D4E9FF" stroke-width="1.45" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(502 118) rotate(-16)">
+      <path d="M0 -20V20M-17 -10L17 10M-17 10L17 -10" stroke="#FFFFFF" stroke-width="2.8" stroke-linecap="round"/>
+      <path d="M0 -10L0 -20M0 10L0 20M-8 -5L-17 -10M8 5L17 10M-8 5L-17 10M8 -5L17 -10" stroke="#D9EDFF" stroke-width="1.6" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(710 232) rotate(28)">
+      <path d="M0 -16V16M-13 -8L13 8M-13 8L13 -8" stroke="#F8FCFF" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M0 -7L0 -16M0 7L0 16M-6 -3L-13 -8M6 3L13 8M-6 3L-13 8M6 -3L13 -8" stroke="#D1E5FA" stroke-width="1.35" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(948 154) rotate(-9)">
+      <path d="M0 -12V12M-10 -6L10 6M-10 6L10 -6" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+      <path d="M0 -5L0 -12M0 5L0 12M-5 -3L-10 -6M5 3L10 6M-5 3L-10 6M5 -3L10 -6" stroke="#CFE5FF" stroke-width="1.2" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(1170 248) rotate(13)">
+      <path d="M0 -18V18M-15 -9L15 9M-15 9L15 -9" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M0 -8L0 -18M0 8L0 18M-7 -4L-15 -9M7 4L15 9M-7 4L-15 9M7 -4L15 -9" stroke="#D7E9FF" stroke-width="1.45" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(1410 132) rotate(31)">
+      <path d="M0 -16V16M-13 -8L13 8M-13 8L13 -8" stroke="#F8FCFF" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M0 -7L0 -16M0 7L0 16M-6 -3L-13 -8M6 3L13 8M-6 3L-13 8M6 -3L13 -8" stroke="#CFE3F7" stroke-width="1.35" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(1630 214) rotate(-12)">
+      <path d="M0 -14V14M-12 -7L12 7M-12 7L12 -7" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round"/>
+      <path d="M0 -6L0 -14M0 6L0 14M-5 -3L-12 -7M5 3L12 7M-5 3L-12 7M5 -3L12 -7" stroke="#D6E9FF" stroke-width="1.25" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(1760 92) rotate(17)">
+      <path d="M0 -20V20M-17 -10L17 10M-17 10L17 -10" stroke="#F9FDFF" stroke-width="2.8" stroke-linecap="round"/>
+      <path d="M0 -10L0 -20M0 10L0 20M-8 -5L-17 -10M8 5L17 10M-8 5L-17 10M8 -5L17 -10" stroke="#CFE5FF" stroke-width="1.6" stroke-linecap="round"/>
+    </g>
+  </g>
+
+  <g opacity="0.62">
+    <circle cx="78" cy="290" r="3.2" fill="#FFFFFF"/>
+    <circle cx="188" cy="360" r="2.2" fill="#EAF6FF"/>
+    <circle cx="252" cy="520" r="3" fill="#FFFFFF"/>
+    <circle cx="410" cy="706" r="2.5" fill="#EAF6FF"/>
+    <circle cx="566" cy="406" r="3.2" fill="#FFFFFF"/>
+    <circle cx="660" cy="862" r="2.2" fill="#DDF0FF"/>
+    <circle cx="780" cy="312" r="2.8" fill="#FFFFFF"/>
+    <circle cx="884" cy="624" r="3.4" fill="#EAF6FF"/>
+    <circle cx="1000" cy="160" r="2.4" fill="#FFFFFF"/>
+    <circle cx="1112" cy="472" r="3" fill="#DDF0FF"/>
+    <circle cx="1248" cy="304" r="2.2" fill="#FFFFFF"/>
+    <circle cx="1360" cy="710" r="3.4" fill="#EAF6FF"/>
+    <circle cx="1482" cy="182" r="2.6" fill="#FFFFFF"/>
+    <circle cx="1604" cy="548" r="3.1" fill="#EAF6FF"/>
+    <circle cx="1724" cy="322" r="2.2" fill="#FFFFFF"/>
+    <circle cx="1810" cy="646" r="3.3" fill="#EAF6FF"/>
+  </g>
+</svg>

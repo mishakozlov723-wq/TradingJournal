@@ -1,0 +1,24 @@
+{
+  "version": "3.22.6",
+  "mobileUnitTests": 14,
+  "mobileBrowserChecks": 24,
+  "motion": {
+    "widths": [
+      390,
+      768
+    ],
+    "controls": [
+      "plus",
+      "six-dot grip"
+    ],
+    "checks": [
+      "entry frames 0/120/300 ms",
+      "stable horizontal position",
+      "continuous entry-to-drag",
+      "swipe dismissal",
+      "reduced motion"
+    ],
+    "pageErrors": 0
+  },
+  "durationMs": 300
+}

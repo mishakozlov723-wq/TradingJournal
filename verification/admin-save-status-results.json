@@ -1,0 +1,24 @@
+{
+  "version": "3.22.8",
+  "unitTestsPassed": 44,
+  "browserWidths": [
+    320,
+    390,
+    1440
+  ],
+  "cases": [
+    "ordinary user hidden",
+    "spoofed login/role hidden",
+    "authenticated retocker allowed",
+    "viewed account independent",
+    "toggle and live updates",
+    "gear rightmost",
+    "long error fits",
+    "entry collapsed",
+    "shared view hidden",
+    "auth change hidden",
+    "reload collapsed"
+  ],
+  "pageErrors": 0,
+  "liveFirebase": false
+}

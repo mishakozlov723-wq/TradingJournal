@@ -1,0 +1,85 @@
+{
+  "version": "3.22.12",
+  "date": "2026-09-26",
+  "unitTests": {
+    "passed": 65,
+    "failed": 0
+  },
+  "browserSuites": [
+    {
+      "file": "mobile-polish.browser.cjs",
+      "coverage": "320, 390, 600, 768 px: навигация, вложенные меню, закрытие панелей, редактирование строк, reduced motion",
+      "result": "passed"
+    },
+    {
+      "file": "mobile-sheet-motion.browser.cjs",
+      "coverage": "390, 768 px: плавное появление панелей плюса и захвата, перехват анимации жестом, свайп вниз",
+      "result": "passed"
+    },
+    {
+      "file": "notes-admin-status.browser.cjs",
+      "coverage": "320, 390, 1440 px: обычный пользователь и retocker, свёрнутый статус, шестерёнка справа, смена аккаунта",
+      "result": "passed"
+    },
+    {
+      "file": "notes-empty.browser.cjs",
+      "coverage": "320, 390, 1440 px: пустое пространство, нейтральная кнопка, создание страницы",
+      "result": "passed"
+    },
+    {
+      "file": "usage-stats.browser.cjs",
+      "coverage": "320, 390, 1440 px: собственная статистика обычного пользователя в настройках",
+      "result": "passed"
+    },
+    {
+      "file": "notes-loader.browser.cjs",
+      "coverage": "Мобильный и настольный вход: анимация целиком; начало исчезновения после 5,1 секунды",
+      "result": "passed"
+    },
+    {
+      "file": "notes-database.browser.cjs",
+      "coverage": "Все типы свойств, Undo/Redo, перезагрузка, сортировка, вставка, IME, ошибки и отложенное сохранение, 200 × 20 ячеек",
+      "result": "passed"
+    },
+    {
+      "file": "notes-row-pages.browser.cjs",
+      "coverage": "Страницы строк, смена страницы и аккаунта, вкладки, редакторы, лимиты, отложенное сохранение и публичный просмотр",
+      "result": "passed"
+    },
+    {
+      "file": "notes-share.browser.cjs",
+      "coverage": "390, 1440 px: генерация, повторное открытие панели, отказ копирования, ошибки обновления и отключения, повтор",
+      "result": "passed"
+    },
+    {
+      "file": "models-recovery.browser.cjs",
+      "coverage": "390, 1440 px: неполный кэш, сохранность моделей, ошибка чтения и повтор, ссылка Notes → модель → reload → публичный просмотр",
+      "result": "passed"
+    },
+    {
+      "file": "trading-models.playwright.cjs",
+      "coverage": "22 сценария: создание/изменение/удаление моделей, сделки, бэктесты, URL, ошибки, изоляция аккаунтов",
+      "result": "passed"
+    },
+    {
+      "file": "overview-live-update.playwright.cjs",
+      "coverage": "10 сценариев: график, смена цвета, добавление/редактирование/удаление сделок, пагинация, остальные вкладки",
+      "result": "passed"
+    }
+  ],
+  "staticLocalAssets": {
+    "checked": 11,
+    "missing": []
+  },
+  "visualReview": [
+    "notes-empty-390.png",
+    "admin-status-mobile.png"
+  ],
+  "productionCodeChangedSince": "3.22.11 (unchanged)",
+  "liveFirebase": false,
+  "limitations": [
+    "Local Chrome with Firestore doubles; no live Firebase rules/auth/network verification",
+    "Mobile viewport and touch emulation; no physical Safari/iOS or Android testing",
+    "Full absence of bugs is not guaranteed"
+  ]
+}

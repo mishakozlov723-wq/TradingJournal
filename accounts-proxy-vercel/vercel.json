@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/myfxbook.js": {
+      "maxDuration": 30
+    }
+  }
+}

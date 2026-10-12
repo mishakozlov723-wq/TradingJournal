@@ -1,0 +1,28 @@
+{
+  "passed": [
+    "create database through slash command",
+    "create through existing plus menu and preserve simple Table",
+    "add rows/properties and set all six types through UI",
+    "multiline Cyrillic/emoji text, number validation, checkbox and date",
+    "Select create, rename, color and shared option ID",
+    "Status create and move between groups",
+    "number format keeps original number",
+    "resize drag clamps and only changes target column",
+    "option deletion clears references, status metadata can be edited together, date clears",
+    "undo/redo restores every cell type and structural property action",
+    "reload and fast page switches preserve all six types/options/widths",
+    "table changes participate in existing Undo/Redo",
+    "row duplicate/insert/delete and property rename/duplicate/insert/delete",
+    "sort is stored separately and clear restores insertion order",
+    "grid paste extends table, safe types, quoted multiline and undo",
+    "IME composition does not consume Enter or lose its draft",
+    "popup viewport collision, keyboard navigation, Escape and outside click",
+    "old Table edit/reload and unrelated blocks, cover, icon, comments, hover preview",
+    "stale editor cannot write across owners; async save stays with captured owner",
+    "cloud document roundtrip without the local fallback",
+    "public read-only database has no mutation controls",
+    "200 × 20: no page rebuild during text input and no body overflow",
+    "no uncaught browser exceptions"
+  ],
+  "errors": []
+}

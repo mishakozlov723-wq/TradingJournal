@@ -1,0 +1,32 @@
+{
+  "passed": [
+    "primary property is protected, ordinary types remain available",
+    "OPEN reveals row page with same property editors and blocks",
+    "title edits are live in table and properties; row identity is stable",
+    "all six property editors work in Side Peek and update table",
+    "Escape closes property popup before row",
+    "block input and slash menu are isolated from parent",
+    "row A → B → page switch cannot redirect stale editor writes",
+    "Full Page and return keep parent DOM, horizontal scroll and data",
+    "new internal row tab, switching, closing and reload retain row content",
+    "primary reorder retains opening and title identity",
+    "row content undo cannot apply changes from another row",
+    "duplicate row deep copies page and IDs; delete needs confirmation",
+    "row icon uses existing picker and appears in table and tab",
+    "size limit rejects growth and preserves last accepted content",
+    "block count and aggregate parent size limits reject growth without truncation",
+    "owner separation and stale callbacks cannot change another user",
+    "read-only row can be opened without mutation controls",
+    "ordinary page tabs use existing pages and closing never deletes data",
+    "four font sizes, compact/full layouts and OPEN scale without overflow",
+    "default open mode can be selected and survives reload",
+    "common Notes blocks reuse their editors and row menus are isolated",
+    "image compression completion writes captured row after switching",
+    "serialized delayed saves preserve latest drafts in both rows",
+    "failed remote save keeps local row content and retries correctly",
+    "stale tab targets are removed on reload without deleting page data",
+    "real shared snapshot opens read-only row content with null owner",
+    "no uncaught browser exceptions"
+  ],
+  "errors": []
+}

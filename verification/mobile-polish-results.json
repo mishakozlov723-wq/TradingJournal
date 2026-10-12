@@ -1,0 +1,31 @@
+{
+  "version": "3.22.5",
+  "unitTests": {
+    "passed": 38
+  },
+  "mobileBrowser": {
+    "passed": 24,
+    "widths": [
+      320,
+      390,
+      600,
+      768
+    ],
+    "pageErrors": 0
+  },
+  "fullJournal": {
+    "widths": [
+      320,
+      390,
+      600
+    ],
+    "data": "empty local Firestore double",
+    "horizontalOverflow": false
+  },
+  "limitations": [
+    "No real device validation",
+    "No live Firebase validation",
+    "Desktop row browser suite passed 27 checks on rerun; first run had animation timing ambiguity",
+    "Legacy trading models browser test: timeout"
+  ]
+}

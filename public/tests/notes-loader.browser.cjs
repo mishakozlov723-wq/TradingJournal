@@ -1,0 +1,10 @@
+const {server,chromium}=require('./mobile-polish-harness.cjs'),assert=require('node:assert/strict');
+(async()=>{await new Promise(r=>server.listen(0,'127.0.0.1',r));const url='http://127.0.0.1:'+server.address().port;
+const browser=await chromium.launch({executablePath:process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+try{await Promise.all([true,false].map(async mobile=>{
+ const page=await browser.newPage({viewport:{width:mobile?390:1440,height:900}}),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.route('**/*',r=>r.request().url().startsWith(url)?r.continue():r.abort());await page.goto(url);await page.waitForSelector('#notesPageTitle');
+ await page.evaluate(mobile=>{document.body.classList.toggle('mobile-mode',mobile);document.documentElement.classList.toggle('mobile-performance',mobile);window.loaderStart=performance.now();window.leftAt=null;const overlay=document.getElementById('notesTransitionOverlay');new MutationObserver(()=>{if(overlay.classList.contains('leaving')&&leftAt===null)leftAt=performance.now()-loaderStart;}).observe(overlay,{attributes:true,attributeFilter:['class']});NT.enter();},mobile);
+ await page.waitForTimeout(1500);assert.equal(await page.locator('#notesTransitionOverlay').getAttribute('aria-hidden'),'false');
+ const motion=await page.locator('.notes-loading-progress').evaluate(el=>({duration:getComputedStyle(el).animationDuration,scale:new DOMMatrixReadOnly(getComputedStyle(el).transform).m11}));assert.equal(motion.duration,'4.2s');assert.ok(motion.scale>0&&motion.scale<1);
+ await page.waitForFunction(()=>document.getElementById('notesTransitionOverlay').getAttribute('aria-hidden')==='true',{},{timeout:8000});const leftAt=await page.evaluate(()=>window.leftAt);assert.ok(leftAt>=5080,'Loader ended too soon: '+leftAt);assert.deepEqual(errors,[]);console.log('PASS '+(mobile?'mobile':'desktop')+': real workspace entry, full progress; fade starts at '+Math.round(leftAt)+'ms');await page.close();
+}));}finally{await browser.close();server.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

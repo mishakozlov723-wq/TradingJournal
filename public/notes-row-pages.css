@@ -1,0 +1,49 @@
+/* v3.20 database row pages and workspace tabs */
+.notes-editor-shell{position:relative;min-width:0;--notes-peek-width:clamp(350px,43%,650px)}
+.notes-workspace-tabs{display:flex;align-items:stretch;gap:3px;min-height:35px;max-height:35px;overflow-x:auto;flex:none;border-bottom:1px solid rgba(255,255,255,.07);padding:0 8px;background:#151719;scrollbar-width:thin}
+.notes-workspace-tab{display:flex;align-items:center;flex:0 0 auto;max-width:220px;border-right:1px solid rgba(255,255,255,.05);border-bottom:2px solid transparent;opacity:.65}
+.notes-workspace-tab.active{background:rgba(255,255,255,.035);border-bottom-color:#818a95;opacity:1}
+.notes-workspace-tab>button[role=tab]{background:none;border:0;color:inherit;font:inherit;font-size:12px;display:flex;align-items:center;gap:7px;padding:7px 8px;min-width:0;cursor:pointer}
+.notes-workspace-tab>button[role=tab]>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.notes-workspace-tab>button[role=tab]>span:first-child{width:16px;height:16px;flex:none;display:flex;align-items:center;justify-content:center}
+.notes-workspace-tab svg,.notes-row-action svg{width:100%;height:100%}
+.notes-row-action{border:0;background:none;color:inherit;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:28px;height:28px;padding:5px;border-radius:5px;font:inherit;font-size:13px;flex:none}
+.notes-row-action>span{width:17px;height:17px;display:flex;align-items:center;justify-content:center}
+.notes-row-action:hover{background:rgba(255,255,255,.07)}
+.notes-row-action:focus-visible,.notes-workspace-tab button:focus-visible{outline:1px solid #8096b6;outline-offset:-2px}
+.notes-row-panel{position:absolute;top:81px;right:0;bottom:0;z-index:40;display:flex;flex-direction:column;background:#191b1e;color:#d5d7dc;border-left:1px solid rgba(255,255,255,.09);box-shadow:-12px 0 30px rgba(0,0,0,.12);min-width:0}
+.notes-row-panel.peek{width:var(--notes-peek-width);animation:notes-row-peek-in 220ms cubic-bezier(.22,.61,.36,1);will-change:transform}
+.notes-row-panel.full{width:100%;border:0;box-shadow:none}
+.notes-row-panel.closing{pointer-events:none;transform:translateX(100%);transition:transform 220ms cubic-bezier(.4,0,.2,1);will-change:transform}
+.notes-row-controls{display:flex;align-items:center;gap:4px;padding:8px 12px;flex:none;border-bottom:1px solid rgba(255,255,255,.055)}
+.notes-row-controls>span{flex:1;font-size:12px;color:#9298a1}
+.notes-row-scroll{overflow:auto;min-height:0;flex:1;overscroll-behavior:contain;scrollbar-width:thin}
+.notes-row-inner{padding:32px 40px 180px;max-width:900px;margin:0 auto;box-sizing:border-box}
+.notes-row-icon{width:48px;height:48px;font-size:34px;justify-content:flex-start;margin-bottom:12px}.notes-row-icon svg{width:34px;height:34px}
+.notes-row-title{display:block;width:100%;resize:none;field-sizing:content;min-height:46px;background:none;border:0;outline:0;padding:0 0 12px;color:inherit;font:700 32px/1.25 inherit;font-family:inherit;font-size:32px;font-weight:700;line-height:1.25;box-sizing:border-box;overflow:hidden}
+.notes-row-title::placeholder{color:#63676e}
+.notes-row-inner>hr{border:0;border-top:1px solid rgba(255,255,255,.08);margin:24px 0}
+.notes-row-blocks{min-height:80px}.notes-row-blocks .notes-block{margin:4px 0;min-width:0}.notes-row-blocks .notes-block-tools{left:-34px}
+.notes-row-properties .notes-row-property{display:grid;grid-template-columns:minmax(90px,34%) minmax(0,1fr);align-items:start;min-height:38px;gap:10px}
+.notes-row-properties .notes-row-property>.ndb-button{display:flex;align-items:center;gap:7px;color:#9399a3;font-size:13px;padding:9px 0;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.notes-row-properties .notes-row-property>.ndb-button svg{width:15px;height:15px;flex:none}
+.notes-row-properties .ndb-cell{border:0;border-radius:5px;min-height:36px;box-sizing:border-box;padding:7px 8px;font-size:14px;position:relative;overflow:hidden;cursor:pointer}
+.notes-row-properties .ndb-cell:hover{background:rgba(255,255,255,.035)}
+.notes-row-properties{--ndb-font-size:14px;--ndb-icon-size:16px;--ndb-row-height:36px;--ndb-cell-padding:8px;--ndb-control-size:22px}
+.notes-row-usage,.notes-row-unsupported{font-size:11px;color:#737a84;margin-top:30px;line-height:1.5}
+.has-row-full #notesPageWrap{visibility:hidden;pointer-events:none}
+/* Side Peek is an overlay, not a parent-page reflow. Keeping the parent geometry fixed prevents the page title/header from jumping while the panel slides in. */
+.has-row-peek #notesPageWrap{width:100%;container-type:normal;transition:none}
+.has-row-peek .notes-page-header{transform:none!important}
+.ndb-primary{display:flex;align-items:center;gap:.4em;min-width:0;font:inherit}
+.ndb-row-title{display:flex;align-items:center;gap:.4em;flex:1;min-width:0;background:none;border:0;color:inherit;font:inherit;text-align:left;padding:0;cursor:text}
+.ndb-row-title>span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ndb-row-page-icon{width:1em;height:1em;flex:none;display:inline-flex;align-items:center;justify-content:center}.ndb-row-page-icon svg{width:100%;height:100%}
+.ndb-open,.ndb-title-edit{width:auto;min-height:0;font:inherit;font-size:.65em;border:1px solid rgba(255,255,255,.1);border-radius:3px;background:#24272c;color:#b9c0cb;padding:.22em .4em;cursor:pointer;opacity:0;flex:none}
+.ndb-cell:hover .ndb-open,.ndb-cell:focus-within .ndb-open,.ndb-open.is-open,.ndb-cell:hover .ndb-title-edit,.ndb-cell:focus-within .ndb-title-edit{opacity:1}
+.ndb-title-edit{font-size:.85em}
+@keyframes notes-row-peek-in{from{transform:translateX(100%)}to{transform:translateX(0)}}
+@media(max-width:800px){.notes-editor-shell{--notes-peek-width:min(100%,480px)}.notes-row-inner{padding-left:38px;padding-right:24px}.notes-row-title{font-size:28px}}
+@media(prefers-reduced-motion:reduce){.notes-row-panel{transition:none!important;animation:none!important}}
+
+.ndb-primary .ndb-title-edit{width:auto;min-height:22px;padding:2px;flex:none}.ndb-primary .ndb-title-edit .ndb-label{display:none}.ndb-row-title .ndb-icon{width:1em;height:1em;flex-basis:1em}.ndb-row-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ndb-primary:has(.ndb-editor){display:block}

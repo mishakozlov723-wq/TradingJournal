@@ -1,0 +1,14 @@
+{
+  "version": "3.22.7",
+  "unitTestsPassed": 6,
+  "browser": {
+    "mobileFadeStartMs": 5111,
+    "desktopFadeStartMs": 5119,
+    "progressDuration": "4.2s",
+    "uncaughtErrors": 0
+  },
+  "introMs": 900,
+  "progressMs": 4200,
+  "exitMs": 220,
+  "liveFirebase": false
+}

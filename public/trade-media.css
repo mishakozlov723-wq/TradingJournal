@@ -1,0 +1,75 @@
+#tradeScreenshotField .custom-file-picker,#screenshotPreviewWrap {display:none!important}
+.tj-image-strip,.tj-editor-items{display:flex;gap:8px;overflow-x:auto;padding:6px 0;min-width:0}
+.tj-image-item{flex:0 0 116px;position:relative;border:1px solid #303640;border-radius:8px;overflow:hidden;background:#11151b;text-align:center}
+.tj-image-item img{display:block;width:116px;height:66px;object-fit:contain;cursor:pointer}
+.tj-image-item button,.tj-gallery-nav button,.tj-media-editor button{background:#181e27;color:#dce5ef;border:1px solid #35404e;border-radius:5px;padding:4px 10px;cursor:pointer;font:inherit}
+.tj-image-item button:disabled{opacity:.3;cursor:default}.tj-image-actions{display:flex;align-items:center;gap:8px;font-size:11px;color:#8e9bad;flex-wrap:wrap}
+#tjImageStatus{color:#e0ba76}.tj-gallery-nav{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:16px;background:#10151eee;color:white;border-radius:10px;padding:8px;z-index:5}.tj-gallery-nav[hidden]{display:none}
+.tj-media-editor{background:#10151e;color:#dce5ef;border:1px solid #35404e;border-radius:14px;max-width:min(90vw,780px);padding:22px}.tj-media-editor::backdrop{background:#000b}.tj-media-editor input{margin:14px 0}.tj-media-editor>button{margin:6px}.tj-media-editor p{color:#e0ba76}
+.thumb-btn{position:relative}.tj-image-badge{position:absolute;right:0;bottom:0;background:#10151ee6;color:#fff;border-radius:4px;padding:1px 4px;font-size:9px}
+
+/* Lucide controls: a small footer, leaving the chart dominant. */
+.tj-image-item button{box-sizing:border-box;width:24px;height:19px;min-height:0;padding:2px 5px;margin:1px 2px 2px;border:0;border-radius:3px;background:transparent;color:#81909f;vertical-align:middle;line-height:0}
+.tj-image-item button:hover:not(:disabled){background:#252e38;color:#e1e8ef}
+.tj-image-item button svg{width:12px;height:12px;pointer-events:none}
+#tjImageAdd svg{width:14px;height:14px;display:block}
+.datetime-calendar-trigger.tj-calendar-icon{background-image:none!important;display:grid;place-items:center}
+.datetime-calendar-trigger.tj-calendar-icon::before,.datetime-calendar-trigger.tj-calendar-icon::after{display:none!important}
+.datetime-calendar-trigger.tj-calendar-icon svg{width:16px;height:16px;pointer-events:none}
+
+/* Quiet gallery and desktop controls; overrides the injected desktop theme. */
+.tj-floating-settings{position:fixed!important;inset:auto;right:auto!important;margin:0;box-sizing:border-box;min-width:0!important;overflow-y:auto;z-index:10000;visibility:hidden}
+.tj-floating-settings.tj-open{opacity:1;visibility:visible;pointer-events:auto;transform:none}
+#notePanel.tj-anchored-note{box-sizing:border-box;right:auto;bottom:auto;transform-origin:var(--note-origin);transform:translateX(var(--note-from)) scale(.97);transition:opacity .2s ease,transform .25s cubic-bezier(.22,1,.36,1);z-index:240}
+#notePanel.tj-anchored-note.open{transform:translateX(0) scale(1)}
+@media(prefers-reduced-motion:reduce){#notePanel.tj-anchored-note{transition:none}}
+.tj-gallery-nav button{display:grid;place-items:center;width:28px;height:28px;padding:4px;border:0;background:transparent}
+.tj-gallery-nav svg{width:18px;height:18px;pointer-events:none}
+.tj-gallery-nav{gap:10px;padding:4px 8px;font-size:11px}
+#tjImageAdd{display:grid;place-items:center;width:28px;height:26px;padding:5px!important;min-height:0!important}
+body .syter-to-mini{height:24px!important;min-height:0!important;padding:3px 8px!important;font-size:10px!important;line-height:16px!important;align-self:center}
+body .syter-capture-toggle{cursor:default}
+body #syterCaptureState{position:relative;width:62px;height:16px;line-height:16px;font-size:0!important;flex:0 0 62px}
+#syterCaptureState::before,#syterCaptureState::after{position:absolute;right:0;top:0;font-size:9px;transition:opacity .18s ease,transform .18s ease;pointer-events:none}
+#syterCaptureState::before{content:'выкл.';color:#83909e;opacity:1;transform:translateY(0)}
+#syterCaptureState::after{content:'включено';color:#70dbb6;opacity:0;transform:translateY(3px)}
+#syterCaptureState[data-on=true]::before{opacity:0;transform:translateY(-3px)}
+#syterCaptureState[data-on=true]::after{opacity:1;transform:translateY(0)}
+body #tradeForm #syterCaptureImages{transition:background-color .18s ease,border-color .18s ease}
+.datetime-calendar-trigger{animation:none!important;transition:color .2s ease,transform .2s ease!important}
+.datetime-calendar-trigger:hover,.datetime-calendar-trigger:focus-visible{animation:none!important;transform:translateY(calc(-50% - 1px))!important;color:var(--green,#70dbb6)!important;filter:none!important}
+html.tj-chart-resizing{overflow-anchor:none}
+@media(prefers-reduced-motion:reduce){#syterCaptureState::before,#syterCaptureState::after,body #tradeForm #syterCaptureImages,.datetime-calendar-trigger{transition:none!important}}
+
+/* Floating settings appear immediately; animation is independent of popover display. */
+.tj-floating-settings{transition:none!important;transform-origin:top right}
+.notes-workspace-open-arrow svg{width:16px;height:16px;display:block;stroke:currentColor}
+#fullscreenImgOverlay{z-index:12000}
+/* Match the neighbouring header controls and keep the upload plus even at its centre. */
+#secondaryActions #settingsBtn{width:40px;height:40px;padding:9px;border-radius:12px;flex-shrink:0;box-sizing:border-box}
+#secondaryActions #settingsBtn .settings-icon{width:20px;height:20px;flex-shrink:0}
+#tjImageAdd svg{opacity:.65;color:#aab4c2;stroke-opacity:1}
+/* Fade model choices in without scaling or shifting their text. */
+#tradeModelMenu{transform:none;transition:opacity .16s ease,visibility 0s linear .16s}
+#tradeModelControl.open #tradeModelMenu{transform:none;transition-delay:0s}
+@media(prefers-reduced-motion:reduce){#tradeModelMenu{transition:none}}
+
+/* Shared Lucide glyphs, with the existing button hit areas and state animations. */
+.tj-ui-icon{display:inline-block;width:16px;height:16px;vertical-align:middle;flex-shrink:0;pointer-events:none}
+.th-pencil .tj-ui-icon,.asset-filter-option-edit .tj-ui-icon{width:13px;height:13px}
+.back-arrow{line-height:1}.back-arrow .tj-ui-icon{width:17px;height:17px}
+#secondaryToggleBtn::before{display:none}
+#secondaryToggleBtn .tj-ui-icon{width:18px;height:18px}
+.asset-filter-arrow,.trade-asset-arrow{display:inline-flex;width:16px;height:16px;border:0;transform:none;color:var(--textMuted)}
+.asset-filter-control.open .asset-filter-arrow,.trade-asset-control.open .trade-asset-arrow{transform:rotate(180deg);border:0}
+#tjImageAdd svg{opacity:1;color:#9ba6b5;stroke-opacity:1}
+.datetime-calendar-trigger.tj-calendar-icon{color:#8e99a8;opacity:1}
+.datetime-calendar-trigger.tj-calendar-icon svg{opacity:1;stroke-opacity:1}
+#tradeForm #syterTradeNotes:focus,#tradeForm #syterTradeNotes:focus-visible{outline:none!important;border-color:rgba(96,165,250,.5)!important;box-shadow:0 0 0 3px rgba(96,165,250,.10)!important}
+.accounts-intro-sub,.accounts-setup-copy,.accounts-setup-hint{display:none!important}
+/* Editing glyphs stay at their native size; confirmation has a single black SVG. */
+body:not(.mobile-mode) .th-editable .th-pencil{transform:none;transition:opacity .2s ease,color .2s ease}
+body:not(.mobile-mode) .th-editable .th-pencil:hover{transform:none}
+.popup-confirm-btn,.popup-confirm-btn:hover,.popup-confirm-btn:active,.popup-confirm-btn:focus-visible{color:#000}
+.popup-confirm-btn::after{content:none;display:none}
+.popup-confirm-btn .tj-ui-icon{display:block;width:16px;height:16px;stroke:#000;opacity:1}

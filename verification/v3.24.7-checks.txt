@@ -1,0 +1,8 @@
+Trading Journal v3.24.7 checks
+
+PASS: all inline application scripts parse.
+PASS: valid Notes token from alternate host canonicalizes to current journal origin.
+PASS: stored localhost model URL canonicalizes to current journal origin on HTTPS deployment.
+PASS: javascript: URL rejected.
+PASS: Accounts/Myfxbook/Vercel files unchanged from v3.24.6.
+NOTE: Full Chromium regression harness could launch in this Linux container only after sandbox adjustment, but its historical harness did not initialize the app here; this is a harness/environment limitation, not an observed runtime exception in the modified app. Static/script and URL-specific checks passed.

@@ -1,0 +1,18 @@
+ПРАВИЛО ДЛЯ КАРТИНОК В ЗАМЕТКАХ (v3.38)
+
+Куда вставить: Firebase Console -> Firestore Database -> вкладка Rules (Правила).
+Вставь этот кусок ВНУТРЬ блока  match /databases/{database}/documents { ... }
+(например, сразу перед последней закрывающей скобкой этого блока), потом нажми Publish.
+
+    match /notesImages/{id} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid
+                    && request.resource.data.data is string
+                    && request.resource.data.data.size() < 1000000;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
+Если правило не добавить, ничего не сломается: картинки будут сохраняться
+внутри страницы, как раньше (со старым лимитом).

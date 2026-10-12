@@ -1,0 +1,12 @@
+Public read-only links for Notes (v3.13)
+
+Add this block inside "match /databases/{database}/documents { ... }" in your Firestore rules:
+
+    match /notesShares/{token} {
+      allow get: if true;                       // anyone with the link can read one page
+      allow list: if false;                     // nobody can enumerate all shared links
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
+Link format: https://<your-site>/?note=<token>

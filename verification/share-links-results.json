@@ -1,0 +1,28 @@
+{
+  "version": "3.22.11",
+  "unitTestsPassed": 65,
+  "shareUnitTestsPassed": 13,
+  "modelBrowserScenariosPassed": 22,
+  "shareBrowserWidths": [
+    390,
+    1440
+  ],
+  "modelsIntegrationWidths": [
+    390,
+    1440
+  ],
+  "pageErrors": 0,
+  "liveFirebase": false,
+  "checks": [
+    "serialized writes and revocation",
+    "duplicate generation",
+    "account isolation",
+    "failed publication and revocation retry",
+    "clipboard denial",
+    "UTF-8 size limit",
+    "persisted deletion retry",
+    "partial workspace safety",
+    "no recreation of revoked document",
+    "generated Notes URL to saved model to reload to public viewer"
+  ]
+}
