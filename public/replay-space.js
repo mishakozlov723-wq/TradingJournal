@@ -7,7 +7,7 @@
 (function(){
   'use strict';
 
-  /* tier 1 — always visible; tier 2 — collapsible "Активы tier 2" section, shown once the quotes site publishes them */
+  /* tier 1 — always visible; tier 2 — collapsible "Tier 2 assets" section, shown once the quotes site publishes them */
   var ASSETS = [
     { name:'EURUSD', color:'#a78bfa', label:'EUR / USD', tier:1 },
     { name:'GBPUSD', color:'#fbbf24', label:'GBP / USD', tier:1 },
@@ -67,9 +67,9 @@
   var CTL_KEY = 'tj_replay_ctl';
   var TZS = [
     { id:'UTC', label:'UTC',       zone:'UTC' },
-    { id:'NY',  label:'Нью-Йорк',  zone:'America/New_York' },
-    { id:'TYO', label:'Токио',     zone:'Asia/Tokyo' },
-    { id:'MSK', label:'Москва',    zone:'Europe/Moscow' }
+    { id:'NY',  label:'New York',  zone:'America/New_York' },
+    { id:'TYO', label:'Tokyo',     zone:'Asia/Tokyo' },
+    { id:'MSK', label:'Moscow',    zone:'Europe/Moscow' }
   ];
   var MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -118,23 +118,23 @@
   function loadMeta(){
     if(S.metaPromise) return S.metaPromise;
     S.metaPromise = fetch(DATA_BASE+'meta.json',{cache:'no-cache'}).then(function(r){ if(!r.ok) throw new Error('meta'); return r.json(); }).then(function(m){
-      if(!m||!m.instruments||!m.generated) throw new Error('Некорректные данные котировок.');
-      ASSETS.forEach(function(a){ var v=m.instruments[a.name]; if(!v&&a.tier===2) return; if(!v||!v.h1||!v.h1.n||!v.scale||!Array.isArray(v.m5Years)) throw new Error('Некорректные данные котировок.'); });
+      if(!m||!m.instruments||!m.generated) throw new Error('Invalid quote data.');
+      ASSETS.forEach(function(a){ var v=m.instruments[a.name]; if(!v&&a.tier===2) return; if(!v||!v.h1||!v.h1.n||!v.scale||!Array.isArray(v.m5Years)) throw new Error('Invalid quote data.'); });
       if(!S.meta||S.meta.generated!==m.generated){ rawCache={}; S.tl=null; }
       S.meta=m; return m;
     }).finally(function(){ S.metaPromise=null; });
     return S.metaPromise;
   }
   function fetchBin(url,expected,scale){
-    return fetch(url,{cache:'no-cache'}).then(function(r){ if(!r.ok) throw new Error('Не удалось загрузить котировки.'); return r.arrayBuffer(); }).then(function(buf){
-      if(buf.byteLength<16) throw new Error('Повреждённый файл котировок.');
+    return fetch(url,{cache:'no-cache'}).then(function(r){ if(!r.ok) throw new Error('Could not load quotes.'); return r.arrayBuffer(); }).then(function(buf){
+      if(buf.byteLength<16) throw new Error('Corrupted quote file.');
       var h=new Int32Array(buf,0,4), n=h[0], sc=h[1], a=new Int32Array(buf,16);
-      if(n<1||buf.byteLength!==16+n*20||sc!==scale||(expected&&(n!==expected.n||a[0]!==expected.first||a[n-1]!==expected.last))) throw new Error('Котировки обновились. Вернись в Replay и открой период заново.');
+      if(n<1||buf.byteLength!==16+n*20||sc!==scale||(expected&&(n!==expected.n||a[0]!==expected.first||a[n-1]!==expected.last))) throw new Error('Quotes were updated. Go back to Replay and open the period again.');
       var data={ n:n, sc:sc, t:a.subarray(0,n), o:a.subarray(n,2*n), h:a.subarray(2*n,3*n), l:a.subarray(3*n,4*n), c:a.subarray(4*n,5*n) };
       if(expected&&expected.sha256&&window.crypto&&window.crypto.subtle){
         return window.crypto.subtle.digest('SHA-256',buf).then(function(hash){
           var hex=Array.from(new Uint8Array(hash)).map(function(x){ return x.toString(16).padStart(2,'0'); }).join('');
-          if(hex!==expected.sha256) throw new Error('Котировки обновились. Вернись в Replay и открой период заново.');
+          if(hex!==expected.sha256) throw new Error('Quotes were updated. Go back to Replay and open the period again.');
           return data;
         });
       }
@@ -236,19 +236,17 @@
         '<button class="back-link" id="exitReplayWorkspaceBtn" type="button" style="margin:0"><span class="back-arrow" style="font-size:15px;"><svg class="tj-ui-icon" data-icon="arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg></span> Back to Journal</button>'+
         '<div class="rp-title">Replay Space</div></div></div>'+
       '<div id="rpLobby" class="rp-view">'+
-        '<div class="rp-intro-title">Новый replay-бэктест</div>'+
-        '<div class="rp-intro-sub">Выбери актив и период. Свечи после текущей даты скрыты — они открываются только по мере прокрутки.</div>'+
         '<div id="rpResume"></div>'+
         '<div class="rp-assets" id="rpAssets"></div>'+
-        '<details class="rp-tier2" id="rpTier2" hidden><summary class="rp-tier2-head"><span>Активы tier 2</span><span class="rp-tier2-count" id="rpTier2Count"></span>'+ICON_CHEV+'</summary>'+
+        '<details class="rp-tier2" id="rpTier2" hidden><summary class="rp-tier2-head"><span>Tier 2 assets</span><span class="rp-tier2-count" id="rpTier2Count"></span>'+ICON_CHEV+'</summary>'+
         '<div class="rp-assets rp-assets-t2" id="rpAssets2"></div></details>'+
         '<div class="rp-card"><div class="rp-form-row">'+
-          '<div class="rp-field"><label for="rpRangeBtn">Период бэктеста</label><button class="rp-input rp-range-btn" id="rpRangeBtn" type="button">Выбрать даты…</button>'+
+          '<div class="rp-field"><label for="rpRangeBtn">Backtest period</label><button class="rp-input rp-range-btn" id="rpRangeBtn" type="button">Select dates…</button>'+
           '<input type="hidden" id="rpStart"><input type="hidden" id="rpEnd"></div>'+
           '<div class="rp-range-note" id="rpRangeNote"></div>'+
-          '<button class="rp-primary" id="rpStartBtn" type="button">Начать replay</button>'+
+          '<button class="rp-primary" id="rpStartBtn" type="button">Start replay</button>'+
         '</div><div class="rp-error" id="rpError" role="status"></div>'+
-        '<div class="rp-hint" id="rpCoverage"></div></div>'+
+        '</div>'+
       '</div>';
     if(anchor&&anchor.parentNode) anchor.parentNode.insertBefore(sec, anchor.nextSibling); else document.body.appendChild(sec);
 
@@ -257,44 +255,44 @@
     ses.className='rp-session'; ses.id='rpSession'; ses.setAttribute('aria-hidden','true');
     ses.innerHTML=
       '<div class="rp-topbar">'+
-        '<button class="rp-btn rp-back" id="rpExitBtn" type="button" title="Вернуться в Replay Space (прогресс сохраняется)"><span class="back-arrow"><svg class="tj-ui-icon" data-icon="arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg></span> Replay Space</button>'+
+        '<button class="rp-btn rp-back" id="rpExitBtn" type="button" title="Back to Replay Space (progress is saved)"><span class="back-arrow"><svg class="tj-ui-icon" data-icon="arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg></span> Replay Space</button>'+
         '<span class="rp-chip" id="rpAssetChip"><i></i><span></span></span>'+
         '<div class="rp-progress"><div class="rp-progress-text"><span id="rpDayText"></span><span id="rpDateText"></span></div><div class="rp-progress-track"><div class="rp-progress-fill" id="rpProgressFill"></div></div></div>'+
         '<div class="rp-seg" id="rpTfs"></div>'+
         '<span class="rp-spacer"></span>'+
-        '<button class="rp-btn" id="rpSessBtn" type="button" title="Торговые сессии на графике (Asia, Frankfurt, London, New York)">Sessions</button>'+
-        '<button class="rp-btn" id="rpFvgBtn" type="button" aria-pressed="false" title="Показать трёхсвечные имбалансы (FVG)">imb-detector</button>'+
-        '<button class="rp-btn" id="rpHideDate" type="button" title="Скрыть даты на графике">Hide dates</button>'+
-        '<button class="rp-btn" id="rpFsBtn" type="button" title="Полный экран браузера">⛶</button>'+
+        '<button class="rp-btn" id="rpSessBtn" type="button" title="Trading sessions on the chart (Asia, Frankfurt, London, New York)">Sessions</button>'+
+        '<button class="rp-btn" id="rpFvgBtn" type="button" aria-pressed="false" title="Show three-candle imbalances (FVG)">imb-detector</button>'+
+        '<button class="rp-btn" id="rpHideDate" type="button" title="Hide dates on the chart">Hide dates</button>'+
+        '<button class="rp-btn" id="rpFsBtn" type="button" title="Browser full screen">⛶</button>'+
       '</div>'+
       '<div class="rp-chart-card"><div class="rp-legend" id="rpLegend"></div><div id="rpChart"></div><div class="rp-banner" id="rpBanner"></div><div class="rp-toast" id="rpToast"></div>'+
         '<div class="rp-trade" id="rpTrade">'+
-          '<div class="rp-trade-head"><span>Сделка</span><button class="rp-mini" id="rpTradeToggle" type="button" title="Свернуть / развернуть"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5 5 6.5 8 3.5"/></svg></button></div>'+
+          '<div class="rp-trade-head"><span>Trade</span><button class="rp-mini" id="rpTradeToggle" type="button" title="Collapse / expand"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5 5 6.5 8 3.5"/></svg></button></div>'+
           '<div class="rp-collapse is-open" id="rpPanelWrap"><div class="rp-collapse-in"><div class="rp-trade-body">'+
             '<div class="rp-trade-btns"><button class="rp-long" id="rpLong" type="button">Long</button><button class="rp-short" id="rpShort" type="button">Short</button></div>'+
             '<div class="rp-collapse" id="rpDraftWrap"><div class="rp-collapse-in"><div class="rp-draft" id="rpDraftBox">'+
               '<div class="rp-draft-title" id="rpDraftTitle"></div>'+
-              '<div class="rp-draft-grid"><label>Вход<input class="rp-input" id="rpInEntry" type="text" inputmode="decimal" autocomplete="off"></label><label>SL<input class="rp-input" id="rpInSL" type="text" inputmode="decimal" autocomplete="off"></label><label>TP<input class="rp-input" id="rpInTP" type="text" inputmode="decimal" autocomplete="off"></label></div>'+
+              '<div class="rp-draft-grid"><label>Entry<input class="rp-input" id="rpInEntry" type="text" inputmode="decimal" autocomplete="off"></label><label>SL<input class="rp-input" id="rpInSL" type="text" inputmode="decimal" autocomplete="off"></label><label>TP<input class="rp-input" id="rpInTP" type="text" inputmode="decimal" autocomplete="off"></label></div>'+
               '<div class="rp-muted rp-draft-info" id="rpDraftInfo"></div>'+
-              '<div class="rp-draft-hint">Тяни линии входа / SL / TP на графике</div>'+
-              '<div class="rp-draft-actions"><button class="rp-primary" id="rpDraftOk" type="button">Открыть</button><button class="rp-btn" id="rpDraftCancel" type="button">Отмена</button></div>'+
+              '<div class="rp-draft-hint">Drag the entry / SL / TP lines on the chart</div>'+
+              '<div class="rp-draft-actions"><button class="rp-primary" id="rpDraftOk" type="button">Open</button><button class="rp-btn" id="rpDraftCancel" type="button">Cancel</button></div>'+
             '</div></div></div>'+
-            '<div class="rp-trade-row"><label for="rpRisk">Риск, %</label><input class="rp-input" id="rpRisk" type="text" inputmode="decimal" autocomplete="off" value="1"></div>'+
-            '<div class="rp-trade-row" id="rpModelRow"><label for="rpModel">Модель</label><button class="rp-input rp-dd" id="rpModelBtn" type="button"><span></span>'+ICON_CHEV+'</button><input type="hidden" id="rpModel" value=""></div>'+
+            '<div class="rp-trade-row"><label for="rpRisk">Risk, %</label><input class="rp-input" id="rpRisk" type="text" inputmode="decimal" autocomplete="off" value="1"></div>'+
+            '<div class="rp-trade-row" id="rpModelRow"><label for="rpModel">Model</label><button class="rp-input rp-dd" id="rpModelBtn" type="button"><span></span>'+ICON_CHEV+'</button><input type="hidden" id="rpModel" value=""></div>'+
             '<div class="rp-poslist" id="rpPosList"></div>'+
             '<div class="rp-stats" id="rpStats"></div>'+
           '</div></div></div></div>'+
       '</div>'+
       '<div class="rp-bottombar"><div class="rp-ctl">'+
-        '<button class="rp-cbtn" id="rpBtnCut" type="button" title="Обрезать: наведи на свечу и кликни — график обрежется на ней (Esc — отмена)">'+ICON_CUT+'<span>Обрезать</span></button>'+
+        '<button class="rp-cbtn" id="rpBtnCut" type="button" title="Cut: hover a candle and click — the chart is cut there (Esc — cancel)">'+ICON_CUT+'<span>Cut</span></button>'+
         '<i class="rp-sep"></i>'+
-        '<button class="rp-cbtn rp-ico" id="rpBtnPlay" type="button" title="Старт / пауза (Пробел)">'+ICON_PLAY+'</button>'+
-        '<button class="rp-cbtn rp-ico" id="rpBtnStep" type="button" title="Шаг вперёд (→)">'+ICON_STEP+'</button>'+
+        '<button class="rp-cbtn rp-ico" id="rpBtnPlay" type="button" title="Play / pause (Space)">'+ICON_PLAY+'</button>'+
+        '<button class="rp-cbtn rp-ico" id="rpBtnStep" type="button" title="Step forward (→)">'+ICON_STEP+'</button>'+
         '<i class="rp-sep"></i>'+
-        '<button class="rp-cbtn" id="rpSpeedBtn" type="button" title="Скорость симуляции"><span>1x</span></button>'+
-        '<button class="rp-cbtn" id="rpStepBtn" type="button" title="Шаг симуляции"><span>Авто</span></button>'+
+        '<button class="rp-cbtn" id="rpSpeedBtn" type="button" title="Simulation speed"><span>1x</span></button>'+
+        '<button class="rp-cbtn" id="rpStepBtn" type="button" title="Simulation step"><span>Auto</span></button>'+
       '</div>'+
-      '<button class="rp-clock" id="rpClockBtn" type="button" title="Время на графике · нажми, чтобы выбрать часовой пояс"><span>--:--</span></button>'+
+      '<button class="rp-clock" id="rpClockBtn" type="button" title="Chart time · click to choose a time zone"><span>--:--</span></button>'+
       '</div>'+
       '<div class="rp-menu" id="rpMenu"></div>';
     document.body.appendChild(ses);
@@ -463,7 +461,6 @@
     document.querySelectorAll('#rpAssets .rp-asset, #rpAssets2 .rp-asset').forEach(function(b){
       var on=b.getAttribute('data-asset')===S.selected; b.classList.toggle('is-selected',on);
       var m=instMeta(b.getAttribute('data-asset')), el=b.querySelector('[data-meta]'), tier2=assetInfo(b.getAttribute('data-asset')).tier===2;
-      if(m&&m.h1&&m.h1.first) el.textContent=assetInfo(b.getAttribute('data-asset')).label+' · с '+fmtDate(m.h1.first).slice(0,4);
       if(tier2){ b.hidden=!!S.meta&&!m; b.disabled=!m; if(m) t2++; }
     });
     var t2box=$('rpTier2');
@@ -471,23 +468,18 @@
       t2box.hidden=!t2; $('rpTier2Count').textContent=t2?String(t2):'';
       if(assetInfo(S.selected).tier===2&&instMeta(S.selected)) t2box.open=true;
     }
-    var m=instMeta(S.selected), cov=$('rpCoverage');
-    if(m&&m.h1){
-      var first=fmtDate(m.h1.first), last=fmtDate(m.h1.last);
-      cov.textContent='Данные: '+first+' → '+last+(m.m5Years&&m.m5Years.length?' · 5m / 15m / 30m доступны с '+m.m5Years[0]+' года':' · 5m / 15m / 30m недоступны');
-    }
     syncRange();
   }
   function prettyDate(str){ var p=str.split('-'); return p[2]+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+p[1]-1]+' '+p[0]; }
   function pickRange(){
     var b=bridge(), m=instMeta(S.selected);
-    if(!b||!b.pickRange) return showError('Календарь журнала недоступен.');
+    if(!b||!b.pickRange) return showError('The journal calendar is unavailable.');
     b.pickRange(function(s,e){ $('rpStart').value=s; $('rpEnd').value=e; syncRange(); }, m&&m.h1?fmtDate(m.h1.first+14*86400):null, m&&m.h1?fmtDate(m.h1.last):null);
   }
   function syncRange(){
     var s=$('rpStart').value, e=$('rpEnd').value, note=$('rpRangeNote'); $('rpError').classList.remove('is-visible');
-    $('rpRangeBtn').textContent=(s&&e)?prettyDate(s)+'  →  '+prettyDate(e):'Выбрать даты…';
-    if(s&&e&&e>=s){ var days=Math.round((dateToTs(e)-dateToTs(s))/86400)+1; note.innerHTML='Период: <b>'+days+'</b> дн.'; } else note.textContent='';
+    $('rpRangeBtn').textContent=(s&&e)?prettyDate(s)+'  →  '+prettyDate(e):'Select dates…';
+    if(s&&e&&e>=s){ var days=Math.round((dateToTs(e)-dateToTs(s))/86400)+1; note.innerHTML='Period: <b>'+days+'</b> days'; } else note.textContent='';
   }
   function showError(msg){ var el=$('rpError'); if(!el) return; el.textContent=msg; el.classList.toggle('is-visible',!!msg); }
   var resumeTry=0;
@@ -497,7 +489,7 @@
     if(bb&&bb.ready()&&bb.isOwnAccount()&&bb.backtestsLoaded&&!bb.backtestsLoaded()&&resumeTry++<20) renderResume.t=setTimeout(function(){ if(!S.sess&&S.mode) renderResume(); },700); else resumeTry=0;
     if(!list.length){ box.innerHTML=''; return; }
     box.innerHTML=list.map(function(r){
-      return '<div class="rp-card rp-resume" data-sid="'+esc(r.sid)+'"><div><div class="rp-resume-title">Продолжить: '+esc(r.asset)+'</div><div class="rp-resume-sub">'+fmtDate(r.startTs)+' → '+fmtDate(r.endTs)+' · остановился на '+fmtDate(r.curT)+'</div></div><div style="display:flex;gap:8px"><button class="rp-btn" data-resume-drop="'+esc(r.sid)+'" type="button">Сбросить</button><button class="rp-primary" data-resume="'+esc(r.sid)+'" type="button">Продолжить</button></div></div>';
+      return '<div class="rp-card rp-resume" data-sid="'+esc(r.sid)+'"><div><div class="rp-resume-title">Continue: '+esc(r.asset)+'</div><div class="rp-resume-sub">'+fmtDate(r.startTs)+' → '+fmtDate(r.endTs)+' · stopped at '+fmtDate(r.curT)+'</div></div><div style="display:flex;gap:8px"><button class="rp-btn" data-resume-drop="'+esc(r.sid)+'" type="button">Reset</button><button class="rp-primary" data-resume="'+esc(r.sid)+'" type="button">Continue</button></div></div>';
     }).join('');
   }
   function bindResume(){
@@ -521,21 +513,21 @@
   }
   function toLobby(){
     cancelAnim(); stopPlay(); if(S.rewind) setRewind(false); if(S.sess){ S.sess.draft=null; flushDays(); saveSession(); drFlush(); stFlush(); drCancel(); }
-    curtainQuick(function(){ S.sess=null; showLobbyUI(); loadMeta().then(function(){ if(S.mode&&!S.sess) syncLobby(); }).catch(function(){ showError('Не удалось проверить свежие котировки. Повтори вход в Replay.'); }); });
+    curtainQuick(function(){ S.sess=null; showLobbyUI(); loadMeta().then(function(){ if(S.mode&&!S.sess) syncLobby(); }).catch(function(){ showError('Could not check for fresh quotes. Open Replay again.'); }); });
   }
   function guardOwn(){
     var b=bridge();
-    if(b&&b.ready()&&!b.isOwnAccount()){ showError('Сейчас открыт журнал ученика ('+b.viewingLogin()+'). Переключись на свой аккаунт, чтобы запускать Replay.'); return false; }
+    if(b&&b.ready()&&!b.isOwnAccount()){ showError('A student journal is open ('+b.viewingLogin()+'). Switch to your own account to run Replay.'); return false; }
     return true;
   }
   function startFromLobby(){
     var s=$('rpStart').value, e=$('rpEnd').value;
-    if(!s||!e) return showError('Укажи даты начала и конца.');
-    if(e<s) return showError('Конец периода раньше начала.');
-    var m=instMeta(S.selected); if(!m) return showError('Данные ещё не загружены.');
+    if(!s||!e) return showError('Set the start and end dates.');
+    if(e<s) return showError('The end date is before the start date.');
+    var m=instMeta(S.selected); if(!m) return showError('Data is not loaded yet.');
     var startTs=dateToTs(s), endTs=dateToTs(e);
-    if(startTs<m.h1.first+14*86400) return showError('Начало слишком близко к началу истории — оставь хотя бы 2 недели контекста.');
-    if(endTs>m.h1.last) return showError('Конец периода позже последних доступных данных ('+fmtDate(m.h1.last)+').');
+    if(startTs<m.h1.first+14*86400) return showError('The start is too close to the beginning of history — leave at least 2 weeks of context.');
+    if(endTs>m.h1.last) return showError('The end date is after the latest available data ('+fmtDate(m.h1.last)+').');
     if(!guardOwn()) return;
     showError(''); startSession(S.selected,startTs,endTs,null,null,null);
   }
@@ -550,7 +542,7 @@
       ensureChart(); hideBanner();
       loadSession(asset,startTs,endTs).then(function(d){
         var startIdx=lowerBound(d.T,startTs,d.n)-1, endIdx=lowerBound(d.T,endTs+86400,d.n)-1;
-        if(endIdx<=startIdx) throw new Error('В выбранном диапазоне нет данных.');
+        if(endIdx<=startIdx) throw new Error('No data in the selected range.');
         var cur=startIdx; if(resumeT!=null){ cur=Math.min(Math.max(lowerBound(d.T,resumeT,d.n),startIdx),endIdx); }
         S.sess={ sid:(extra&&extra.sid)||newId(), asset:asset, d:d, startTs:startTs, endTs:endTs, startIdx:startIdx, endIdx:endIdx, cur:cur, btId:null, pos:[], closed:[], draft:null, maxIdx:cur, drawings:[], drawAt:0 };
         drReset(); drLoad(extra); drSync(); drPlaceBars(); syncPrefs();
@@ -567,7 +559,7 @@
         S.tf = tf || '1D'; if(S.tf==='5m'||S.tf==='15m'||S.tf==='30m'){ if(!(d.m5Start&&cur>=d.m5Idx)) S.tf='1D'; }
         updateTfButtons(); fullRefresh(false); saveSession(); reveal(); renderTrade(true);
       }).catch(function(err){
-        S.sess=null; showLobbyUI(); showError((err&&err.message)||'Ошибка загрузки данных.'); reveal();
+        S.sess=null; showLobbyUI(); showError((err&&err.message)||'Data loading error.'); reveal();
       });
     });
   }
@@ -575,7 +567,7 @@
 
   function ensureChart(){
     if(S.chart) return;
-    var LW=window.LightweightCharts; if(!LW){ showError('Библиотека графика не загрузилась.'); return; }
+    var LW=window.LightweightCharts; if(!LW){ showError('The chart library failed to load.'); return; }
     var co=chartStyleOpts(S.style);
     S.chart=LW.createChart($('rpChart'),{
       autoSize:true,
@@ -619,14 +611,14 @@
     var d=s.d, i=s.cur, endT=d.T[i]+d.D[i];
     var days=Math.max(0,Math.floor((endT-s.startTs)/86400)), total=Math.round((s.endTs-s.startTs)/86400)+1;
     var mxT=d.T[Math.max(s.maxIdx,i)]+d.D[Math.max(s.maxIdx,i)], mxDays=Math.min(total,Math.max(0,Math.floor((mxT-s.startTs)/86400)));
-    $('rpDayText').innerHTML='<b>'+Math.min(days,total)+'</b> из '+total+' дней'+(s.maxIdx>i?' <span class="rp-warn">· макс. '+mxDays+'</span>':'');
+    $('rpDayText').innerHTML='<b>'+Math.min(days,total)+'</b> of '+total+' days'+(s.maxIdx>i?' <span class="rp-warn">· max '+mxDays+'</span>':'');
     $('rpDateText').textContent=S.hideDate?'•••• – •• – ••':fmtTz(d.T[i],true)+' '+tzTag(d.T[i]);
     var done=(s.cur>=s.endIdx), pct=Math.min(100,Math.max(0,(endT-s.startTs)/(s.endTs+86400-s.startTs)*100));
     $('rpProgressFill').style.width=pct.toFixed(1)+'%';
     var bk=buckets(d,S.tf), b=bk.b2[i], bar=b>=0?barAt(d,bk,b,i):null, f=function(v){ return v.toFixed(d.dp); };
-    $('rpLegend').innerHTML='<span><b>'+esc(s.asset)+'</b> · '+esc(S.tf)+'</span>'+(s.maxIdx>i?'<span class="rp-warn">После обрезки · уже виденная зона — новые сделки получат пометку</span>':'')+(bar?'<span>O <b>'+f(bar.open)+'</b></span><span>H <b>'+f(bar.high)+'</b></span><span>L <b>'+f(bar.low)+'</b></span><span>C <b>'+f(bar.close)+'</b></span>':'');
+    $('rpLegend').innerHTML='<span><b>'+esc(s.asset)+'</b> · '+esc(S.tf)+'</span>'+(s.maxIdx>i?'<span class="rp-warn">After cut · already seen zone — new trades will be marked</span>':'')+(bar?'<span>O <b>'+f(bar.open)+'</b></span><span>H <b>'+f(bar.high)+'</b></span><span>L <b>'+f(bar.low)+'</b></span><span>C <b>'+f(bar.close)+'</b></span>':'');
     updateTfButtons(); updateClock();
-    if(done){ showBanner('Период бэктеста завершён — '+total+' дн.'+(s.btId?' Результат — в Backtest Space.':'')); stopPlay(); saveSession(); } else hideBanner();
+    if(done){ showBanner('Backtest period complete — '+total+' days.'+(s.btId?' Results are in Backtest Space.':'')); stopPlay(); saveSession(); } else hideBanner();
     $('rpBtnStep').disabled=$('rpBtnPlay').disabled=done;
     if(done) pushDays(true); else pushDays(false);
     if(growBoxes()) saveSession();
@@ -641,7 +633,7 @@
     document.querySelectorAll('#rpTfs button').forEach(function(b){
       var id=b.getAttribute('data-tf'), t=TFS.filter(function(x){return x.id===id;})[0];
       var off=t.intraday&&!m5ok;
-      b.disabled=off; b.title=off?'5m / 15m / 30m недоступны для этого периода (данные M5 есть с 2013 года)':'';
+      b.disabled=off; b.title=off?'5m / 15m / 30m are unavailable for this period (M5 data starts in 2013)':'';
       b.classList.toggle('is-on',id===S.tf);
     });
     updateStepBtn();
@@ -664,7 +656,7 @@
     s.cur=stopAt; if(s.cur>s.maxIdx) s.maxIdx=s.cur;
     if(s.cur>=s.endIdx) finishPeriod();
     stepRefresh(b0); saveSession();
-    if(evs){ stopPlay(); toast(evs.join(' · '),/Стоп/.test(evs.join())?'bad':'ok'); }
+    if(evs){ stopPlay(); toast(evs.join(' · '),/Stop:/.test(evs.join())?'bad':'ok'); }
   }
   function tfLabel(id){ for(var i=0;i<TFS.length;i++) if(TFS[i].id===id) return TFS[i].label; return id; }
   /* the step is independent of the chart timeframe; 'auto' follows it. Intraday steps fall back to 1H where there is no M5 data. */
@@ -676,7 +668,7 @@
   function stepTF(){ var s=S.sess; if(s) advanceTo(nextEnd(stepTfEff())); }
   function setPlayIcon(on){
     var b=$('rpBtnPlay'); if(!b) return; b.innerHTML=on?ICON_PAUSE:ICON_PLAY; b.classList.toggle('is-on',!!on);
-    b.title=on?'Пауза (Пробел)':'Старт / пауза (Пробел)';
+    b.title=on?'Pause (Space)':'Play / pause (Space)';
   }
   function stopPlay(){ if(S.playing){ clearInterval(S.playing); S.playing=null; } setPlayIcon(false); }
   function startPlay(){
@@ -729,16 +721,16 @@
     var sel=m.querySelector('.is-sel'); if(sel&&sel.scrollIntoView) { try { sel.scrollIntoView({ block:'nearest' }); } catch(_){} }
   }
   function openSpeedMenu(){
-    openMenu('speed',$('rpSpeedBtn'),'Скорость',SPEEDS.map(function(v){ return { v:String(v), label:v+'x', sel:v===S.speed }; }),function(v){
+    openMenu('speed',$('rpSpeedBtn'),'Speed',SPEEDS.map(function(v){ return { v:String(v), label:v+'x', sel:v===S.speed }; }),function(v){
       S.speed=+v; saveCtl(); updateCtlButtons(); if(S.playing) startPlay();
     });
   }
   function openStepMenu(){
     var s=S.sess, m5ok=!!(s&&s.d.m5Start&&s.cur>=s.d.m5Idx);
-    var items=[{ v:'auto', label:'Авто', sub:tfLabel(S.tf), sel:S.stepTf==='auto' }].concat(TFS.map(function(t){
-      var off=t.intraday&&!m5ok; return { v:t.id, label:t.label, sel:S.stepTf===t.id, disabled:off, tip:off?'5m / 15m / 30m недоступны для этого периода':'' };
+    var items=[{ v:'auto', label:'Auto', sub:tfLabel(S.tf), sel:S.stepTf==='auto' }].concat(TFS.map(function(t){
+      var off=t.intraday&&!m5ok; return { v:t.id, label:t.label, sel:S.stepTf===t.id, disabled:off, tip:off?'5m / 15m / 30m are unavailable for this period':'' };
     }));
-    openMenu('step',$('rpStepBtn'),'Шаг симуляции',items,function(v){ S.stepTf=v; saveCtl(); updateCtlButtons(); });
+    openMenu('step',$('rpStepBtn'),'Simulation step',items,function(v){ S.stepTf=v; saveCtl(); updateCtlButtons(); });
   }
   function updateClock(){
     var b=$('rpClockBtn'), s=S.sess; if(!b||!s) return;
@@ -751,13 +743,13 @@
   }
   function openTzMenu(){
     var s=S.sess, ts=s?s.d.T[s.cur]:Math.floor(Date.now()/1000);
-    openMenu('tz',$('rpClockBtn'),'Часовой пояс',TZS.map(function(z){ return { v:z.id, label:z.label, sub:z.id==='UTC'?'':tzTagFor(z.id,ts), sel:z.id===S.tz }; }),function(v){
+    openMenu('tz',$('rpClockBtn'),'Time zone',TZS.map(function(z){ return { v:z.id, label:z.label, sub:z.id==='UTC'?'':tzTagFor(z.id,ts), sel:z.id===S.tz }; }),function(v){
       S.tz=v; saveCtl(); applyTz();
     });
   }
   function openModelMenu(){
     var cur=$('rpModel').value;
-    openMenu('model',$('rpModelBtn'),'Модель',(S.models||[]).map(function(m){ return { v:m.id, label:m.name, sel:m.id===cur }; }),function(v){ setModel(v); });
+    openMenu('model',$('rpModelBtn'),'Model',(S.models||[]).map(function(m){ return { v:m.id, label:m.name, sel:m.id===cur }; }),function(v){ setModel(v); });
   }
   function setModel(id){
     var list=S.models||[], it=list.filter(function(m){ return m.id===id; })[0]||list[0]; if(!it) return;
@@ -837,7 +829,7 @@
   }
   function makeDraft(dir){
     var s=S.sess; if(!s) return;
-    if(s.cur>=s.endIdx) return toast('Период бэктеста завершён.','warn');
+    if(s.cur>=s.endIdx) return toast('Backtest period complete.','warn');
     var p=curPrice(), rg=Math.max(avgRange()*1.2, Math.pow(10,-s.d.dp)*5);
     s.draft={ dir:dir, entry:rnd(p), sl:rnd(p-dir*rg), tp:rnd(p+dir*rg*2), market:true, endT:newEndT() };
     renderTrade(true); requestDraw();
@@ -845,21 +837,21 @@
   function cancelDraft(){ if(S.sess&&S.sess.draft){ S.sess.draft=null; renderTrade(true); requestDraw(); } }
   function ensureBacktest(){
     var s=S.sess, b=bridge();
-    if(!b||!b.ready()) { toast('Журнал ещё не готов — попробуй через секунду.','warn'); return false; }
-    if(!b.isOwnAccount()){ toast('Открыт журнал ученика — переключись на свой аккаунт.','warn'); return false; }
+    if(!b||!b.ready()) { toast('The journal is not ready yet — try again in a second.','warn'); return false; }
+    if(!b.isOwnAccount()){ toast('A student journal is open — switch to your own account.','warn'); return false; }
     if(s.btId&&b.getBacktest(s.btId)) return true;
     var info=assetInfo(s.asset);
     var bt=b.createBacktest({ name:'Replay · '+s.asset, asset:s.asset, startYMD:fmtDate(s.startTs), endYMD:fmtDate(s.endTs), daysTested:currentDays() });
-    if(!bt){ toast('Не удалось создать бэктест.','warn'); return false; }
+    if(!bt){ toast('Could not create the backtest.','warn'); return false; }
     s.btId=bt.id; s.closed=[]; saveSession(); if((s.drawings||[]).length){ s.drawAt=s.drawAt||Date.now(); drFlush(); } return true;
   }
   function confirmDraft(){
     var s=S.sess; if(!s||!s.draft) return; var dr=s.draft, price=curPrice();
-    if(s.cur>=s.endIdx) return toast('Период бэктеста завершён.','warn');
+    if(s.cur>=s.endIdx) return toast('Backtest period complete.','warn');
     var entry=dr.market?rnd(price):dr.entry;
-    if(dr.sl==null||!isFinite(dr.sl)) return toast('Укажи стоп (SL).','warn');
-    if(dr.dir>0?dr.sl>=entry:dr.sl<=entry) return toast(dr.dir>0?'Для Long стоп должен быть ниже входа.':'Для Short стоп должен быть выше входа.','warn');
-    if(dr.tp!=null&&(dr.dir>0?dr.tp<=entry:dr.tp>=entry)) return toast(dr.dir>0?'Для Long тейк должен быть выше входа.':'Для Short тейк должен быть ниже входа.','warn');
+    if(dr.sl==null||!isFinite(dr.sl)) return toast('Set a stop (SL).','warn');
+    if(dr.dir>0?dr.sl>=entry:dr.sl<=entry) return toast(dr.dir>0?'For Long the stop must be below the entry.':'For Short the stop must be above the entry.','warn');
+    if(dr.tp!=null&&(dr.dir>0?dr.tp<=entry:dr.tp>=entry)) return toast(dr.dir>0?'For Long the take profit must be above the entry.':'For Short the take profit must be below the entry.','warn');
     if(!ensureBacktest()) return;
     var kind=null, status='open';
     if(!dr.market&&Math.abs(entry-price)>=Math.pow(10,-s.d.dp)/2){
@@ -868,7 +860,7 @@
     }
     var p={ id:newId(), dir:dr.dir, entry:entry, sl:dr.sl, tp:dr.tp, status:status, kind:kind, risk0:Math.abs(entry-dr.sl), riskPct:readRisk(), modelId:$('rpModel').value||'', placedT:nowT(), openT:status==='open'?nowT():null, endT:dr.endT!=null?dr.endT:newEndT(), ar:s.cur<s.maxIdx };
     s.pos.push(p); s.draft=null; saveSession(); renderTrade(true); requestDraw();
-    toast((status==='open'?(dr.dir>0?'Long':'Short')+' открыт по '+fp(entry):'Отложенный ордер '+(kind==='stop'?'Stop':'Limit')+' на '+fp(entry))+(p.ar?' · пометка «после обрезки»':''),p.ar?'warn':'ok');
+    toast((status==='open'?(dr.dir>0?'Long':'Short')+' opened at '+fp(entry):'Pending '+(kind==='stop'?'Stop':'Limit')+' order at '+fp(entry))+(p.ar?' · marked “after cut”':''),p.ar?'warn':'ok');
   }
   function posR(p,price){ return p.risk0>0?p.dir*(price-p.entry)/p.risk0:0; }
   function finishTrade(p,exitPrice,reason,closeT){
@@ -893,28 +885,28 @@
         var hit = p.dir>0 ? (p.kind==='stop'?H>=p.entry:L<=p.entry) : (p.kind==='stop'?L<=p.entry:H>=p.entry);
         if(!hit) return;
         p.status='open'; p.openT=T; p.risk0=Math.abs(p.entry-p.sl)||Math.pow(10,-d.dp);
-        ev.push((p.dir>0?'Long':'Short')+' исполнен по '+fp(p.entry));
+        ev.push((p.dir>0?'Long':'Short')+' filled at '+fp(p.entry));
       }
       var slHit = p.dir>0 ? L<=p.sl : H>=p.sl;
       var tpHit = p.tp!=null && (p.dir>0 ? H>=p.tp : L<=p.tp);
-      if(slHit){ var r1=finishTrade(p,p.sl,'SL',E); ev.push('Стоп: '+sgnR(r1)); }
-      else if(tpHit){ var r2_=finishTrade(p,p.tp,'TP',E); ev.push('Тейк: '+sgnR(r2_)); }
+      if(slHit){ var r1=finishTrade(p,p.sl,'SL',E); ev.push('Stop: '+sgnR(r1)); }
+      else if(tpHit){ var r2_=finishTrade(p,p.tp,'TP',E); ev.push('Take: '+sgnR(r2_)); }
     });
     return ev.length?ev:null;
   }
   function closeManual(id){
     var s=S.sess; if(!s) return; var p=s.pos.filter(function(x){ return x.id===id; })[0]; if(!p) return;
-    if(p.status==='pending'){ s.pos=s.pos.filter(function(x){ return x!==p; }); saveSession(); renderTrade(true); requestDraw(); return toast('Ордер отменён.'); }
-    var r=finishTrade(p,curPrice(),'Вручную',nowT());
-    saveSession(); renderTrade(true); requestDraw(); toast('Закрыто вручную: '+sgnR(r),r>=0?'ok':'bad');
+    if(p.status==='pending'){ s.pos=s.pos.filter(function(x){ return x!==p; }); saveSession(); renderTrade(true); requestDraw(); return toast('Order cancelled.'); }
+    var r=finishTrade(p,curPrice(),'Manual',nowT());
+    saveSession(); renderTrade(true); requestDraw(); toast('Closed manually: '+sgnR(r),r>=0?'ok':'bad');
   }
   function finishPeriod(){
     var s=S.sess; if(!s||!s.pos.length) return;
     var n=0; s.pos.slice().forEach(function(p){
       if(p.status==='pending') s.pos=s.pos.filter(function(x){ return x!==p; });
-      else { finishTrade(p,curPrice(),'Конец периода',nowT()); n++; }
+      else { finishTrade(p,curPrice(),'End of period',nowT()); n++; }
     });
-    if(n) toast('Период завершён — открытые сделки закрыты по рынку.','warn');
+    if(n) toast('Period complete — open trades were closed at market.','warn');
   }
 
   /* days tested → Backtest */
@@ -933,7 +925,7 @@
 
   /* panel */
   function modelOptions(){
-    var b=bridge(), list=b?b.models():[{id:'',name:'Без модели'}], saved=readPref().model||'';
+    var b=bridge(), list=(b?b.models():[{id:'',name:'No model'}]).map(function(m){ return m.id?m:{ id:'', name:'No model' }; }), saved=readPref().model||'';
     S.models=list; var id=list.some(function(m){ return m.id===saved; })?saved:(list[0]?list[0].id:'');
     var it=list.filter(function(m){ return m.id===id; })[0]; $('rpModel').value=id; var sp=$('rpModelBtn').querySelector('span'); if(sp) sp.textContent=it?it.name:'';
     var wrap=$('rpModelRow'); if(wrap) wrap.style.display=list.length>1?'':'none';
@@ -949,23 +941,23 @@
     $('rpDraftWrap').classList.toggle('is-open',!!dr);
     $('rpLong').classList.toggle('is-on',!!dr&&dr.dir>0); $('rpShort').classList.toggle('is-on',!!dr&&dr.dir<0);
     if(dr){
-      $('rpDraftTitle').textContent=(dr.dir>0?'Long':'Short')+(dr.market?' · по рынку':' · отложенный');
+      $('rpDraftTitle').textContent=(dr.dir>0?'Long':'Short')+(dr.market?' · market':' · pending');
       [['rpInEntry',dr.market?price:dr.entry],['rpInSL',dr.sl],['rpInTP',dr.tp]].forEach(function(x){ var el=$(x[0]); if(document.activeElement!==el) el.value=x[1]==null?'':fp(x[1]); });
       var rk=Math.abs((dr.market?price:dr.entry)-dr.sl), rw=dr.tp!=null&&rk>0?Math.abs(dr.tp-(dr.market?price:dr.entry))/rk:null;
-      $('rpDraftInfo').textContent=rw!=null?'Риск : прибыль = 1 : '+rw.toFixed(2):'Тейк не задан';
+      $('rpDraftInfo').textContent=rw!=null?'Risk : reward = 1 : '+rw.toFixed(2):'No take profit';
     }
     var html=s.pos.map(function(p){
       var pending=p.status==='pending', r=pending?null:posR(p,price);
       var isNew=!S.shown[p.id]; S.shown[p.id]=1;
       return '<div class="rp-pos'+(isNew?' is-new':'')+'"><div class="rp-pos-info"><div class="rp-pos-l1"><span class="rp-pos-dir '+(p.dir>0?'long':'short')+'">'+(p.dir>0?'LONG':'SHORT')+'</span>'+(pending?'<span class="rp-pos-kind">'+(p.kind==='stop'?'Stop':'Limit')+'</span>':'')+'</div>'+
-        '<div class="rp-pos-l2"><span class="rp-pos-px">'+fp(p.entry)+'</span>'+(pending?'<span class="rp-pos-pl rp-muted">ожидает</span>':'<span class="rp-pos-pl '+(r>=0?'pos':'neg')+'">'+sgnR(r2(r))+'</span>')+'</div></div>'+
-        '<button type="button" class="rp-mini" data-close="'+p.id+'">'+(pending?'Отмена':'Закрыть')+'</button></div>';
+        '<div class="rp-pos-l2"><span class="rp-pos-px">'+fp(p.entry)+'</span>'+(pending?'<span class="rp-pos-pl rp-muted">pending</span>':'<span class="rp-pos-pl '+(r>=0?'pos':'neg')+'">'+sgnR(r2(r))+'</span>')+'</div></div>'+
+        '<button type="button" class="rp-mini" data-close="'+p.id+'">'+(pending?'Cancel':'Close')+'</button></div>';
     }).join('');
     $('rpPosList').innerHTML=html;
     var st=tradeStats(), nAr=s.closed.filter(function(t){ return t.ar; }).length, nHid=s.closed.filter(function(t){ return t.hid; }).length;
-    $('rpStats').innerHTML=(st.n?('<span>Сделок <b>'+st.n+'</b></span><span>WR <b>'+st.wr.toFixed(0)+'%</b></span><span class="'+(st.r>=0?'pos':'neg')+'"><b>'+sgnR(r2(st.r))+'</b></span><span class="'+(st.pct>=0?'pos':'neg')+'"><b>'+(st.pct>=0?'+':'')+st.pct.toFixed(2)+'%</b></span>'):'<span class="rp-muted">'+(nAr&&cleanOnly()?'Чистых сделок нет':'Сделок пока нет')+'</span>')+
-      (nAr?'<div class="rp-filter"><span class="rp-warn">После обрезки: '+nAr+'</span><span class="rp-seg-mini"><button type="button" data-f="all" class="'+(cleanOnly()?'':'is-on')+'">Все</button><button type="button" data-f="clean" class="'+(cleanOnly()?'is-on':'')+'">Чистые</button></span></div>':'')+
-      (nHid?'<div class="rp-filter"><span class="rp-muted" title="Скрыто на графике — в статистике остаются">Скрыто: '+nHid+'</span><button type="button" class="rp-mini" data-unhide="1">Показать скрытые</button></div>':'');
+    $('rpStats').innerHTML=(st.n?('<span>Trades <b>'+st.n+'</b></span><span>WR <b>'+st.wr.toFixed(0)+'%</b></span><span class="'+(st.r>=0?'pos':'neg')+'"><b>'+sgnR(r2(st.r))+'</b></span><span class="'+(st.pct>=0?'pos':'neg')+'"><b>'+(st.pct>=0?'+':'')+st.pct.toFixed(2)+'%</b></span>'):'<span class="rp-muted">'+(nAr&&cleanOnly()?'No clean trades':'No trades yet')+'</span>')+
+      (nAr?'<div class="rp-filter"><span class="rp-warn">After cut: '+nAr+'</span><span class="rp-seg-mini"><button type="button" data-f="all" class="'+(cleanOnly()?'':'is-on')+'">All</button><button type="button" data-f="clean" class="'+(cleanOnly()?'is-on':'')+'">Clean</button></span></div>':'')+
+      (nHid?'<div class="rp-filter"><span class="rp-muted" title="Hidden on the chart — still counted in stats">Hidden: '+nHid+'</span><button type="button" class="rp-mini" data-unhide="1">Show hidden</button></div>':'');
     var dis=s.cur>=s.endIdx; $('rpLong').disabled=$('rpShort').disabled=dis;
   }
   function bindTradeUi(){
@@ -1154,19 +1146,19 @@
     var s=S.sess, b=bridge(); if(!s) return;
     var t=s.closed.filter(function(x){ return x.id===id; })[0]; if(!t) return;
     t.hid=true; if(b&&b.patchTrade) b.patchTrade(id,{ hiddenOnChart:true });
-    saveSession(); renderTrade(true); requestDraw(); toast('Сделка скрыта на графике — в статистике осталась (Ctrl + средняя кнопка — удалить совсем)');
+    saveSession(); renderTrade(true); requestDraw(); toast('Trade hidden on the chart — still counted in stats (Ctrl + middle click — delete permanently)');
   }
   function unhideAll(){
     var s=S.sess, b=bridge(); if(!s) return; var n=0;
     s.closed.forEach(function(t){ if(t.hid){ t.hid=false; n++; if(b&&b.patchTrade) b.patchTrade(t.id,{ hiddenOnChart:false }); } });
-    if(n){ saveSession(); renderTrade(true); requestDraw(); toast('Показано сделок: '+n); }
+    if(n){ saveSession(); renderTrade(true); requestDraw(); toast('Trades shown: '+n); }
   }
   function deleteClosed(id){
     var s=S.sess, b=bridge(); if(!s) return;
     var t=s.closed.filter(function(x){ return x.id===id; })[0]; if(!t) return;
     s.closed=s.closed.filter(function(x){ return x.id!==id; });
     if(b) b.deleteTrade(id);
-    saveSession(); renderTrade(true); requestDraw(); toast('Сделка удалена совсем ('+sgnR(t.r)+')','warn');
+    saveSession(); renderTrade(true); requestDraw(); toast('Trade deleted permanently ('+sgnR(t.r)+')','warn');
   }
 
   /* ---------- cut (TradingView-style "select bar": trim the chart back to a chosen candle) ---------- */
@@ -1174,7 +1166,7 @@
     var s=S.sess; if(on&&!s) return;
     if(on&&S.dr&&S.dr.tool!=='cursor') drSetTool('cursor'); S.rewind=!!on; S.cut=null; $('rpBtnCut').classList.toggle('is-on',S.rewind); $('rpChart').classList.toggle('is-cut',S.rewind);
     if(S.chart) S.chart.applyOptions({ crosshair:{ vertLine:{ visible:!S.rewind, labelVisible:!S.rewind } } });
-    if(S.rewind){ stopPlay(); cancelDraft(); closeMenu(); toast('Обрезка: наведи на свечу и кликни — график обрежется на ней. Esc — отмена.'); }
+    if(S.rewind){ stopPlay(); cancelDraft(); closeMenu(); toast('Cut: hover a candle and click — the chart is cut there. Esc — cancel.'); }
     requestDraw();
   }
   function hideRewindLine(){ if(S.cut){ S.cut=null; requestDraw(); } }
@@ -1189,7 +1181,7 @@
   function updateRewindLine(e){
     var tg=rewindTargetAt(e); if(!tg||tg.last){ hideRewindLine(); return; }
     var dtm=S.tf!=='1D'&&S.tf!=='1W'&&S.tf!=='1M'&&S.tf!=='3M';
-    S.cut={ x:tg.x, t:tg.t, label:S.hideDate?'Обрезать':'Обрезать: '+(dtm?fmtTz(tg.t,true):fmtDate(tg.t,false)) }; requestDraw();
+    S.cut={ x:tg.x, t:tg.t, label:S.hideDate?'Cut':'Cut: '+(dtm?fmtTz(tg.t,true):fmtDate(tg.t,false)) }; requestDraw();
   }
   /* smooth scroll of the visible range (cubic-bezier(.65,0,.3,1), measured from the TradingView reference) */
   function bezierEase(x1,y1,x2,y2){
@@ -1218,9 +1210,9 @@
   }
   function doRewind(tg){
     var s=S.sess; if(!s) return;
-    if(tg.last){ toast('Это текущая свеча — обрезать нечего.','warn'); return; }
+    if(tg.last){ toast('This is the current candle — nothing to cut.','warn'); return; }
     var bk=buckets(s.d,S.tf), newCur=bk.La[tg.b];
-    if(newCur<s.startIdx){ toast('Обрезать можно только внутри выбранного периода.','warn'); return; }
+    if(newCur<s.startIdx){ toast('You can only cut inside the selected period.','warn'); return; }
     cancelAnim();
     var lr=S.chart.timeScale().getVisibleLogicalRange(), w=lr?(lr.to-lr.from):160, oldIdx=tg.b-S.dispFrom;
     if(s.cur>s.maxIdx) s.maxIdx=s.cur;
@@ -1234,7 +1226,7 @@
     if(lr){ var sh=(len-1)-oldIdx; animateRange({ from:lr.from+sh, to:lr.to+sh },fin,200,500); }
     else S.chart.timeScale().setVisibleLogicalRange(fin);
     saveSession(); renderTrade(true); requestDraw();
-    toast('График обрезан на '+(S.hideDate?'выбранной свече':fmtTz(s.d.T[s.cur],true)+' '+tzTag(s.d.T[s.cur]))+(dropped?' · отменено ордеров/позиций: '+dropped:''),'warn');
+    toast('Chart cut at '+(S.hideDate?'the selected candle':fmtTz(s.d.T[s.cur],true)+' '+tzTag(s.d.T[s.cur]))+(dropped?' · orders/positions cancelled: '+dropped:''),'warn');
   }
 
   /* cursor shapes: position levels / right edge (pcur-*) and drawings (dcur-*) are separate class sets on the chart */
@@ -1390,9 +1382,9 @@
      Session times are stored in UTC minutes; the settings window shows them in the chosen time zone (no daylight saving). */
   var SESS_TFS={ '5m':1, '15m':1, '30m':1, '1h':1, '4h':1 };
   var SESS_DAYS=180;
-  var SESS_TZ=[ { id:'UTC', name:'UTC', off:0 }, { id:'TYO', name:'Токио (UTC+9)', off:540 }, { id:'MSK', name:'Москва (UTC+3)', off:180 } ];
-  var SESS_STYLES=[ { id:'box', name:'Box' }, { id:'solid', name:'Сплошной' } ];
-  var SESS_LINES=[ { id:'dotted', name:'Точечный' }, { id:'dashed', name:'Штриховой' }, { id:'solid', name:'Сплошной' } ];
+  var SESS_TZ=[ { id:'UTC', name:'UTC', off:0 }, { id:'TYO', name:'Tokyo (UTC+9)', off:540 }, { id:'MSK', name:'Moscow (UTC+3)', off:180 } ];
+  var SESS_STYLES=[ { id:'box', name:'Box' }, { id:'solid', name:'Solid' } ];
+  var SESS_LINES=[ { id:'dotted', name:'Dotted' }, { id:'dashed', name:'Dashed' }, { id:'solid', name:'Solid' } ];
   function sessDef(id,name,from,to,fill){
     return { id:id, name:name, show:true, style:'box', from:from, to:to, label:'rgba(255,255,255,.85)', fill:fill, border:'rgba(255,255,255,.35)', bstyle:'dotted', hl:'rgba(255,255,255,.6)', hlstyle:'solid' };
   }
@@ -1583,24 +1575,24 @@
     if($('rpSet')) return;
     var ov=document.createElement('div'); ov.className='rps-overlay'; ov.id='rpSet'; ov.setAttribute('aria-hidden','true');
     ov.innerHTML=
-      '<div class="rps-dialog" id="rpsDialog" role="dialog" aria-label="Настройки">'+
-        '<div class="rps-head" id="rpsHead"><div class="rps-title">Настройки</div><button class="rps-x" id="rpsClose" type="button" aria-label="Закрыть">'+ICON_X+'</button></div>'+
+      '<div class="rps-dialog" id="rpsDialog" role="dialog" aria-label="Settings">'+
+        '<div class="rps-head" id="rpsHead"><div class="rps-title">Settings</div><button class="rps-x" id="rpsClose" type="button" aria-label="Close">'+ICON_X+'</button></div>'+
         '<div class="rps-body"><nav class="rps-nav" id="rpsNav">'+
-          '<button type="button" class="rps-tab" data-tab="tool">'+ICON_TOOL+'<span>Инструмент</span></button>'+
-          '<button type="button" class="rps-tab" data-tab="look">'+ICON_PEN+'<span>Оформление</span></button>'+
-          '<button type="button" class="rps-tab" data-tab="pos">'+ICON_POS+'<span>Позиции</span></button>'+
-          '<button type="button" class="rps-tab" data-tab="sess">'+ICON_SESS+'<span>Сессии</span></button>'+
-          '<button type="button" class="rps-tab" data-tab="fvg">'+ICON_POS+'<span>Имбаланс</span></button>'+
+          '<button type="button" class="rps-tab" data-tab="tool">'+ICON_TOOL+'<span>Symbol</span></button>'+
+          '<button type="button" class="rps-tab" data-tab="look">'+ICON_PEN+'<span>Appearance</span></button>'+
+          '<button type="button" class="rps-tab" data-tab="pos">'+ICON_POS+'<span>Positions</span></button>'+
+          '<button type="button" class="rps-tab" data-tab="sess">'+ICON_SESS+'<span>Sessions</span></button>'+
+          '<button type="button" class="rps-tab" data-tab="fvg">'+ICON_POS+'<span>Imbalance</span></button>'+
         '</nav><div class="rps-pane" id="rpsPane"></div></div>'+
-        '<div class="rps-foot"><button class="rps-sel" id="rpsTpl" type="button"><span>Шаблон</span>'+ICON_CHEV+'</button><span class="rps-sp"></span>'+
-          '<button class="rps-b" id="rpsCancel" type="button">Отмена</button><button class="rps-b rps-ok" id="rpsOk" type="button">Ок</button></div>'+
+        '<div class="rps-foot"><button class="rps-sel" id="rpsTpl" type="button"><span>Template</span>'+ICON_CHEV+'</button><span class="rps-sp"></span>'+
+          '<button class="rps-b" id="rpsCancel" type="button">Cancel</button><button class="rps-b rps-ok" id="rpsOk" type="button">OK</button></div>'+
       '</div>'+
       '<div class="rps-pop" id="rpsPop"></div>';
     document.body.appendChild(ov);
     var sv=document.createElement('div'); sv.className='rps-saveov'; sv.id='rpsSave'; sv.setAttribute('aria-hidden','true');
     sv.innerHTML=
-      '<div class="rps-card" role="dialog" aria-label="Сохранить шаблон как">'+
-        '<div class="rps-card-head"><div class="rps-card-title" id="rpsSaveTitle">Сохранить шаблон как</div><button class="rps-x" id="rpsSaveX" type="button" aria-label="Закрыть">'+ICON_X+'</button></div>'+
+      '<div class="rps-card" role="dialog" aria-label="Save template as">'+
+        '<div class="rps-card-head"><div class="rps-card-title" id="rpsSaveTitle">Save template as</div><button class="rps-x" id="rpsSaveX" type="button" aria-label="Close">'+ICON_X+'</button></div>'+
         '<div id="rpsSaveBody"></div>'+
       '</div>';
     document.body.appendChild(sv);
@@ -1656,7 +1648,7 @@
   /* ---- settings window ---- */
   function swatchHtml(key,o){
     o=o||{}; var c=getPath(S.style,key);
-    return '<button type="button" class="rps-sw'+(o.line?' is-line':'')+'" data-color="'+key+'"'+(o.line?' data-line="'+o.line+'"':'')+(o.width?' data-width="'+o.width+'"':'')+(o.noAlpha?' data-noalpha="1"':'')+' title="Цвет"><i class="rps-ck"><b style="background:'+esc(c)+'"></b></i>'+(o.line?lineSvg(c,o.line,o.width):'')+'</button>';
+    return '<button type="button" class="rps-sw'+(o.line?' is-line':'')+'" data-color="'+key+'"'+(o.line?' data-line="'+o.line+'"':'')+(o.width?' data-width="'+o.width+'"':'')+(o.noAlpha?' data-noalpha="1"':'')+' title="Color"><i class="rps-ck"><b style="background:'+esc(c)+'"></b></i>'+(o.line?lineSvg(c,o.line,o.width):'')+'</button>';
   }
   function lineSvg(color,styleKey,widthKey){
     var st=getPath(S.style,styleKey), w=widthKey?getPath(S.style,widthKey):1, da=st==='dashed'?'6 4':st==='dotted'?'1.5 3':'';
@@ -1676,49 +1668,49 @@
     document.querySelectorAll('#rpsNav .rps-tab').forEach(function(b){ b.classList.toggle('is-on',b.getAttribute('data-tab')===tab); });
     var navOn=document.querySelector('#rpsNav .rps-tab.is-on'), nav=$('rpsNav'); if(navOn&&nav&&nav.scrollWidth>nav.clientWidth) nav.scrollLeft=Math.max(0,navOn.offsetLeft-(nav.clientWidth-navOn.offsetWidth)/2);
     if(tab==='tool'){
-      html='<div class="rps-sec">Японские свечи</div>'+
-        chkRow('body.on','Тело',swatchHtml('body.up')+swatchHtml('body.down'))+
-        chkRow('border.on','Границы',swatchHtml('border.up')+swatchHtml('border.down'))+
-        chkRow('wick.on','Фитиль',swatchHtml('wick.up')+swatchHtml('wick.down'));
+      html='<div class="rps-sec">Candlesticks</div>'+
+        chkRow('body.on','Body',swatchHtml('body.up')+swatchHtml('body.down'))+
+        chkRow('border.on','Borders',swatchHtml('border.up')+swatchHtml('border.down'))+
+        chkRow('wick.on','Wick',swatchHtml('wick.up')+swatchHtml('wick.down'));
     } else if(tab==='fvg'){
-      html='<div class="rps-sec">Fair Value Gaps (FVG)</div>'+chkRow('fvg.on','Показывать имбалансы','')+
-        plainRow('Бычий имбаланс',swatchHtml('fvg.up'))+plainRow('Медвежий имбаланс',swatchHtml('fvg.down'))+
-        chkRow('fvg.mid.on','Средняя линия',swatchHtml('fvg.mid.color',{ line:'fvg.mid.style', width:'fvg.mid.width' }))+
-        '<div class="rps-sec">Три закрытые свечи · текущий таймфрейм</div>';
+      html='<div class="rps-sec">Fair Value Gaps (FVG)</div>'+chkRow('fvg.on','Show imbalances','')+
+        plainRow('Bullish imbalance',swatchHtml('fvg.up'))+plainRow('Bearish imbalance',swatchHtml('fvg.down'))+
+        chkRow('fvg.mid.on','Midline',swatchHtml('fvg.mid.color',{ line:'fvg.mid.style', width:'fvg.mid.width' }))+
+        '<div class="rps-sec">Three closed candles · current timeframe</div>';
     } else if(tab==='sess'){
       var sc=sessCfg();
-      html='<div class="rps-sec">History</div>'+chkRow('sess.on','Сессии','')+
+      html='<div class="rps-sec">History</div>'+chkRow('sess.on','Sessions','')+
         '<div class="rps-sec">Sessions timezone</div>'+sessRow('Timezone',choiceBtn('sess.tz'))+
         sc.list.map(function(x,i){
           var p='sess.list.'+i+'.';
           return '<div class="rps-sec">'+esc(x.name)+'</div>'+chkRow(p+'show','Show','')+
-            sessRow('Стиль',choiceBtn(p+'style'))+
+            sessRow('Style',choiceBtn(p+'style'))+
             sessRow('Time',timeBtn(p+'from')+'<span class="rps-dash">–</span>'+timeBtn(p+'to'))+
             sessRow('Label',swatchHtml(p+'label'))+
-            sessRow('Фон',swatchHtml(p+'fill'))+
+            sessRow('Background',swatchHtml(p+'fill'))+
             sessRow('Border',swatchHtml(p+'border')+choiceBtn(p+'bstyle'))+
             (x.style==='solid'?'':sessRow('High & Low',swatchHtml(p+'hl')+choiceBtn(p+'hlstyle')));
         }).join('');
     } else if(tab==='pos'){
       var pd=S.set.posDir==='short'?'short':'long', pk='pos.'+pd+'.';
       html='<div class="rps-segd" role="tablist">'+['long','short'].map(function(k){ return '<button type="button" data-pdir="'+k+'" class="'+(k===pd?'is-on':'')+'">'+(k==='long'?'Long':'Short')+'</button>'; }).join('')+'</div>'+
-        plainRow('Линии',swatchHtml(pk+'line.color',{ line:pk+'line.style', width:pk+'line.width' }))+
-        plainRow('Цвет стоп-уровня',swatchHtml(pk+'stop'))+
-        plainRow('Цвет цели',swatchHtml(pk+'target'))+
-        plainRow('Текст',swatchHtml(pk+'text.color',{ noAlpha:true })+'<button type="button" class="rps-dd" data-size="'+pk+'text.size"><span>'+getPath(S.style,pk+'text.size')+'</span>'+ICON_CHEV+'</button>');
+        plainRow('Lines',swatchHtml(pk+'line.color',{ line:pk+'line.style', width:pk+'line.width' }))+
+        plainRow('Stop level color',swatchHtml(pk+'stop'))+
+        plainRow('Target color',swatchHtml(pk+'target'))+
+        plainRow('Text',swatchHtml(pk+'text.color',{ noAlpha:true })+'<button type="button" class="rps-dd" data-size="'+pk+'text.size"><span>'+getPath(S.style,pk+'text.size')+'</span>'+ICON_CHEV+'</button>');
     } else {
-      html='<div class="rps-sec">Основной стиль графика</div>'+
-        plainRow('Фон',swatchHtml('bg',{ noAlpha:true }))+
-        chkRow('gridV.on','Вертикальные линии сетки',swatchHtml('gridV.color',{ line:'gridV.style' }))+
-        chkRow('gridH.on','Горизонтальные линии сетки',swatchHtml('gridH.color',{ line:'gridH.style' }))+
-        plainRow('Перекрестие',swatchHtml('cross.color',{ line:'cross.style', width:'cross.width' }))+
-        '<div class="rps-sec">Шкалы</div>'+
-        plainRow('Текст',swatchHtml('scale.text')+'<button type="button" class="rps-dd" data-size="scale.size"><span>'+S.style.scale.size+'</span>'+ICON_CHEV+'</button>')+
-        plainRow('Линии',swatchHtml('scale.line'))+
-        '<div class="rps-sec">Текущая цена</div>'+
-        chkRow('currentPrice.line.on','Линия цены',swatchHtml('currentPrice.line.color',{ line:'currentPrice.line.style', width:'currentPrice.line.width' }))+
-        chkRow('currentPrice.label.on','Метка цены на шкале',swatchHtml('currentPrice.label.color'))+
-        plainRow('Текст метки',swatchHtml('currentPrice.label.text',{ noAlpha:true }));
+      html='<div class="rps-sec">Main chart style</div>'+
+        plainRow('Background',swatchHtml('bg',{ noAlpha:true }))+
+        chkRow('gridV.on','Vertical grid lines',swatchHtml('gridV.color',{ line:'gridV.style' }))+
+        chkRow('gridH.on','Horizontal grid lines',swatchHtml('gridH.color',{ line:'gridH.style' }))+
+        plainRow('Crosshair',swatchHtml('cross.color',{ line:'cross.style', width:'cross.width' }))+
+        '<div class="rps-sec">Scales</div>'+
+        plainRow('Text',swatchHtml('scale.text')+'<button type="button" class="rps-dd" data-size="scale.size"><span>'+S.style.scale.size+'</span>'+ICON_CHEV+'</button>')+
+        plainRow('Lines',swatchHtml('scale.line'))+
+        '<div class="rps-sec">Current price</div>'+
+        chkRow('currentPrice.line.on','Price line',swatchHtml('currentPrice.line.color',{ line:'currentPrice.line.style', width:'currentPrice.line.width' }))+
+        chkRow('currentPrice.label.on','Price label on scale',swatchHtml('currentPrice.label.color'))+
+        plainRow('Label text',swatchHtml('currentPrice.label.text',{ noAlpha:true }));
     }
     var pane=$('rpsPane'), keepTop=pane.scrollTop; pane.innerHTML=html; pane.classList.toggle('rps-no-scrollbar',tab==='sess'); pane.scrollTop=keepScroll?keepTop:0;
     var tp=$('rpsTpl'); if(tp) tp.style.display=(tab==='pos'||tab==='sess'||tab==='fvg')?'none':'';
@@ -1771,10 +1763,10 @@
     var cells=PALETTE.map(function(row,ri){
       return '<div class="rps-prow'+(ri===2?' is-gap':'')+'">'+row.map(function(h){ return '<button type="button" class="rps-cell" data-hex="'+h+'" style="background:'+h+'" aria-label="'+h+'"></button>'; }).join('')+'</div>';
     }).join('');
-    var html='<div class="rps-pal">'+cells+'</div><div class="rps-psep"></div><button type="button" class="rps-plus" data-plus="1" title="Свой цвет"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M7 2v10M2 7h10"/></svg></button>';
-    if(!noAlpha) html+='<div class="rps-lbl">Прозрачность</div><div class="rps-alpha"><input type="range" class="rps-range" min="0" max="100" step="1" data-alpha="1"><span class="rps-pct" data-pct="1"></span></div>';
-    if(width) html+='<div class="rps-lbl">Толщина</div><div class="rps-seg4">'+[1,2,3,4].map(function(n){ return '<button type="button" data-w="'+n+'" title="'+n+' px"><i style="height:'+n+'px"></i></button>'; }).join('')+'</div>';
-    if(line) html+='<div class="rps-lbl">Стиль линии</div><div class="rps-seg3">'+['solid','dashed','dotted'].map(function(s){ return '<button type="button" data-ls="'+s+'" title="'+({solid:'Сплошная',dashed:'Пунктир',dotted:'Точки'}[s])+'"><i class="ls-'+s+'"></i></button>'; }).join('')+'</div>';
+    var html='<div class="rps-pal">'+cells+'</div><div class="rps-psep"></div><button type="button" class="rps-plus" data-plus="1" title="Custom color"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M7 2v10M2 7h10"/></svg></button>';
+    if(!noAlpha) html+='<div class="rps-lbl">Opacity</div><div class="rps-alpha"><input type="range" class="rps-range" min="0" max="100" step="1" data-alpha="1"><span class="rps-pct" data-pct="1"></span></div>';
+    if(width) html+='<div class="rps-lbl">Width</div><div class="rps-seg4">'+[1,2,3,4].map(function(n){ return '<button type="button" data-w="'+n+'" title="'+n+' px"><i style="height:'+n+'px"></i></button>'; }).join('')+'</div>';
+    if(line) html+='<div class="rps-lbl">Line style</div><div class="rps-seg3">'+['solid','dashed','dotted'].map(function(s){ return '<button type="button" data-ls="'+s+'" title="'+({solid:'Solid',dashed:'Dashed',dotted:'Dotted'}[s])+'"><i class="ls-'+s+'"></i></button>'; }).join('')+'</div>';
     var pop=$('rpsPop'); pop.className='rps-pop rps-pop-color'; pop.innerHTML=html; pop.classList.add('is-open');
     S.set.pop={ kind:'color', key:key, line:line, width:width, btn:btn }; placePop(btn,'down'); syncColorPop();
   }
@@ -1882,24 +1874,24 @@
   function refreshTplMenu(){ if(S.set&&S.set.pop&&S.set.pop.kind==='tpl') renderTplMenu(); }
   function renderTplMenu(){
     var p=S.set&&S.set.pop; if(!p||p.kind!=='tpl') return;
-    var html='<button type="button" class="rps-li" data-tpl="default">Применить по умолчанию</button><button type="button" class="rps-li" data-tpl="save">Сохранить как…</button>';
+    var html='<button type="button" class="rps-li" data-tpl="default">Apply default</button><button type="button" class="rps-li" data-tpl="save">Save as…</button>';
     var list=S.profiles||[];
-    if(S.profState==='loading'&&!list.length) html+='<div class="rps-lsep"></div><div class="rps-note">Загрузка…</div>';
+    if(S.profState==='loading'&&!list.length) html+='<div class="rps-lsep"></div><div class="rps-note">Loading…</div>';
     else if(list.length||S.profState==='cache') html+='<div class="rps-lsep"></div>';
     list.forEach(function(x){
-      if(p.confirm===x.id){ html+='<div class="rps-li rps-conf"><span>Удалить «'+esc(x.name)+'»?</span><button type="button" class="rps-mb" data-delyes="'+esc(x.id)+'">Да</button><button type="button" class="rps-mb" data-delno="1">Нет</button></div>'; return; }
+      if(p.confirm===x.id){ html+='<div class="rps-li rps-conf"><span>Delete “'+esc(x.name)+'”?</span><button type="button" class="rps-mb" data-delyes="'+esc(x.id)+'">Yes</button><button type="button" class="rps-mb" data-delno="1">No</button></div>'; return; }
       var on=sameStyle(x.style,S.style);
-      html+='<div class="rps-it"><button type="button" class="rps-li'+(on?' is-sel':'')+'" data-tpl="'+esc(x.id)+'" title="'+esc(x.name)+'"><span class="rps-nm">'+esc(x.name)+'</span>'+(x.local?'<small>на устройстве</small>':'')+'</button><button type="button" class="rps-del" data-del="'+esc(x.id)+'" title="Удалить шаблон" aria-label="Удалить шаблон">'+ICON_X+'</button></div>';
+      html+='<div class="rps-it"><button type="button" class="rps-li'+(on?' is-sel':'')+'" data-tpl="'+esc(x.id)+'" title="'+esc(x.name)+'"><span class="rps-nm">'+esc(x.name)+'</span>'+(x.local?'<small>on this device</small>':'')+'</button><button type="button" class="rps-del" data-del="'+esc(x.id)+'" title="Delete template" aria-label="Delete template">'+ICON_X+'</button></div>';
     });
-    if(S.profState==='cache') html+='<div class="rps-note">Нет связи с базой — показаны шаблоны этого устройства</div>';
+    if(S.profState==='cache') html+='<div class="rps-note">No database connection — showing this device’s templates</div>';
     $('rpsPop').innerHTML=html; placePop(p.btn,'up');
   }
   function deleteProfile(id){
     var b=bridge(), x=profileById(id); if(!x) return;
     S.profiles=(S.profiles||[]).filter(function(y){ return y.id!==id; }); writeProfCache();
     if(S.set&&S.set.pop) S.set.pop.confirm=null; renderTplMenu();
-    if(b&&b.profileDelete&&!x.local) b.profileDelete(id).catch(function(err){ console.error('replay profile delete failed:',err); toast('Не удалось удалить шаблон в базе','warn'); });
-    toast('Шаблон «'+x.name+'» удалён');
+    if(b&&b.profileDelete&&!x.local) b.profileDelete(id).catch(function(err){ console.error('replay profile delete failed:',err); toast('Could not delete the template in the database','warn'); });
+    toast('Template “'+x.name+'” deleted');
   }
   function openSave(){
     var sv=$('rpsSave'); S.save={ confirm:null }; sv.classList.add('is-open'); sv.setAttribute('aria-hidden','false'); renderSave();
@@ -1909,22 +1901,22 @@
   function renderSave(){
     var body=$('rpsSaveBody'), sv=S.save; if(!sv) return;
     if(sv.confirm){
-      $('rpsSaveTitle').textContent='Заменить шаблон?';
-      body.innerHTML='<div class="rps-msg">Шаблон «'+esc(sv.confirm.name)+'» уже существует. Заменить его текущими настройками?</div><div class="rps-card-foot"><button type="button" class="rps-b" id="rpsSvNo">Отмена</button><button type="button" class="rps-b rps-ok" id="rpsSvYes">Заменить</button></div>';
+      $('rpsSaveTitle').textContent='Replace template?';
+      body.innerHTML='<div class="rps-msg">Template “'+esc(sv.confirm.name)+'” already exists. Replace it with the current settings?</div><div class="rps-card-foot"><button type="button" class="rps-b" id="rpsSvNo">Cancel</button><button type="button" class="rps-b rps-ok" id="rpsSvYes">Replace</button></div>';
       $('rpsSvNo').addEventListener('click',function(){ sv.confirm=null; renderSave(); });
       $('rpsSvYes').addEventListener('click',function(){ doSave(sv.confirm.name,sv.confirm.id); });
       return;
     }
-    $('rpsSaveTitle').textContent='Сохранить шаблон как';
-    body.innerHTML='<label class="rps-flab" for="rpsName">Имя шаблона:</label><div class="rps-fin"><input id="rpsName" type="text" maxlength="40" autocomplete="off" spellcheck="false"><button type="button" class="rps-fchev" id="rpsNameChev" tabindex="-1" aria-label="Список шаблонов">'+ICON_CHEV+'</button><div class="rps-flist" id="rpsNameList"></div></div>'+
-      '<div class="rps-card-foot"><button type="button" class="rps-b" id="rpsSvCancel">Отмена</button><button type="button" class="rps-b rps-ok" id="rpsSvOk" disabled>Сохранить</button></div>';
+    $('rpsSaveTitle').textContent='Save template as';
+    body.innerHTML='<label class="rps-flab" for="rpsName">Template name:</label><div class="rps-fin"><input id="rpsName" type="text" maxlength="40" autocomplete="off" spellcheck="false"><button type="button" class="rps-fchev" id="rpsNameChev" tabindex="-1" aria-label="Template list">'+ICON_CHEV+'</button><div class="rps-flist" id="rpsNameList"></div></div>'+
+      '<div class="rps-card-foot"><button type="button" class="rps-b" id="rpsSvCancel">Cancel</button><button type="button" class="rps-b rps-ok" id="rpsSvOk" disabled>Save</button></div>';
     var inp=$('rpsName'), ok=$('rpsSvOk'), list=$('rpsNameList');
     var upd=function(){ ok.disabled=!inp.value.trim(); };
     inp.addEventListener('input',upd);
     inp.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); if(!ok.disabled) ok.click(); } });
     $('rpsNameChev').addEventListener('click',function(){
       if(list.classList.contains('is-open')){ list.classList.remove('is-open'); return; }
-      var pl=S.profiles||[]; list.innerHTML=pl.length?pl.map(function(x){ return '<button type="button" data-n="'+esc(x.name)+'">'+esc(x.name)+'</button>'; }).join(''):'<div class="rps-note">Сохранённых шаблонов нет</div>';
+      var pl=S.profiles||[]; list.innerHTML=pl.length?pl.map(function(x){ return '<button type="button" data-n="'+esc(x.name)+'">'+esc(x.name)+'</button>'; }).join(''):'<div class="rps-note">No saved templates</div>';
       list.classList.add('is-open');
     });
     list.addEventListener('click',function(e){ var b=e.target.closest('[data-n]'); if(b){ inp.value=b.getAttribute('data-n'); list.classList.remove('is-open'); upd(); inp.focus(); } });
@@ -1939,14 +1931,14 @@
     var b=bridge(), style=chartOnly(S.style), rec={ id:id||('rp'+Date.now().toString(36)+newId()), name:name, style:style };
     var finish=function(local){
       rec.local=!!local; var l=(S.profiles||[]).filter(function(x){ return x.id!==rec.id; }); l.push(rec); S.profiles=sortProfiles(l); writeProfCache();
-      closeSave(); toast(local?'Шаблон «'+name+'» сохранён только на этом устройстве — нет связи с базой':'Шаблон «'+name+'» сохранён',local?'warn':'ok');
+      closeSave(); toast(local?'Template “'+name+'” saved on this device only — no database connection':'Template “'+name+'” saved',local?'warn':'ok');
     };
     if(!(b&&b.profileSave&&b.ready())){ finish(true); return; }
     var ok=$('rpsSvYes')||$('rpsSvOk'); if(ok) ok.disabled=true;
     b.profileSave({ id:rec.id, name:name, style:style }).then(function(){ finish(false); }).catch(function(err){ console.error('replay profile save failed:',err); finish(true); });
   }
 
-  /* ---- right-click menu: empty chart area → «Настройки…», price scale → «Больше настроек…» ---- */
+  /* ---- right-click menu: empty chart area → «Settings…», price scale → «More settings…» ---- */
   function candleAt(x,y){
     var s=S.sess; if(!s||!S.chart||!S.series) return false;
     var ts=S.chart.timeScale(), lg=ts.coordinateToLogical(x); if(lg==null) return false;
@@ -1969,7 +1961,7 @@
   }
   function openCtx(x,y,kind){
     buildSettingsDom(); var m=$('rpsCtx');
-    m.innerHTML='<button type="button" class="rps-ci" data-open="1">'+(kind==='scale'?'Больше настроек…':'Настройки…')+'</button>';
+    m.innerHTML='<button type="button" class="rps-ci" data-open="1">'+(kind==='scale'?'More settings…':'Settings…')+'</button>';
     m.style.left='0px'; m.style.top='0px'; m.classList.add('is-open'); S.ctxOpen=true;
     var w=m.offsetWidth, h=m.offsetHeight;
     m.style.left=Math.round(Math.min(x,window.innerWidth-w-8))+'px'; m.style.top=Math.round(Math.min(y,window.innerHeight-h-8))+'px';
@@ -2090,7 +2082,7 @@
     var D=S.dr; clearTimeout(D.tm); D.tm=null;
     var s=S.sess, b=bridge(); if(!s||!s.btId||!b||!b.getBacktest(s.btId)||!s.drawAt) return;
     var js=D.op&&D.op.pre?D.op.pre:JSON.stringify(drList());
-    if(js.length>900000){ toast('Рисунки слишком большие для бэктеста — они остаются на этом устройстве.','warn'); return; }
+    if(js.length>900000){ toast('Drawings are too large for the backtest — they stay on this device.','warn'); return; }
     b.updateBacktest(s.btId,{ drawings:js, drawingsAt:s.drawAt });
   }
   /* on resume take the newest copy: device session or the backtest document */
@@ -2128,7 +2120,7 @@
   }
   function drHideSel(){
     var D=S.dr, sel=drSel(); if(!sel.length) return; drPushUndo(); sel.forEach(function(d){ d.hidden=true; }); D.sel=[]; drClosePop(); drCommit();
-    toast('Рисунок скрыт — кнопка «глаз» на панели вернёт скрытые.');
+    toast('Drawing hidden — the “eye” button on the toolbar brings hidden ones back.');
   }
   function drToggleEye(){
     var D=S.dr, l=drList(), anyHid=l.some(function(d){ return d.hidden; });
@@ -2296,14 +2288,14 @@
     var delta=o.b.p-o.a.p,percent=o.a.p?delta/o.a.p*100:0;
     return {bars:Math.abs(Math.round(tsToLg(o.b.t))-Math.round(tsToLg(o.a.t))),seconds:seconds,delta:delta,percent:percent,
       text:(delta>=0?'+':'')+delta.toFixed(S.sess.d.dp)+' ('+(percent>=0?'+':'')+percent.toFixed(2)+'%)',
-      time:(days?days+' д ': '')+(hours?hours+' ч ':'')+minutes+' мин'};
+      time:(days?days+'d ': '')+(hours?hours+'h ':'')+minutes+'m'};
   }
   function drPaintMeasure(ctx,hr,vr,o){
     var a=px(o.a),b=px(o.b);if(!a||!b)return;var m=drMeasure(o),up=m.delta>=0,color=up?'#2962ff':'#ef5350';
     ctx.save();ctx.scale(hr,vr);ctx.fillStyle=up?'rgba(41,98,255,.15)':'rgba(239,83,80,.15)';ctx.strokeStyle=color;ctx.lineWidth=1;
     ctx.fillRect(a.x,a.y,b.x-a.x,b.y-a.y);ctx.strokeRect(a.x,a.y,b.x-a.x,b.y-a.y);
     ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
-    ctx.font='12px sans-serif';var lines=[m.text,m.bars+' свечей · '+m.time],width=Math.max(ctx.measureText(lines[0]).width,ctx.measureText(lines[1]).width)+20;
+    ctx.font='12px sans-serif';var lines=[m.text,m.bars+' bars · '+m.time],width=Math.max(ctx.measureText(lines[0]).width,ctx.measureText(lines[1]).width)+20;
     var el=$('rpChart'),x=Math.max(4,Math.min((a.x+b.x-width)/2,el.clientWidth-S.chart.priceScale('right').width()-width-4)),y=Math.max(4,Math.min(Math.min(a.y,b.y)-52,el.clientHeight-70));
     ctx.fillStyle=color;ctx.fillRect(x,y,width,46);ctx.fillStyle='#fff';ctx.fillText(lines[0],x+10,y+18);ctx.fillText(lines[1],x+10,y+36);ctx.restore();
   }
@@ -2520,25 +2512,25 @@
   function buildDrawDom(){
     var card=document.querySelector('#rpSession .rp-chart-card'); if(!card||$('rpdTools')) return;
     var tools=document.createElement('div'); tools.className='rpd-bar'; tools.id='rpdTools';
-    tools.innerHTML='<div class="rpd-grip" data-grip="tools" title="Перетащить">'+ICO.grip+'</div>'+
-      '<button type="button" class="rpd-b" data-tool="cursor" title="Курсор (Esc). Измерение: Shift + перетаскивание">'+ICO.cursor+'</button>'+
-      '<button type="button" class="rpd-b" data-tool="brush" title="Кисть">'+ICO.brush+'</button>'+
-      '<button type="button" class="rpd-b" data-tool="line" title="Линия: клик — клик">'+ICO.line+'</button>'+
-      '<button type="button" class="rpd-b" data-tool="ray" title="Луч вправо: один клик. Направление можно изменить ручкой">'+ICO.ray+'</button>'+
-      '<button type="button" class="rpd-b" data-tool="rect" title="Прямоугольник: клик — клик">'+ICO.rect+'</button>'+
-      '<i class="rpd-sep"></i><button type="button" class="rpd-b" data-act="eye" title="Скрыть все рисунки">'+ICO.eye+'</button>';
+    tools.innerHTML='<div class="rpd-grip" data-grip="tools" title="Drag">'+ICO.grip+'</div>'+
+      '<button type="button" class="rpd-b" data-tool="cursor" title="Cursor (Esc). Measure: Shift + drag">'+ICO.cursor+'</button>'+
+      '<button type="button" class="rpd-b" data-tool="brush" title="Brush">'+ICO.brush+'</button>'+
+      '<button type="button" class="rpd-b" data-tool="line" title="Line: click — click">'+ICO.line+'</button>'+
+      '<button type="button" class="rpd-b" data-tool="ray" title="Ray: one click. Change the direction with the handle">'+ICO.ray+'</button>'+
+      '<button type="button" class="rpd-b" data-tool="rect" title="Rectangle: click — click">'+ICO.rect+'</button>'+
+      '<i class="rpd-sep"></i><button type="button" class="rpd-b" data-act="eye" title="Hide all drawings">'+ICO.eye+'</button>';
     var props=document.createElement('div'); props.className='rpd-bar rpd-props'; props.id='rpdProps';
-    props.innerHTML='<div class="rpd-grip" data-grip="props" title="Перетащить">'+ICO.grip+'</div>'+
-      '<button type="button" class="rpd-b rpd-col" data-p="color" title="Цвет линии">'+ICO.pen+'<i></i></button>'+
-      '<button type="button" class="rpd-b rpd-col" data-p="fill" title="Цвет заливки">'+ICO.fill+'<i></i></button>'+
+    props.innerHTML='<div class="rpd-grip" data-grip="props" title="Drag">'+ICO.grip+'</div>'+
+      '<button type="button" class="rpd-b rpd-col" data-p="color" title="Line color">'+ICO.pen+'<i></i></button>'+
+      '<button type="button" class="rpd-b rpd-col" data-p="fill" title="Fill color">'+ICO.fill+'<i></i></button>'+
       '<i class="rpd-sep"></i>'+
-      '<button type="button" class="rpd-b rpd-wide" data-p="width" title="Толщина линии"><i class="rpd-lw"></i><span></span>'+ICON_CHEV+'</button>'+
-      '<button type="button" class="rpd-b rpd-wide" data-p="style" title="Стиль линии"><svg class="rpd-st" width="26" height="12" viewBox="0 0 26 12" aria-hidden="true"><line x1="1" y1="6" x2="25" y2="6" stroke="currentColor" stroke-width="2"/></svg>'+ICON_CHEV+'</button>'+
-      '<button type="button" class="rpd-b" data-p="mid" title="Центральная линия">'+ICO.mid+'</button>'+
+      '<button type="button" class="rpd-b rpd-wide" data-p="width" title="Line width"><i class="rpd-lw"></i><span></span>'+ICON_CHEV+'</button>'+
+      '<button type="button" class="rpd-b rpd-wide" data-p="style" title="Line style"><svg class="rpd-st" width="26" height="12" viewBox="0 0 26 12" aria-hidden="true"><line x1="1" y1="6" x2="25" y2="6" stroke="currentColor" stroke-width="2"/></svg>'+ICON_CHEV+'</button>'+
+      '<button type="button" class="rpd-b" data-p="mid" title="Center line">'+ICO.mid+'</button>'+
       '<i class="rpd-sep"></i>'+
-      '<button type="button" class="rpd-b" data-p="lock" title="Заблокировать">'+ICO.lock+'</button>'+
-      '<button type="button" class="rpd-b" data-p="del" title="Удалить (Delete)">'+ICO.trash+'</button>'+
-      '<button type="button" class="rpd-b" data-p="more" title="Ещё">'+ICO.more+'</button>';
+      '<button type="button" class="rpd-b" data-p="lock" title="Lock">'+ICO.lock+'</button>'+
+      '<button type="button" class="rpd-b" data-p="del" title="Delete (Delete)">'+ICO.trash+'</button>'+
+      '<button type="button" class="rpd-b" data-p="more" title="More">'+ICO.more+'</button>';
     card.appendChild(tools); card.appendChild(props);
     var pop=document.createElement('div'); pop.className='rps-pop'; pop.id='rpdPop'; document.body.appendChild(pop);
     var ci=document.createElement('input'); ci.type='color'; ci.id='rpdNative'; ci.className='rps-native'; ci.tabIndex=-1; ci.setAttribute('aria-hidden','true'); document.body.appendChild(ci);
@@ -2588,7 +2580,7 @@
     tb.querySelectorAll('[data-tool]').forEach(function(b){ b.classList.toggle('is-on',b.getAttribute('data-tool')===D.tool); });
     var anyHid=drList().some(function(d){ return d.hidden; }), eye=tb.querySelector('[data-act="eye"]'), off=D.hideAll||anyHid;
     eye.innerHTML=D.hideAll?ICO.eyeOff:ICO.eye; eye.classList.toggle('is-on',D.hideAll||anyHid);
-    eye.title=D.hideAll?'Показать все рисунки':anyHid?'Показать скрытые рисунки':'Скрыть все рисунки';
+    eye.title=D.hideAll?'Show all drawings':anyHid?'Show hidden drawings':'Hide all drawings';
     var sel=drSel(), pb=$('rpdProps'), open=sel.length>0&&!!S.sess&&!D.hideAll; pb.classList.toggle('is-open',open);
     if(open){
       var d=sel[0], hasRect=sel.some(function(x){ return x.type==='rect'; }), onlyBrush=sel.every(function(x){ return x.type==='brush'; }), allLocked=sel.every(function(x){ return x.locked; });
@@ -2597,7 +2589,7 @@
       var wb=pb.querySelector('[data-p="width"]'); wb.querySelector('.rpd-lw').style.height=d.w+'px'; wb.querySelector('span').textContent=d.w+'px';
       var sb=pb.querySelector('[data-p="style"]'); sb.style.display=onlyBrush?'none':''; var ln=sb.querySelector('line'); ln.setAttribute('stroke-dasharray',d.style==='dashed'?'6 4':d.style==='dotted'?'1.5 3.5':''); ln.setAttribute('stroke-linecap',d.style==='dotted'?'round':'butt');
       var mb=pb.querySelector('[data-p="mid"]'); mb.style.display=hasRect?'':'none'; mb.classList.toggle('is-on',sel.some(function(x){ return x.type==='rect'&&x.mid&&x.mid.on; }));
-      var lk=pb.querySelector('[data-p="lock"]'); lk.innerHTML=allLocked?ICO.lock:ICO.unlock; lk.classList.toggle('is-on',allLocked); lk.title=allLocked?'Разблокировать':'Заблокировать';
+      var lk=pb.querySelector('[data-p="lock"]'); lk.innerHTML=allLocked?ICO.lock:ICO.unlock; lk.classList.toggle('is-on',allLocked); lk.title=allLocked?'Unlock':'Lock';
       drPlaceBars();
     } else drClosePop();
   }
@@ -2623,8 +2615,8 @@
       return '<div class="rps-prow'+(ri===2?' is-gap':'')+'">'+row.map(function(h){ return '<button type="button" class="rps-cell" data-hex="'+h+'" style="background:'+h+'" aria-label="'+h+'"></button>'; }).join('')+'</div>';
     }).join('');
     var pop=$('rpdPop'); pop.className='rps-pop rps-pop-color';
-    pop.innerHTML='<div class="rps-pal">'+cells+'</div><div class="rps-psep"></div><button type="button" class="rps-plus" data-plus="1" title="Свой цвет"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M7 2v10M2 7h10"/></svg></button>'+
-      '<div class="rps-lbl">Прозрачность</div><div class="rps-alpha"><input type="range" class="rps-range" min="0" max="100" step="1" data-alpha="1"><span class="rps-pct" data-pct="1"></span></div>';
+    pop.innerHTML='<div class="rps-pal">'+cells+'</div><div class="rps-psep"></div><button type="button" class="rps-plus" data-plus="1" title="Custom color"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M7 2v10M2 7h10"/></svg></button>'+
+      '<div class="rps-lbl">Opacity</div><div class="rps-alpha"><input type="range" class="rps-range" min="0" max="100" step="1" data-alpha="1"><span class="rps-pct" data-pct="1"></span></div>';
     pop.classList.add('is-open'); S.dr.pop={ kind:key, key:key, btn:btn }; drPlacePop(btn); drSyncColorPop(cur);
   }
   function drSyncColorPop(c){
@@ -2650,11 +2642,11 @@
       return '<div class="rps-prow'+(ri===2?' is-gap':'')+'">'+row.map(function(h){ return '<button type="button" class="rps-cell" data-mhex="'+h+'" style="background:'+h+'" aria-label="'+h+'"></button>'; }).join('')+'</div>';
     }).join('');
     var pop=$('rpdPop'); pop.className='rps-pop rps-pop-color rpd-pop-mid';
-    pop.innerHTML='<label class="rpd-midchk"><input type="checkbox" class="rps-cb" data-mon="1"><span class="rps-box"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 6.2 5 8.6 9.6 3.6"/></svg></span><span>Центральная линия</span></label>'+
-      '<div class="rpd-midbody"><div class="rps-pal">'+cells+'</div><div class="rps-psep"></div><button type="button" class="rps-plus" data-mplus="1" title="Свой цвет"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M7 2v10M2 7h10"/></svg></button>'+
-      '<div class="rps-lbl">Прозрачность</div><div class="rps-alpha"><input type="range" class="rps-range" min="0" max="100" step="1" data-malpha="1"><span class="rps-pct" data-mpct="1"></span></div>'+
-      '<div class="rps-lbl">Толщина</div><div class="rps-seg4">'+[1,2,3,4].map(function(n){ return '<button type="button" data-mw="'+n+'" title="'+n+' px"><i style="height:'+n+'px"></i></button>'; }).join('')+'</div>'+
-      '<div class="rps-lbl">Стиль линии</div><div class="rps-seg3">'+['solid','dashed','dotted'].map(function(t){ return '<button type="button" data-ms="'+t+'" title="'+({solid:'Сплошная',dashed:'Пунктир',dotted:'Точки'}[t])+'"><i class="ls-'+t+'"></i></button>'; }).join('')+'</div></div>';
+    pop.innerHTML='<label class="rpd-midchk"><input type="checkbox" class="rps-cb" data-mon="1"><span class="rps-box"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 6.2 5 8.6 9.6 3.6"/></svg></span><span>Center line</span></label>'+
+      '<div class="rpd-midbody"><div class="rps-pal">'+cells+'</div><div class="rps-psep"></div><button type="button" class="rps-plus" data-mplus="1" title="Custom color"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M7 2v10M2 7h10"/></svg></button>'+
+      '<div class="rps-lbl">Opacity</div><div class="rps-alpha"><input type="range" class="rps-range" min="0" max="100" step="1" data-malpha="1"><span class="rps-pct" data-mpct="1"></span></div>'+
+      '<div class="rps-lbl">Width</div><div class="rps-seg4">'+[1,2,3,4].map(function(n){ return '<button type="button" data-mw="'+n+'" title="'+n+' px"><i style="height:'+n+'px"></i></button>'; }).join('')+'</div>'+
+      '<div class="rps-lbl">Line style</div><div class="rps-seg3">'+['solid','dashed','dotted'].map(function(t){ return '<button type="button" data-ms="'+t+'" title="'+({solid:'Solid',dashed:'Dashed',dotted:'Dotted'}[t])+'"><i class="ls-'+t+'"></i></button>'; }).join('')+'</div></div>';
     pop.style.minWidth=''; pop.classList.add('is-open'); S.dr.pop={ kind:'mid', btn:btn }; drPlacePop(btn); drSyncMidPop();
   }
   function drSyncMidPop(){
@@ -2685,8 +2677,8 @@
     var pop=$('rpdPop'), d=drSel()[0], html='';
     pop.className='rps-pop rps-pop-list';
     if(kind==='width') html=[1,2,3,4].map(function(n){ return '<button type="button" class="rps-li rpd-li'+(d&&d.w===n?' is-sel':'')+'" data-lw="'+n+'"><i class="rpd-lw" style="height:'+n+'px"></i><span>'+n+' px</span></button>'; }).join('');
-    else if(kind==='style') html=['solid','dashed','dotted'].map(function(s){ return '<button type="button" class="rps-li rpd-li'+(d&&d.style===s?' is-sel':'')+'" data-ls="'+s+'"><i class="rpd-ls ls-'+s+'"></i><span>'+({solid:'Сплошная',dashed:'Пунктир',dotted:'Точки'}[s])+'</span></button>'; }).join('');
-    else html='<button type="button" class="rps-li" data-more="dup">Дублировать</button><button type="button" class="rps-li" data-more="hide">Скрыть</button><button type="button" class="rps-li" data-more="front">На передний план</button><button type="button" class="rps-li" data-more="back">На задний план</button>';
+    else if(kind==='style') html=['solid','dashed','dotted'].map(function(s){ return '<button type="button" class="rps-li rpd-li'+(d&&d.style===s?' is-sel':'')+'" data-ls="'+s+'"><i class="rpd-ls ls-'+s+'"></i><span>'+({solid:'Solid',dashed:'Dashed',dotted:'Dotted'}[s])+'</span></button>'; }).join('');
+    else html='<button type="button" class="rps-li" data-more="dup">Duplicate</button><button type="button" class="rps-li" data-more="hide">Hide</button><button type="button" class="rps-li" data-more="front">Bring to front</button><button type="button" class="rps-li" data-more="back">Send to back</button>';
     pop.innerHTML=html; pop.style.minWidth=kind==='more'?'190px':Math.round(btn.getBoundingClientRect().width)+'px'; pop.classList.add('is-open'); S.dr.pop={ kind:kind, btn:btn }; drPlacePop(btn);
   }
   function onDrPopClick(e){
@@ -2773,7 +2765,7 @@
         if(!$('rpStart').value){ $('rpStart').value='2024-01-02'; $('rpEnd').value='2024-06-28'; }
         syncRange();
         renderResume(); syncLobby(); getBin(S.selected,'h1').catch(function(){});
-      }).catch(function(){ showError('Не удалось загрузить котировки. Проверь подключение и настройку источника Replay.'); });
+      }).catch(function(){ showError('Could not load quotes. Check your connection and the Replay data source.'); });
     });
   }
   function closeWorkspaceNow(){

@@ -19,7 +19,7 @@
    (~450 KB) loads right after the page is ready instead of before it. Their menu
    entries stay hidden until the code has loaded, exactly as before. */
 (function(){
-  var files=['accounts-config.js?v=1053adb163','accounts-space.js?v=23eb807462','vendor/lightweight-charts.js?v=37e5f4fe8b','replay-data-config.js?v=a87b6ba84a','replay-space.js?v=913c43e749'];
+  var files=['accounts-config.js?v=1053adb163','accounts-space.js?v=23eb807462','vendor/lightweight-charts.js?v=37e5f4fe8b','replay-data-config.js?v=a87b6ba84a','replay-space.js?v=b733f02748'];
   var started=false;
   function next(i){
     if(i>=files.length)return;
@@ -1490,7 +1490,7 @@ separated by commas or new lines"></textarea>
       if (maxYMD && maxYMD < datetimePickerState.maxDate) { datetimePickerState.maxDate = maxYMD; }
       renderDateTimePicker();
     },
-    models: function(){ try { return tradeModelChoices().map(function(m){ return { id: m.id || '', name: m.name || '' }; }); } catch(_) { return [{ id: '', name: 'Без модели' }]; } },
+    models: function(){ try { return tradeModelChoices().map(function(m){ return { id: m.id || '', name: m.name || '' }; }); } catch(_) { return [{ id: '', name: 'No model' }]; } },
     createBacktest: function(o){
       var ow = owner(); if (!ow) return null;
       var bt = { id: Date.now().toString() + Math.random().toString(36).slice(2, 6), name: o.name || 'Replay', uid: ow.uid, ownerLogin: viewingUser,
