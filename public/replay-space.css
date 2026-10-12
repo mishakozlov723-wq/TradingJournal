@@ -40,6 +40,18 @@ body.replay-workspace-mode .accounts-workspace { display:none !important; }
 .rp-asset-dot { display:block; width:9px; height:9px; border-radius:50%; background:var(--rp-color); box-shadow:0 0 0 4px color-mix(in srgb, var(--rp-color) 16%, transparent); }
 .rp-asset-name { font-size:17px; font-weight:800; letter-spacing:-.02em; margin-top:12px; }
 .rp-asset-meta { color:var(--textMuted); font-size:11px; margin-top:4px; }
+.rp-asset[hidden] { display:none; }
+.rp-asset:disabled { opacity:.45; cursor:default; transform:none; }
+.rp-tier2 { margin:-2px 0 14px; }
+.rp-tier2[hidden] { display:none; }
+.rp-tier2-head { display:flex; align-items:center; gap:8px; width:max-content; padding:6px 2px; color:var(--textMuted); font-size:12px; font-weight:700; letter-spacing:.02em; cursor:pointer; list-style:none; user-select:none; }
+.rp-tier2-head::-webkit-details-marker { display:none; }
+.rp-tier2-head:hover { color:var(--textMain); }
+.rp-tier2-count { min-width:18px; padding:1px 6px; border-radius:999px; background:rgba(255,255,255,.07); font-size:10px; text-align:center; }
+.rp-tier2-head .rp-chev { transition:transform .18s ease; }
+.rp-tier2[open] .rp-tier2-head .rp-chev { transform:rotate(180deg); }
+.rp-assets-t2 { grid-template-columns:repeat(5,minmax(0,1fr)); margin:8px 0 0; }
+.rp-assets-t2 .rp-asset-name { font-size:15px; }
 .rp-card { border:1px solid var(--cardBorder); border-radius:20px; background:var(--card); padding:18px; margin-bottom:12px; }
 .rp-form-row { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
 .rp-field { display:flex; flex-direction:column; gap:6px; min-width:150px; }
@@ -121,7 +133,7 @@ body.replay-fullscreen .autumn-leaf, body.replay-fullscreen .winter-snowflake { 
 .rp-curtain.ready .rp-curtain-progress { background:var(--textMain); }
 .rp-curtain.leaving { opacity:0; transition:opacity .24s cubic-bezier(.7,0,.84,0); }
 
-@media (max-width:900px) { .rp-assets { grid-template-columns:repeat(2,minmax(0,1fr)); } .rp-title { font-size:18px; } .rp-progress { min-width:150px; } }
+@media (max-width:900px) { .rp-assets, .rp-assets-t2 { grid-template-columns:repeat(2,minmax(0,1fr)); } .rp-title { font-size:18px; } .rp-progress { min-width:150px; } }
 
 /* lobby: period button (opens the Backtest Space calendar) */
 .rp-range-btn { min-width:250px; text-align:left; cursor:pointer; font-weight:650; letter-spacing:.01em; }

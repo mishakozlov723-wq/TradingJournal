@@ -7,12 +7,19 @@
 (function(){
   'use strict';
 
+  /* tier 1 — always visible; tier 2 — collapsible "Активы tier 2" section, shown once the quotes site publishes them */
   var ASSETS = [
-    { name:'EURUSD', color:'#a78bfa', label:'EUR / USD' },
-    { name:'GBPUSD', color:'#fbbf24', label:'GBP / USD' },
-    { name:'XAUUSD', color:'#22d3ee', label:'Gold' },
-    { name:'GER40',  color:'#f472b6', label:'DAX 40' }
+    { name:'EURUSD', color:'#a78bfa', label:'EUR / USD', tier:1 },
+    { name:'GBPUSD', color:'#fbbf24', label:'GBP / USD', tier:1 },
+    { name:'XAUUSD', color:'#22d3ee', label:'Gold', tier:1 },
+    { name:'GER40',  color:'#f472b6', label:'DAX 40', tier:1 },
+    { name:'USDJPY', color:'#60a5fa', label:'USD / JPY', tier:2 },
+    { name:'XAGUSD', color:'#cbd5e1', label:'Silver', tier:2 },
+    { name:'USDCAD', color:'#fb923c', label:'USD / CAD', tier:2 },
+    { name:'NZDUSD', color:'#4ade80', label:'NZD / USD', tier:2 },
+    { name:'USDCHF', color:'#e879f9', label:'USD / CHF', tier:2 }
   ];
+  var TIER2_KEY = 'tj_replay_tier2_open';
   var DATA_BASE = window.TJ_REPLAY_DATA_BASE || 'replay-data/';
   if(DATA_BASE.charAt(DATA_BASE.length-1)!=='/') DATA_BASE+='/';
   var TFS = [
@@ -112,7 +119,7 @@
     if(S.metaPromise) return S.metaPromise;
     S.metaPromise = fetch(DATA_BASE+'meta.json',{cache:'no-cache'}).then(function(r){ if(!r.ok) throw new Error('meta'); return r.json(); }).then(function(m){
       if(!m||!m.instruments||!m.generated) throw new Error('Некорректные данные котировок.');
-      ASSETS.forEach(function(a){ var v=m.instruments[a.name]; if(!v||!v.h1||!v.h1.n||!v.scale||!Array.isArray(v.m5Years)) throw new Error('Некорректные данные котировок.'); });
+      ASSETS.forEach(function(a){ var v=m.instruments[a.name]; if(!v&&a.tier===2) return; if(!v||!v.h1||!v.h1.n||!v.scale||!Array.isArray(v.m5Years)) throw new Error('Некорректные данные котировок.'); });
       if(!S.meta||S.meta.generated!==m.generated){ rawCache={}; S.tl=null; }
       S.meta=m; return m;
     }).finally(function(){ S.metaPromise=null; });
@@ -233,6 +240,8 @@
         '<div class="rp-intro-sub">Выбери актив и период. Свечи после текущей даты скрыты — они открываются только по мере прокрутки.</div>'+
         '<div id="rpResume"></div>'+
         '<div class="rp-assets" id="rpAssets"></div>'+
+        '<details class="rp-tier2" id="rpTier2" hidden><summary class="rp-tier2-head"><span>Активы tier 2</span><span class="rp-tier2-count" id="rpTier2Count"></span>'+ICON_CHEV+'</summary>'+
+        '<div class="rp-assets rp-assets-t2" id="rpAssets2"></div></details>'+
         '<div class="rp-card"><div class="rp-form-row">'+
           '<div class="rp-field"><label for="rpRangeBtn">Период бэктеста</label><button class="rp-input rp-range-btn" id="rpRangeBtn" type="button">Выбрать даты…</button>'+
           '<input type="hidden" id="rpStart"><input type="hidden" id="rpEnd"></div>'+
@@ -296,12 +305,18 @@
     cur.innerHTML='<div class="rp-curtain-stack"><div class="rp-curtain-mark"><span>Your Replay Space</span></div><div class="rp-curtain-track" aria-hidden="true"><div class="rp-curtain-progress"></div></div></div>';
     document.body.appendChild(cur);
 
-    $('rpAssets').innerHTML=ASSETS.map(function(a){
+    var card=function(a){
       return '<button class="rp-asset" type="button" data-asset="'+a.name+'" style="--rp-color:'+a.color+'"><span class="rp-asset-dot"></span><div class="rp-asset-name">'+a.name+'</div><div class="rp-asset-meta" data-meta="'+a.name+'">'+a.label+'</div></button>';
-    }).join('');
+    };
+    $('rpAssets').innerHTML=ASSETS.filter(function(a){ return a.tier===1; }).map(card).join('');
+    $('rpAssets2').innerHTML=ASSETS.filter(function(a){ return a.tier===2; }).map(card).join('');
+    try { $('rpTier2').open=localStorage.getItem(TIER2_KEY)==='1'; } catch(_){}
+    $('rpTier2').addEventListener('toggle',function(){ try { localStorage.setItem(TIER2_KEY,this.open?'1':'0'); } catch(_){} });
     $('rpTfs').innerHTML=TFS.map(function(t){ return '<button type="button" data-tf="'+t.id+'">'+t.label+'</button>'; }).join('');
 
-    $('rpAssets').addEventListener('click',function(e){ var b=e.target.closest('.rp-asset'); if(b){ S.selected=b.getAttribute('data-asset'); syncLobby(); getBin(S.selected,'h1').catch(function(){}); } });
+    var pickAsset=function(e){ var b=e.target.closest('.rp-asset'); if(b&&!b.disabled){ S.selected=b.getAttribute('data-asset'); syncLobby(); getBin(S.selected,'h1').catch(function(){}); } };
+    $('rpAssets').addEventListener('click',pickAsset);
+    $('rpAssets2').addEventListener('click',pickAsset);
     $('rpStartBtn').addEventListener('click',startFromLobby);
     $('exitReplayWorkspaceBtn').addEventListener('click',function(){ exitWorkspace(false); });
     $('rpExitBtn').addEventListener('click',toLobby);
@@ -443,11 +458,19 @@
 
   function instMeta(name){ return S.meta&&S.meta.instruments&&S.meta.instruments[name]; }
   function syncLobby(){
-    document.querySelectorAll('#rpAssets .rp-asset').forEach(function(b){
+    if(S.meta&&!instMeta(S.selected)) S.selected='XAUUSD';
+    var t2=0;
+    document.querySelectorAll('#rpAssets .rp-asset, #rpAssets2 .rp-asset').forEach(function(b){
       var on=b.getAttribute('data-asset')===S.selected; b.classList.toggle('is-selected',on);
-      var m=instMeta(b.getAttribute('data-asset')), el=b.querySelector('[data-meta]');
+      var m=instMeta(b.getAttribute('data-asset')), el=b.querySelector('[data-meta]'), tier2=assetInfo(b.getAttribute('data-asset')).tier===2;
       if(m&&m.h1&&m.h1.first) el.textContent=assetInfo(b.getAttribute('data-asset')).label+' · с '+fmtDate(m.h1.first).slice(0,4);
+      if(tier2){ b.hidden=!!S.meta&&!m; b.disabled=!m; if(m) t2++; }
     });
+    var t2box=$('rpTier2');
+    if(t2box){
+      t2box.hidden=!t2; $('rpTier2Count').textContent=t2?String(t2):'';
+      if(assetInfo(S.selected).tier===2&&instMeta(S.selected)) t2box.open=true;
+    }
     var m=instMeta(S.selected), cov=$('rpCoverage');
     if(m&&m.h1){
       var first=fmtDate(m.h1.first), last=fmtDate(m.h1.last);
