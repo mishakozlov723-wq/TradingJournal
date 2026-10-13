@@ -11,7 +11,19 @@ process.env.SYTER_TRANSITION_TEST = '1';
 
 app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'syter-release-test-')));
 const fixture = require('./renderer-fixture.cjs').replace('</body>',
-  '<script>window.TJMedia={busy:false,clearCache(){},snapshot(){return []},reset(){},async addData(){}};</script></body>');
+  `<script>
+window.TJMedia={busy:false,clearCache(){},snapshot(){return []},reset(){},async addData(){}};
+// Hosted Windows/RDP runners often request reduced motion. Exercise both
+// preferences explicitly in this LOCAL fixture, never in production.
+window.forceReducedForTest=false;
+const realMatchMedia=window.matchMedia.bind(window);
+window.matchMedia=query=>{
+  const media=realMatchMedia(query);
+  if(query==='(prefers-reduced-motion: reduce)')
+    Object.defineProperty(media,'matches',{get:()=>window.forceReducedForTest});
+  return media;
+};
+</script></body>`);
 const opened = [];
 shell.openExternal = async url => { opened.push(url); };
 let registered = false, shortcutCalls = 0;
@@ -112,6 +124,11 @@ async function main() {
   const draft = await wc.executeJavaScript('({rr:magnitudeInput.value,risk:riskPercentInput.value,notes:syterTradeNotes.value,image:currentScreenshot})');
   assert.deepEqual(draft, { rr: '2.25', risk: '0.5', notes: 'native draft', image: 'draft-image' });
   assert.equal(wc.id, originalId); assert.equal(BrowserWindow.getAllWindows().length, 1);
+  await wc.executeJavaScript("window.forceReducedForTest=true;");
+  api.requestMode(true); await settled(true);
+  assert.equal(BrowserWindow.getAllWindows().length, 1, 'reduced motion creates no animation cover');
+  api.requestMode(false); await settled(false);
+  await wc.executeJavaScript("window.forceReducedForTest=false;");
 
   w.maximize(); await until(() => w.isMaximized(), 'maximize');
   api.requestMode(true); await settled(true);
