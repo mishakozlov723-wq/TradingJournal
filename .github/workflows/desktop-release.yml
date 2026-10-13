@@ -72,7 +72,13 @@ jobs:
           - Short smooth transitions preserve the form, image, window size and position.
           - Model descriptions open in the system default browser.
           "@ | Set-Content release-notes.md
-          gh release create $tag ./release/* --repo $repo --title "SYTER $version" --notes-file release-notes.md --draft
+          $expected = @("latest.yml", "SYTER-Setup-$version.exe", "SYTER-Setup-$version.exe.blockmap")
+          $assets = @($expected | ForEach-Object {
+            $file = Join-Path release $_
+            if (!(Test-Path $file -PathType Leaf)) { throw "Missing updater asset: $_" }
+            (Resolve-Path $file).Path
+          })
+          gh release create $tag @assets --repo $repo --title "SYTER $version" --notes-file release-notes.md --draft
           if ($LASTEXITCODE -ne 0) { throw 'Could not create complete draft release' }
           gh release edit $tag --repo $repo --draft=false --latest
           if ($LASTEXITCODE -ne 0) { throw 'Draft upload succeeded but publishing failed' }
