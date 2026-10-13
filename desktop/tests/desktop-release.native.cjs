@@ -76,12 +76,35 @@ async function main() {
     width: Math.min(900, area.width - 40), height: Math.min(760, area.height - 40) });
   await wc.executeJavaScript("magnitudeInput.value='2.25';riskPercentInput.value='0.5';syterTradeNotes.value='native draft';currentScreenshot='draft-image';");
   const original = w.getBounds();
+  const artifacts = path.resolve(__dirname, '../test-artifacts');
+  fs.mkdirSync(artifacts, { recursive: true });
+  let nativeResizeCalls = 0;
+  const setBounds = w.setBounds.bind(w);
+  w.setBounds = (...args) => { nativeResizeCalls++; return setBounds(...args); };
   async function settled(mini) {
     await until(async () => api.testState().miniMode === mini &&
       await wc.executeJavaScript(`document.body.classList.contains('syter-mini') === ${mini} && !document.body.dataset.syterModeTransition`), 'mode settled');
   }
 
-  api.requestMode(true); await settled(true);
+  api.requestMode(true);
+  let cover;
+  await until(() => {
+    cover = BrowserWindow.getAllWindows().find(c => c !== w &&
+      c.webContents.getURL().endsWith('mode-transition.html'));
+    return cover && w.getOpacity() === 0;
+  }, 'frozen compositor cover, not live resize');
+  await until(async () => !cover.isDestroyed() &&
+    await cover.webContents.executeJavaScript("document.getAnimations().some(a=>a.playState==='running')"),
+  'GPU transform animation running');
+  for (let i = 0; i < 3; i++) {
+    if (cover.isDestroyed()) break;
+    const shot = await cover.webContents.capturePage();
+    fs.writeFileSync(path.join(artifacts, `mini-transition-${i}.png`), shot.toPNG());
+    await wait(45);
+  }
+  await settled(true);
+  assert.equal(nativeResizeCalls, 1, 'exactly one native resize, no frame-by-frame bounds loop');
+  assert.equal(w.getOpacity(), 1, 'live window revealed after transition');
   assert.equal(w.getBounds().width, 420);
   api.requestMode(false); await settled(false);
   assert.deepEqual(w.getBounds(), original);
@@ -111,6 +134,17 @@ async function main() {
     assert.equal(w.isVisible(), true);
     await wait(450); pressShortcut(layout); await settled(false);
   }
+
+  await wc.executeJavaScript("modalOverlay.classList.remove('open');activeTab='calendar';");
+  await wait(40);
+  api.requestMode(true); await settled(true);
+  await wc.executeJavaScript("syterTradeNotes.value='parked native draft';");
+  api.requestMode(false); await settled(false);
+  assert.deepEqual(await wc.executeJavaScript("({open:modalOverlay.classList.contains('open'),tab:activeTab,notes:syterTradeNotes.value,parked:syterJournalView.isParked()})"),
+    {open:false,tab:'calendar',notes:'parked native draft',parked:true});
+  api.requestMode(true); await settled(true);
+  assert.equal(await wc.executeJavaScript("syterTradeNotes.value"), 'parked native draft');
+  api.requestMode(false); await settled(false);
 
   const url = 'https://retocker.web.app/?note=AbCd0123456789Ef';
   await wc.executeJavaScript(`window.open(${JSON.stringify(url)},'_blank')`);

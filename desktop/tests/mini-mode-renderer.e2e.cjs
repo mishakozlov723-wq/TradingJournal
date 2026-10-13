@@ -18,6 +18,7 @@ async function main() {
       const page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
       try {
         await page.setContent(fixture);
+        await page.addScriptTag({ content: fs.readFileSync(path.join(__dirname, '..', 'mini-view-state.js'), 'utf8') });
         await page.addScriptTag({ content: fs.readFileSync(path.join(__dirname, '..', filename), 'utf8') });
         await page.evaluate(async () => {
           magnitudeInput.value = '1.75';
@@ -36,6 +37,28 @@ async function main() {
           image: 'draft-image', openCount: 0, mini: false,
           calls: [{ mini: true, animate: true }, { mini: false, animate: true }],
         });
+
+        // Starting outside Add Trade returns outside Add Trade, with the draft parked.
+        await page.evaluate(async () => {
+          modalOverlay.classList.remove('open');
+          await new Promise(r => setTimeout(r, 0));
+          testJournalScroll.scrollTop = 320; openAddModal.focus();
+          await requestModeForTest(true);
+          magnitudeInput.value='3.25';syterTradeNotes.value='parked draft';currentScreenshot='parked-image';
+          await requestModeForTest(false);
+        });
+        assert.deepEqual(await page.evaluate(() => ({open:modalOverlay.classList.contains('open'),
+          parked:syterJournalView.isParked(),tab:activeTab,scroll:testJournalScroll.scrollTop,
+          focus:document.activeElement.id,rr:magnitudeInput.value,notes:syterTradeNotes.value,image:currentScreenshot})),
+          {open:false,parked:true,tab:'calendar',scroll:320,focus:'openAddModal',rr:'3.25',notes:'parked draft',image:'parked-image'});
+        assert.equal(await page.evaluate(() => prepareCalls.at(-2).modalOpen),false);
+        const count = await page.evaluate(() => openCount);
+        await page.evaluate(async () => {await requestModeForTest(true);await requestModeForTest(false);});
+        assert.equal(await page.evaluate(() => openCount),count);
+        assert.equal(await page.evaluate(() => magnitudeInput.value),'3.25');
+        await page.click('#openAddModal');
+        assert.equal(await page.evaluate(() => modalOverlay.classList.contains('open')),true);
+        assert.equal(await page.evaluate(() => syterTradeNotes.value),'parked draft');
 
         await page.emulateMedia({ reducedMotion: 'reduce' });
         await page.evaluate(async () => { await requestModeForTest(true); await requestModeForTest(false); });
@@ -71,7 +94,16 @@ async function main() {
           assert.equal(await page.evaluate(() => document.body.dataset.syterModeTransition), undefined);
           await page.evaluate(() => { currentUser = {}; viewingUser = 'test'; modalOverlay.classList.add('open'); });
         }
-        console.log(`${filename}: draft, reduced motion, blocked states and mid-animation logout/account/close passed`);
+        await page.evaluate(async () => {
+          modalOverlay.classList.remove('open'); await new Promise(r=>setTimeout(r,0));
+          await requestModeForTest(true); syterTradeNotes.value='private parked draft';
+          currentScreenshot='private image'; await requestModeForTest(false); currentUser=null;
+        });
+        await page.waitForTimeout(300);
+        assert.deepEqual(await page.evaluate(() => ({
+          parked:syterJournalView.isParked(),notes:syterTradeNotes.value,image:currentScreenshot
+        })), {parked:false,notes:'',image:null});
+        console.log(`${filename}: existing form, restored calendar, scroll/focus, resumed draft, reduced motion, interruptions and parked-draft logout passed`);
       } finally { await page.close(); }
     }
   } finally { await browser.close(); }

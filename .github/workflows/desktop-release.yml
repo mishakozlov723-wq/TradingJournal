@@ -44,6 +44,14 @@ jobs:
           Get-Content native-test.log
           Get-Content native-test-error.log
           if ($test.ExitCode -ne 0) { throw "Native Electron test failed: $($test.ExitCode)" }
+      - name: Save native transition inspection frames
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SYTER-transition-inspection
+          path: desktop/test-artifacts/*
+          if-no-files-found: warn
+          retention-days: 7
       - name: Build installer and updater files
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -69,7 +77,8 @@ jobs:
           if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists" }
           @"
           - Ctrl + Shift + Ё switches the same window between full and mini journal.
-          - Short smooth transitions preserve the form, image, window size and position.
+          - Snapshot-based transitions avoid live layout tearing and extra maximize jumps.
+          - Returning from mini restores the previous screen; an unsaved draft stays available.
           - Model descriptions open in the system default browser.
           "@ | Set-Content release-notes.md
           $expected = @("latest.yml", "SYTER-Setup-$version.exe", "SYTER-Setup-$version.exe.blockmap")

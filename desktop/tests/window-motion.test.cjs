@@ -1,77 +1,72 @@
 'use strict';
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const { createWindowMotion } = require('../window-motion');
-
-function setup() {
-  let time = 0, timer = 0, destroyed = false, frames = 0;
-  const timers = new Map(), bounds = [];
-  let current = { x: 0, y: 0, width: 1440, height: 900 };
-  const window = { isDestroyed: () => destroyed, getBounds: () => ({ ...current }),
-    setBounds: b => { current = { ...b }; bounds.push({ ...b }); } };
-  const motion = createWindowMotion({
-    getWindow: () => window, onFrame: () => frames++, now: () => time,
-    schedule: cb => { timers.set(++timer, cb); return timer; },
-    unschedule: id => timers.delete(id),
-  });
-  return { motion, bounds, timers, current: () => current, frames: () => frames,
-    destroy: () => { destroyed = true; },
-    step: ms => { time += ms; for (const cb of [...timers.values()]) cb(); } };
+const test=require('node:test'),assert=require('node:assert/strict');
+const {createWindowMotion}=require('../window-motion');
+const compact={x:1100,y:60,width:420,height:730};
+function setup({failCapture=false,failCover=false,hold=false,timeout=3000}={}){
+ let bounds={x:0,y:0,width:1440,height:900},opacity=1,visible=true,destroyed=false;
+ const moves=[],calls=[],covers=[];
+ const image={isEmpty:()=>false,toJPEG:()=>Buffer.from('image'),toDataURL:()=> 'data:image/png;base64,aW1hZ2U='};
+ const contents=()=>({isDestroyed:()=>false,setBackgroundThrottling:b=>calls.push(['throttle',b]),
+   capturePage:async()=>{if(failCapture)throw Error('capture failed');return image;},executeJavaScript:async()=>true});
+ const w={isDestroyed:()=>destroyed,isVisible:()=>visible,getContentBounds:()=>({...bounds}),isFullScreen:()=>false,
+   getOpacity:()=>opacity,setOpacity:a=>{opacity=a;calls.push(['opacity',a]);},
+   setBounds:b=>{bounds={...b};moves.push({...b});},webContents:contents()};
+ let release;
+ const motion=createWindowMotion({getWindow:()=>w,getView:()=>({webContents:contents()}),timeout,sleep:async()=>{},
+   createOverlay:rect=>{
+     if(failCover)throw Error('cover failed');
+     const cover={ready:Promise.resolve(),isDestroyed:()=>cover.dead,
+       showInactive(){calls.push(['showCover']);},destroy(){cover.dead=true;calls.push(['destroyCover']);},
+       webContents:{executeJavaScript:async code=>{calls.push([code.includes('.play(')?'play':'prepare']);
+         if(hold&&code.includes('.play('))return new Promise(r=>{release=r;});return true;}}};
+     covers.push(cover);return cover;
+   }});
+ return {motion,w,moves,calls,covers,opacity:()=>opacity,bounds:()=>bounds,hide:()=>{visible=false;},destroy:()=>{destroyed=true;},release:()=>release?.()};
 }
-const compact = { x: 100, y: 30, width: 420, height: 730 };
-
-test('native window follows intermediate eased bounds and ends at the exact target', async () => {
-  const s = setup(), done = s.motion.move(compact);
-  assert.equal(s.motion.isActive(), true);
-  s.step(60);
-  assert.ok(s.current().width < 1440 && s.current().width > 420);
-  s.step(60); assert.equal(s.current().width, 930);
-  s.step(120); assert.equal(await done, true);
-  assert.deepEqual(s.current(), compact);
-  assert.equal(s.frames(), 3);
-  assert.equal(s.timers.size, 0);
+test('original picture is prepared before any native resize; cover does not take focus',async()=>{
+ const s=setup();assert.equal(await s.motion.prepare(compact),true);
+ assert.equal(s.moves.length,0);assert.equal(s.opacity(),0);assert.equal(s.motion.isActive(),true);
+ assert.ok(s.calls.findIndex(c=>c[0]==='showCover')<s.calls.findIndex(c=>c[0]==='opacity'));
+ s.motion.cancel();assert.equal(s.opacity(),1);assert.equal(s.covers[0].dead,true);
 });
-test('reduced-motion preference skips timers and directly sets final bounds', async () => {
-  const s = setup();
-  assert.equal(await s.motion.move(compact, false), true);
-  assert.deepEqual(s.current(), compact);
-  assert.equal(s.timers.size, 0);
+test('live native window is resized once, not every animation frame',async()=>{
+ const s=setup();await s.motion.prepare(compact);assert.equal(await s.motion.move(compact),true);
+ assert.deepEqual(s.moves,[compact]);assert.equal(s.opacity(),1);assert.equal(s.motion.isActive(),false);
+ assert.ok(s.calls.some(c=>c[0]==='play'));assert.equal(s.covers[0].dead,true);
 });
-test('cancellation resolves the awaiting IPC and removes its timer', async () => {
-  const s = setup(), done = s.motion.move(compact);
-  s.step(40); s.motion.cancel();
-  assert.equal(await done, false);
-  assert.equal(s.motion.isActive(), false);
-  assert.equal(s.timers.size, 0);
+test('reduced motion uses one immediate resize and never creates a cover',async()=>{
+ const s=setup();assert.equal(await s.motion.prepare(compact,false),false);
+ assert.equal(await s.motion.move(compact,false),true);assert.deepEqual(s.moves,[compact]);assert.equal(s.covers.length,0);
 });
-test('hiding/quitting can finish at the exact target before saving bounds', async () => {
-  const s = setup(), done = s.motion.move(compact);
-  s.step(20); s.motion.cancel(true);
-  assert.equal(await done, false);
-  assert.deepEqual(s.current(), compact);
+test('native maximize/fullscreen restoration runs underneath the cover',async()=>{
+ const s=setup();await s.motion.prepare(compact);let called=false;
+ await s.motion.move(compact,true,()=>{called=true;assert.equal(s.opacity(),0);s.w.setBounds(compact);});
+ assert.equal(called,true);assert.equal(s.moves.length,1);
 });
-test('an interrupted transition cannot overwrite the next transition', async () => {
-  const s = setup(), first = s.motion.move(compact);
-  s.step(60);
-  const full = { x: 20, y: 40, width: 1200, height: 800 };
-  const second = s.motion.move(full);
-  assert.equal(await first, false);
-  s.step(240);
-  assert.equal(await second, true);
-  assert.deepEqual(s.current(), full);
+test('screenshot/cover failures leave the live journal visible and usable',async()=>{
+ for(const option of [{failCapture:true},{failCover:true}]){
+   const s=setup(option);assert.equal(await s.motion.prepare(compact),false);assert.equal(s.opacity(),1);
+   await s.motion.move(compact);assert.deepEqual(s.moves,[compact]);assert.equal(s.motion.isActive(),false);
+ }
 });
-test('destroying a window during a transition cleans up and resolves safely', async () => {
-  const s = setup(), done = s.motion.move(compact);
-  s.destroy(); s.step(16);
-  assert.equal(await done, false);
-  assert.equal(s.timers.size, 0);
+test('cancel during playback resolves IPC, closes the cover and never shows a hidden window',async()=>{
+ const s=setup({hold:true});await s.motion.prepare(compact);const done=s.motion.move(compact);
+ while(!s.calls.some(c=>c[0]==='play'))await new Promise(r=>setImmediate(r));
+ s.hide();s.motion.cancel();assert.equal(await done,false);assert.equal(s.w.isVisible(),false);assert.equal(s.opacity(),1);
+ assert.equal(s.covers[0].dead,true);s.release();
 });
-test('missing/destroyed windows do not start an animation', async () => {
-  const s = setup(); s.destroy();
-  assert.equal(await s.motion.move(compact), false);
+test('watchdog releases a stalled compositor without leaving an invisible window',async()=>{
+ const s=setup({hold:true,timeout:20});await s.motion.prepare(compact);const done=s.motion.move(compact);
+ await new Promise(r=>setTimeout(r,35));assert.equal(await done,false);assert.equal(s.opacity(),1);assert.equal(s.motion.isActive(),false);
 });
-test('fractional target coordinates are rounded once and stay exact', async () => {
-  const s = setup();
-  await s.motion.move({ x: 10.7, y: 21.2, width: 420.4, height: 730.7 }, false);
-  assert.deepEqual(s.current(), { x: 11, y: 21, width: 420, height: 731 });
+test('a superseded transition cannot reveal or destroy the next cover',async()=>{
+ const s=setup({hold:true});await s.motion.prepare(compact);const first=s.motion.move(compact);
+ while(!s.calls.some(c=>c[0]==='play'))await new Promise(r=>setImmediate(r));
+ await s.motion.prepare({x:20,y:30,width:1200,height:800});assert.equal(await first,false);
+ assert.equal(s.covers[0].dead,true);assert.equal(s.covers[1].dead,undefined);assert.equal(s.opacity(),0);s.motion.cancel();
+});
+test('hidden/destroyed windows and enormous multi-monitor surfaces skip animation',async()=>{
+ const s=setup();s.hide();assert.equal(await s.motion.prepare(compact),false);
+ s.destroy();assert.equal(await s.motion.move(compact),false);
+ const wide=setup();assert.equal(await wide.motion.prepare({x:20000,y:0,width:400,height:700}),false);
 });

@@ -25,7 +25,8 @@ function setup({ maximized = false, fullscreen = false } = {}) {
   const contents = { mainFrame: frame, focus() {}, send: (...args) => sent.push(args) };
   const view = { webContents: { ...contents, isDestroyed: () => false }, setBounds() {} };
   const motion = {
-    async move(target, animate) { motionCalls.push({ target, animate }); window.setBounds(target); return true; },
+    async prepare(target, animate) { return animate; },
+    async move(target, animate, apply) { motionCalls.push({ target, animate }); if (apply) apply(); else window.setBounds(target); return true; },
     cancel() {},
   };
   const context = {
@@ -34,7 +35,7 @@ function setup({ maximized = false, fullscreen = false } = {}) {
         app: { requestSingleInstanceLock: () => true, on: (key, cb) => { events[key] = cb; },
           whenReady: () => ({ then() {} }), setAppUserModelId() {}, getPath: () => '/test' },
         ipcMain: { handle: (key, cb) => { handlers[key] = cb; } },
-        screen: { getDisplayMatching: () => ({ workArea: area }), getPrimaryDisplay: () => ({ workArea: area }) },
+        screen: { getDisplayMatching: () => ({ workArea: area, bounds: area }), getPrimaryDisplay: () => ({ workArea: area }) },
         globalShortcut: {}, dialog: {},
       };
       if (name === 'electron-updater') return { autoUpdater: {} };
@@ -111,7 +112,6 @@ test('hiding during exit does not reopen a maximized window; next request restor
   s.window.hide();
   await exiting;
   assert.equal(s.window.isVisible(), false);
-  assert.equal(s.maximized(), false);
   s.api.showWindow();
   assert.equal(s.window.isVisible(), true);
   assert.equal(s.maximized(), true);

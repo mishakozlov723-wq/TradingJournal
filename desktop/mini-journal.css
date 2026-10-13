@@ -52,3 +52,10 @@ body #tradeForm #syterCaptureImages{appearance:none;-webkit-appearance:none;box-
 body #tradeForm #syterCaptureImages:checked{background:#70dbb6;border-color:#70dbb6}
 body #tradeForm #syterCaptureImages:checked::after{content:'';width:6px;height:3px;border-left:2px solid #10251d;border-bottom:2px solid #10251d;transform:rotate(-45deg) translateY(-1px)}
 body #tradeForm #syterCaptureImages:focus-visible{outline:2px solid #70dbb6;outline-offset:3px}
+
+/* Freeze interaction, not layout. Native resize is concealed by the cover. */
+body[data-syter-mode-transition="1"] { pointer-events: none !important; }
+body[data-syter-mode-transition="1"] #modalOverlay,
+body[data-syter-mode-transition="1"] #modalOverlay > .modal-box {
+  transition: none !important; animation: none !important;
+}

@@ -7,6 +7,7 @@
   window.syterMiniInstalled = true;
   var $ = function (id) { return document.getElementById(id); };
   var overlay = $('modalOverlay'), mini = false, managedDraft = false;
+  var journalView = window.syterJournalView;
   var switching = false, saving = false, imageBusy = false, imageRevision = 0, pendingTrade = null;
   var draftOwner = null;
   var header = document.createElement('div');
@@ -56,7 +57,7 @@
     return typeof currentUser !== 'undefined' && currentUser && firebase.auth().currentUser && $('appRoot').style.display !== 'none';
   }
   async function changeMode(enabled) {
-    if (switching || saving || form.dataset.saving === '1') return;
+    if (enabled === mini || switching || saving || form.dataset.saving === '1') return;
     if (enabled && (!signedIn() || !tradingModelsReady || tradingModelsUser !== viewingUser)) {
       notice('Сначала войдите в журнал и дождитесь загрузки аккаунта.'); return;
     }
@@ -66,22 +67,34 @@
     switching = true;
     var modeOwner = viewingUser;
     document.body.dataset.syterModeTransition = '1';
+    var wasInert = form.inert; form.inert = true;
+    var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     try {
+      if (enabled && journalView) journalView.begin(modeOwner);
+      // Freeze the ORIGINAL screen before opening the form or changing its layout.
+      if (api.prepareMiniMode) await api.prepareMiniMode(enabled, !reducedMotion);
+      if (enabled && (!signedIn() || viewingUser !== modeOwner)) {
+        if (journalView) journalView.invalidate();
+        return;
+      }
       if (enabled) {
         if ($('syterModeNotice')) $('syterModeNotice').hidden = true;
-        if (!overlay.classList.contains('open')) openModal(null);
+        if (journalView) journalView.openDraft(viewingUser, function(){openModal(null);});
+        else if (!overlay.classList.contains('open')) openModal(null);
         managedDraft = true; draftOwner = viewingUser;
         $('syterMiniOwner').textContent = '';
       }
-      // Apply layout before resizing to avoid a flash of the main dashboard.
-      var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      // Change the live layout only while the compositor cover conceals it.
       document.body.classList.toggle('syter-mini', enabled);
+      if (!enabled && journalView) journalView.leave(modeOwner);
       var state = await api.setMiniMode(enabled, !reducedMotion);
       if (!state) throw new Error('Не удалось переключить окно.');
       // A logout/account change or closing the form can occur during the
       // native resize. Never finish in mini mode with a closed/foreign draft.
       if (enabled && (!signedIn() || viewingUser !== modeOwner ||
           !overlay.classList.contains('open') || backtestTradeMode)) {
+        document.body.classList.remove('syter-mini');
+        if (journalView) journalView.invalidate();
         state = await api.setMiniMode(false, false);
         if (!state) throw new Error('Не удалось вернуть полный журнал.');
       }
@@ -89,10 +102,12 @@
       document.body.classList.toggle('syter-mini', mini);
       $('syterMiniPin').setAttribute('aria-pressed', String(state.pinned));
       $('syterMiniPin').textContent = state.pinned ? 'Закреплено' : 'Закрепить';
-      var box = overlay.querySelector('.modal-box');
-      if (!reducedMotion && box.animate) box.animate([{ opacity: 0.8 }, { opacity: 1 }], { duration: 160, easing: 'ease-out' });
+      if (!mini && journalView) journalView.finish(viewingUser);
     } catch (err) { document.body.classList.toggle('syter-mini', mini); error(err.message); }
-    finally { switching = false; delete document.body.dataset.syterModeTransition; }
+    finally {
+      if (api.cancelMiniMode) await api.cancelMiniMode().catch(function(){});
+      form.inert = wasInert; switching = false; delete document.body.dataset.syterModeTransition;
+    }
   }
   api.onModeRequest(changeMode);
   fullButton.addEventListener('click', function () { changeMode(true); });
@@ -105,10 +120,14 @@
   });
   // Closing/hiding the native window keeps this page and its draft alive.
   // A logout/account switch closes the modal; never carry that draft to another user.
+  document.addEventListener('syter:parked-draft-discarded', function () {
+    imageRevision++; managedDraft = false; draftOwner = null; pendingTrade = null;
+    imageBusy = false; paste.disabled = false; status.textContent = '';
+  });
   new MutationObserver(function () {
     form.classList.toggle('syter-backtest-form', !!backtestTradeMode);
     fullButton.hidden = !!backtestTradeMode;
-    if (!overlay.classList.contains('open')) {
+    if (!overlay.classList.contains('open') && !(journalView && journalView.isParked())) {
       imageRevision++; managedDraft = false; draftOwner = null; pendingTrade = null;
       imageBusy = false; paste.disabled = false; $('tradeModalSubmitBtn').disabled = saving;
       $('syterTradeNotes').value = ''; status.textContent = '';
@@ -187,7 +206,7 @@
   form.addEventListener('submit', async function (e) {
     if (backtestTradeMode) return;
     e.preventDefault(); e.stopImmediatePropagation();
-    if (saving || imageBusy || !signedIn()) return;
+    if (switching || saving || imageBusy || !signedIn()) return;
     clearTradeFormError(); status.textContent = '';
     var owner = findUser(viewingUser);
     if (!owner || !owner.uid || (managedDraft && draftOwner !== viewingUser)) { error('Аккаунт изменился. Откройте новую сделку.'); return; }

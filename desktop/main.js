@@ -34,7 +34,22 @@ let miniMode = false, miniReady = false, miniPinned = true;
 let fullState = null, miniBounds = null;
 let deferredFullRestore = false;
 let modeGeneration = 0;
-const windowMotion = createWindowMotion({ getWindow: () => win, onFrame: layout });
+const windowMotion = createWindowMotion({
+  getWindow: () => win, getView: () => view, onFrame: layout,
+  createOverlay: bounds => {
+    const cover = new BrowserWindow({
+      ...bounds, show: false, frame: false, transparent: true,
+      backgroundColor: '#00000000', focusable: false, skipTaskbar: true,
+      resizable: false, movable: false, hasShadow: false, roundedCorners: false,
+      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true,
+        backgroundThrottling: false, spellcheck: false },
+    });
+    cover.setIgnoreMouseEvents(true);
+    cover.setAlwaysOnTop(true, 'pop-up-menu');
+    cover.ready = cover.loadFile(path.join(__dirname, 'mode-transition.html'));
+    return cover;
+  },
+});
 const miniShortcut = createMiniShortcut({
   globalShortcut,
   onToggle: () => requestMode(!miniMode),
@@ -67,51 +82,54 @@ function fitBounds(bounds, defaults) {
   return { width, height, x: Math.round(Math.max(area.x, Math.min(safe ? candidate.x : area.x + area.width - width, area.x + area.width - width))), y: Math.round(Math.max(area.y, Math.min(safe ? candidate.y : area.y + 30, area.y + area.height - height))) };
 }
 
+function modeTarget(enabled) {
+  if (enabled) return fitBounds(miniBounds, { x: NaN, y: NaN, width: 420, height: 730 });
+  if (!fullState) return win.getBounds();
+  if (fullState.fullscreen) return screen.getDisplayMatching(fullState.bounds).bounds;
+  if (fullState.maximized) return screen.getDisplayMatching(fullState.bounds).workArea;
+  return fitBounds(fullState.bounds, { x: 80, y: 80, width: 1440, height: 900 });
+}
+async function prepareMiniMode(enabled, animate = true) {
+  if (!win || enabled === miniMode) return false;
+  return windowMotion.prepare(modeTarget(enabled), animate);
+}
 async function setMiniMode(enabled, animate = true) {
   enabled = !!enabled;
   if (!win || enabled === miniMode) return { mini: miniMode, pinned: miniPinned };
   const generation = ++modeGeneration;
-  const initialBounds = win.getBounds();
-  let target;
+  const target = modeTarget(enabled);
   if (enabled) {
     deferredFullRestore = false;
     fullState = { bounds: win.getNormalBounds(), maximized: win.isMaximized(), fullscreen: win.isFullScreen() };
-    if (win.isFullScreen()) win.setFullScreen(false);
-    if (win.isMaximized()) win.unmaximize();
     miniMode = true;
-    win.setMinimumSize(380, 480);
-    // Unmaximizing must not make the animation start from a different rectangle.
-    win.setBounds(initialBounds);
-    target = fitBounds(miniBounds, { x: NaN, y: NaN, width: 420, height: 730 });
-    win.setAlwaysOnTop(miniPinned);
   } else {
     miniBounds = win.getNormalBounds();
     miniMode = false;
-    win.setAlwaysOnTop(false);
-    if (win.isMaximized()) win.unmaximize();
-    if (fullState) {
-      // A maximized window grows toward its display before native maximize.
-      target = fullState.maximized || fullState.fullscreen
-        ? screen.getDisplayMatching(fullState.bounds).workArea
-        : fitBounds(fullState.bounds, { x: 80, y: 80, width: 1440, height: 900 });
-    }
   }
-  if (target) await windowMotion.move(target, animate);
-  if (generation !== modeGeneration || !win || win.isDestroyed()) return { mini: miniMode, pinned: miniPinned };
-  if (!enabled) {
-    win.setMinimumSize(380, 500);
-    if (fullState) {
-      // Preserve the original restore rectangle, not the intermediate work area.
-      if (fullState.maximized || fullState.fullscreen) win.setBounds(fitBounds(fullState.bounds, { x: 80, y: 80, width: 1440, height: 900 }));
-      // Closing to the tray may cancel an in-flight transition. Native maximize
-      // can show a hidden window on Windows; defer it until the user reopens it.
-      deferredFullRestore = typeof win.isVisible === 'function' && !win.isVisible();
-      if (!deferredFullRestore) {
-        if (fullState.maximized) win.maximize();
-        if (fullState.fullscreen) win.setFullScreen(true);
+  await windowMotion.move(target, animate, () => {
+    if (enabled) {
+      if (win.isFullScreen()) win.setFullScreen(false);
+      if (win.isMaximized()) win.unmaximize();
+      win.setMinimumSize(380, 480);
+      win.setAlwaysOnTop(miniPinned);
+      win.setBounds(target);
+    } else {
+      win.setAlwaysOnTop(false);
+      if (win.isMaximized()) win.unmaximize();
+      win.setMinimumSize(380, 500);
+      // Restore directly under the cover: no grow -> shrink -> maximize cycle.
+      win.setBounds(fullState
+        ? fitBounds(fullState.bounds, { x: 80, y: 80, width: 1440, height: 900 }) : target);
+      if (fullState) {
+        deferredFullRestore = !win.isVisible();
+        if (!deferredFullRestore) {
+          if (fullState.maximized) win.maximize();
+          if (fullState.fullscreen) win.setFullScreen(true);
+        }
       }
     }
-  }
+  });
+  if (generation !== modeGeneration || !win || win.isDestroyed()) return { mini: miniMode, pinned: miniPinned };
   layout(); saveState();
   return { mini: miniMode, pinned: miniPinned };
 }
@@ -215,6 +233,9 @@ function clearRemember() { try { fs.rmSync(rememberFile(), { force: true }); } c
 // only our own site may use these calls
 function fromSite(e) { return !!(view && e.sender === view.webContents && e.senderFrame === view.webContents.mainFrame && isAppUrl(e.senderFrame && e.senderFrame.url)); }
 ipcMain.handle('syter:mini-ready', (e) => { if (!fromSite(e)) return false; miniReady = true; return true; });
+ipcMain.handle('syter:mini-prepare', (e, enabled, animate) => fromSite(e) && typeof enabled === 'boolean' &&
+  typeof animate === 'boolean' ? prepareMiniMode(enabled, animate) : false);
+ipcMain.handle('syter:mini-cancel', (e) => { if (fromSite(e)) windowMotion.cancel(); });
 ipcMain.handle('syter:mini-mode', (e, enabled, animate) => fromSite(e) && typeof enabled === 'boolean' &&
   (animate === undefined || typeof animate === 'boolean') ? setMiniMode(enabled, animate !== false) : null);
 ipcMain.handle('syter:mini-pin', (e, pinned) => {
@@ -332,6 +353,8 @@ function start() {
     saveState();
     if (!isQuitting) { e.preventDefault(); win.hide(); }
   });
+  win.on('hide', () => windowMotion.cancel());
+  win.on('minimize', () => windowMotion.cancel());
   win.on('closed', () => { win = null; view = null; });
 
   createTray();
@@ -378,6 +401,7 @@ function start() {
     if (!isAppUrl(wc.getURL())) return;
     try {
       await wc.insertCSS(fs.readFileSync(path.join(__dirname, 'mini-journal.css'), 'utf8'));
+      await wc.executeJavaScript(fs.readFileSync(path.join(__dirname, 'mini-view-state.js'), 'utf8'));
       const mediaReady=await wc.executeJavaScript('Boolean(window.TJMedia)');
       await wc.executeJavaScript(fs.readFileSync(path.join(__dirname, mediaReady?'mini-journal.js':'mini-journal-legacy.js'), 'utf8'));
     } catch (err) { console.warn('Mini journal unavailable:', err); }
