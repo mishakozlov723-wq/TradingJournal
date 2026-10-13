@@ -8,7 +8,7 @@ contextBridge.exposeInMainWorld('syterDesktop', {
   setClipboardCapture: on => ipcRenderer.invoke('syter:clipboard-capture',!!on),
   onClipboardImage: callback => {const listener=(_e,payload)=>callback(payload);ipcRenderer.on('syter:clipboard-captured',listener);return ()=>ipcRenderer.removeListener('syter:clipboard-captured',listener);},
   miniReady: () => ipcRenderer.invoke('syter:mini-ready'),
-  setMiniMode: (enabled) => ipcRenderer.invoke('syter:mini-mode', !!enabled),
+  setMiniMode: (enabled, animate = true) => ipcRenderer.invoke('syter:mini-mode', !!enabled, animate !== false),
   setMiniPinned: (enabled) => ipcRenderer.invoke('syter:mini-pin', !!enabled),
   readClipboardImage: () => ipcRenderer.invoke('syter:clipboard-image'),
   onModeRequest: (callback) => {

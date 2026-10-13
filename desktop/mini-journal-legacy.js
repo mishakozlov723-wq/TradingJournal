@@ -16,6 +16,8 @@
   var fullButton = document.createElement('button');
   fullButton.type = 'button'; fullButton.className = 'ghost-btn syter-to-mini';
   fullButton.textContent = 'Мини-журнал ↗';
+  fullButton.title = 'Ctrl + Shift + Ё — переключить режим';
+  $('syterMiniExpand').title = 'Ctrl + Shift + Ё — вернуться в полный журнал';
   $('closeModalBtn').before(fullButton);
   var paste = document.createElement('button');
   paste.type = 'button'; paste.id = 'syterPasteImage'; paste.className = 'custom-file-picker-btn';
@@ -54,7 +56,7 @@
     return typeof currentUser !== 'undefined' && currentUser && firebase.auth().currentUser && $('appRoot').style.display !== 'none';
   }
   async function changeMode(enabled) {
-    if (switching) return;
+    if (switching || saving || form.dataset.saving === '1') return;
     if (enabled && (!signedIn() || !tradingModelsReady || tradingModelsUser !== viewingUser)) {
       notice('Сначала войдите в журнал и дождитесь загрузки аккаунта.'); return;
     }
@@ -70,13 +72,16 @@
         $('syterMiniOwner').textContent = '';
       }
       // Apply layout before resizing to avoid a flash of the main dashboard.
+      var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       document.body.classList.toggle('syter-mini', enabled);
-      var state = await api.setMiniMode(enabled);
+      var state = await api.setMiniMode(enabled, !reducedMotion);
       if (!state) throw new Error('Не удалось переключить окно.');
       mini = state.mini;
       document.body.classList.toggle('syter-mini', mini);
       $('syterMiniPin').setAttribute('aria-pressed', String(state.pinned));
       $('syterMiniPin').textContent = state.pinned ? 'Закреплено' : 'Закрепить';
+      var box = overlay.querySelector('.modal-box');
+      if (!reducedMotion && box.animate) box.animate([{ opacity: 0.8 }, { opacity: 1 }], { duration: 160, easing: 'ease-out' });
     } catch (err) { document.body.classList.toggle('syter-mini', mini); error(err.message); }
     finally { switching = false; }
   }

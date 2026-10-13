@@ -7,10 +7,12 @@
 // native Windows buttons drawn over it by titleBarOverlay); the site lives in a
 // WebContentsView right below it, so the site's own layout is never touched.
 'use strict';
-const { app, BrowserWindow, WebContentsView, Menu, Tray, nativeImage, ipcMain, shell, dialog, clipboard, screen } = require('electron');
+const { app, BrowserWindow, WebContentsView, Menu, Tray, nativeImage, ipcMain, shell, dialog, clipboard, screen, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
+const { createMiniShortcut, LABEL: MINI_SHORTCUT_LABEL } = require('./mini-shortcut');
+const { createWindowMotion } = require('./window-motion');
 
 const APP_URL = 'https://retocker.web.app/';
 const APP_HOSTS = ['retocker.web.app', 'retocker.firebaseapp.com'];
@@ -30,6 +32,21 @@ function stopCapture(){if(captureTimer)clearInterval(captureTimer);captureTimer=
 function clipboardPayload(){const img=clipboard.readImage();if(img.isEmpty())return null;const z=img.getSize();if(z.width*z.height>40000000)throw Error('Изображение больше 40 Мп.');const png=img.toPNG();if(png.length>25*1024*1024)throw Error('Изображение больше 25 МБ.');return {hash:crypto.createHash('sha256').update(png).digest('hex'),data:'data:image/png;base64,'+png.toString('base64')};}
 let miniMode = false, miniReady = false, miniPinned = true;
 let fullState = null, miniBounds = null;
+let modeGeneration = 0;
+const windowMotion = createWindowMotion({ getWindow: () => win, onFrame: layout });
+const miniShortcut = createMiniShortcut({
+  globalShortcut,
+  onToggle: () => requestMode(!miniMode),
+  onUnavailable: (err) => {
+    console.warn('Mini journal shortcut unavailable:', err ? err.message : 'already in use');
+    if (win && !win.isDestroyed()) dialog.showMessageBox(win, {
+      type: 'warning', title: 'SYTER — горячая клавиша',
+      message: MINI_SHORTCUT_LABEL + ' не удалось зарегистрировать.',
+      detail: 'Сочетание может быть занято другой программой. Переключение кнопкой и через значок возле часов продолжает работать.',
+      buttons: ['Понятно'],
+    }).catch(() => {});
+  },
+});
 
 function requestMode(mini) {
   showWindow();
@@ -49,25 +66,41 @@ function fitBounds(bounds, defaults) {
   return { width, height, x: Math.round(Math.max(area.x, Math.min(safe ? candidate.x : area.x + area.width - width, area.x + area.width - width))), y: Math.round(Math.max(area.y, Math.min(safe ? candidate.y : area.y + 30, area.y + area.height - height))) };
 }
 
-function setMiniMode(enabled) {
+async function setMiniMode(enabled, animate = true) {
   enabled = !!enabled;
   if (!win || enabled === miniMode) return { mini: miniMode, pinned: miniPinned };
+  const generation = ++modeGeneration;
+  const initialBounds = win.getBounds();
+  let target;
   if (enabled) {
     fullState = { bounds: win.getNormalBounds(), maximized: win.isMaximized(), fullscreen: win.isFullScreen() };
     if (win.isFullScreen()) win.setFullScreen(false);
     if (win.isMaximized()) win.unmaximize();
     miniMode = true;
     win.setMinimumSize(380, 480);
-    win.setBounds(fitBounds(miniBounds, { x: NaN, y: NaN, width: 420, height: 730 }));
+    // Unmaximizing must not make the animation start from a different rectangle.
+    win.setBounds(initialBounds);
+    target = fitBounds(miniBounds, { x: NaN, y: NaN, width: 420, height: 730 });
     win.setAlwaysOnTop(miniPinned);
   } else {
     miniBounds = win.getNormalBounds();
     miniMode = false;
     win.setAlwaysOnTop(false);
     if (win.isMaximized()) win.unmaximize();
+    if (fullState) {
+      // A maximized window grows toward its display before native maximize.
+      target = fullState.maximized || fullState.fullscreen
+        ? screen.getDisplayMatching(fullState.bounds).workArea
+        : fitBounds(fullState.bounds, { x: 80, y: 80, width: 1440, height: 900 });
+    }
+  }
+  if (target) await windowMotion.move(target, animate);
+  if (generation !== modeGeneration || !win || win.isDestroyed()) return { mini: miniMode, pinned: miniPinned };
+  if (!enabled) {
     win.setMinimumSize(380, 500);
     if (fullState) {
-      win.setBounds(fitBounds(fullState.bounds, { x: 80, y: 80, width: 1440, height: 900 }));
+      // Preserve the original restore rectangle, not the intermediate work area.
+      if (fullState.maximized || fullState.fullscreen) win.setBounds(fitBounds(fullState.bounds, { x: 80, y: 80, width: 1440, height: 900 }));
       if (fullState.maximized) win.maximize();
       if (fullState.fullscreen) win.setFullScreen(true);
     }
@@ -85,7 +118,8 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(start);
 }
 
-app.on('before-quit', () => { isQuitting = true; }); // also covers quitAndInstall() of the updater
+app.on('before-quit', () => { isQuitting = true; windowMotion.cancel(true); }); // also covers quitAndInstall() of the updater
+app.on('will-quit', () => miniShortcut.dispose());
 
 app.setAppUserModelId('com.retocker.syter'); // taskbar grouping + notifications
 
@@ -116,7 +150,7 @@ function createTray() {
   tray.setToolTip('SYTER');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Открыть журнал', click: () => requestMode(false) },
-    { label: 'Мини-журнал', click: () => requestMode(true) },
+    { label: 'Мини-журнал · ' + MINI_SHORTCUT_LABEL, click: () => requestMode(true) },
     { type: 'separator' },
     { label: 'Выход', click: () => { isQuitting = true; app.quit(); } },
   ]));
@@ -141,7 +175,8 @@ function clearRemember() { try { fs.rmSync(rememberFile(), { force: true }); } c
 // only our own site may use these calls
 function fromSite(e) { return !!(view && e.sender === view.webContents && e.senderFrame === view.webContents.mainFrame && isAppUrl(e.senderFrame && e.senderFrame.url)); }
 ipcMain.handle('syter:mini-ready', (e) => { if (!fromSite(e)) return false; miniReady = true; return true; });
-ipcMain.handle('syter:mini-mode', (e, enabled) => fromSite(e) && typeof enabled === 'boolean' ? setMiniMode(enabled) : null);
+ipcMain.handle('syter:mini-mode', (e, enabled, animate) => fromSite(e) && typeof enabled === 'boolean' &&
+  (animate === undefined || typeof animate === 'boolean') ? setMiniMode(enabled, animate !== false) : null);
 ipcMain.handle('syter:mini-pin', (e, pinned) => {
   if (!fromSite(e) || typeof pinned !== 'boolean') return null;
   miniPinned = pinned;
@@ -252,12 +287,14 @@ function start() {
 
   // the cross hides the window into the tray; "Выход" in the tray menu really quits
   win.on('close', (e) => {
+    windowMotion.cancel(true);
     saveState();
     if (!isQuitting) { e.preventDefault(); win.hide(); }
   });
   win.on('closed', () => { win = null; view = null; });
 
   createTray();
+  miniShortcut.register();
 
   const wc = view.webContents;
 
@@ -281,6 +318,7 @@ function start() {
 
   // keyboard shortcuts that the hidden menu would normally give
   wc.on('before-input-event', (e, input) => {
+    if (miniShortcut.handleFocusedInput(e, input)) return;
     if (input.type !== 'keyDown') return;
     const k = String(input.key).toLowerCase();
     const ctrl = input.control || input.meta;
@@ -297,7 +335,12 @@ function start() {
 
   // The same web view is resized: form fields and the image never cross windows.
   wc.on('did-start-navigation', (_e, _url, inPlace, mainFrame) => {
-    if (mainFrame && !inPlace) { miniReady = false; stopCapture(); if (miniMode) setMiniMode(false); }
+    if (mainFrame && !inPlace) {
+      miniReady = false; stopCapture();
+      // Navigation cannot leave a resize timer touching a replaced page.
+      if (miniMode) setMiniMode(false, false);
+      else windowMotion.cancel(true);
+    }
   });
   wc.on('did-finish-load', async () => {
     layout();
