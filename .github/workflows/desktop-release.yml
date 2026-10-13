@@ -72,9 +72,20 @@ jobs:
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $repo = 'mishakozlov723-wq/syter-releases'
           $tag = "v$version"
-          # Never overwrite an existing public version or publish partial assets.
-          gh release view $tag --repo $repo 2>$null
-          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists" }
+          # Never overwrite a PUBLIC version. An interrupted upload may have
+          # left our own unpublished draft; only that known draft may resume.
+          $existingText = gh release view $tag --repo $repo --json isDraft,name,body 2>$null
+          $resumeDraft = $false
+          if ($LASTEXITCODE -eq 0) {
+            $existing = $existingText | ConvertFrom-Json
+            if (!$existing.isDraft) { throw "Public release $tag already exists" }
+            if ($existing.name -ne "SYTER $version" -or
+                $existing.body -notlike '*Snapshot-based transitions avoid live layout tearing and extra maximize jumps.*' -or
+                $existing.body -notlike '*Returning from mini restores the previous screen; an unsaved draft stays available.*') {
+              throw "Unrecognized draft $tag; do not overwrite"
+            }
+            $resumeDraft = $true
+          }
           @"
           - Ctrl + Shift + Ё switches the same window between full and mini journal.
           - Snapshot-based transitions avoid live layout tearing and extra maximize jumps.
@@ -87,7 +98,12 @@ jobs:
             if (!(Test-Path $file -PathType Leaf)) { throw "Missing updater asset: $_" }
             (Resolve-Path $file).Path
           })
-          gh release create $tag @assets --repo $repo --title "SYTER $version" --notes-file release-notes.md --draft
-          if ($LASTEXITCODE -ne 0) { throw 'Could not create complete draft release' }
+          if ($resumeDraft) {
+            gh release upload $tag @assets --repo $repo --clobber
+            if ($LASTEXITCODE -ne 0) { throw 'Could not finish the unpublished draft assets' }
+          } else {
+            gh release create $tag @assets --repo $repo --title "SYTER $version" --notes-file release-notes.md --draft
+            if ($LASTEXITCODE -ne 0) { throw 'Could not create complete draft release' }
+          }
           gh release edit $tag --repo $repo --draft=false --latest
           if ($LASTEXITCODE -ne 0) { throw 'Draft upload succeeded but publishing failed' }

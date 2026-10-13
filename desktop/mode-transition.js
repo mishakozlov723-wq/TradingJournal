@@ -33,7 +33,8 @@
       const old=stage.firstElementChild,next=await shot(destination,source.rect.height);
       next.style.opacity='0';stage.append(next);const a=source.rect,b=destination.rect;
       const end=`translate(${b.x-a.x}px, ${b.y-a.y}px) scale(${b.width/a.width}, ${b.height/a.height})`;
-      const options={duration,easing:'cubic-bezier(.22,.68,0,1)',fill:'forwards'};
+      // Zero initial/final velocity: no hard kick at the start of a long move.
+      const options={duration,easing:'cubic-bezier(.4,0,.2,1)',fill:'forwards'};
       running=[stage.animate([{transform:'none'},{transform:end}],options),
         // Keep the old picture opaque behind the crossfade; otherwise both
         // half-transparent pictures briefly darken against a black backing.
