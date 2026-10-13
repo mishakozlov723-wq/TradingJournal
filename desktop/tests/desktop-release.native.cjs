@@ -7,6 +7,7 @@ const path = require('node:path');
 const Module = require('node:module');
 const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
+process.env.SYTER_TRANSITION_TEST = '1';
 
 app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'syter-release-test-')));
 const fixture = require('./renderer-fixture.cjs').replace('</body>',
@@ -158,5 +159,9 @@ async function main() {
   console.log('PASS: actual Windows/Electron resize, maximized restore, same-page draft, global OEM_3 from tray, and both model-link paths.');
 }
 app.whenReady().then(() => main()).then(() => app.exit(0)).catch(err => {
-  console.error(err.stack || err); app.exit(1);
+  console.error(err.stack || err);
+  const wc=webContents.getAllWebContents().find(c=>c.getURL().startsWith('https://retocker.web.app'));
+  if(wc)wc.executeJavaScript("JSON.stringify({error:saveError.textContent,mini:document.body.className,switching:document.body.dataset.syterModeTransition,prepare:typeof syterDesktop.prepareMiniMode})")
+    .then(info=>{console.error('RENDERER:',info);app.exit(1);}).catch(()=>app.exit(1));
+  else app.exit(1);
 });

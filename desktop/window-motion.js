@@ -1,6 +1,6 @@
 'use strict';
 // Animate frozen pictures, never live native bounds. The real journal stays alive.
-function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},duration=340,timeout=3000,
+function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},onStage=()=>{},duration=340,timeout=3000,
   sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))}) {
   let task=null;
   const available=w=>w&&!w.isDestroyed();
@@ -14,6 +14,7 @@ function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},dura
   function cancel(){
     if(!task)return;const t=task;task=null;clearTimeout(t.watchdog);t.abort();restore(t);
     try{if(available(t.overlay))t.overlay.destroy();}catch(_){}
+    onStage('closed');
   }
   const bounded=(t,promise)=>Promise.race([promise,t.aborted]);
   async function paint(t){
@@ -24,15 +25,17 @@ function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},dura
   async function capture(t){
     const w=getWindow(),v=getView();if(!active(t)||!v||v.webContents.isDestroyed())return null;
     const rect=w.getContentBounds(),top=w.isFullScreen()?0:36;
-    const images=await bounded(t,Promise.all([v.webContents.capturePage(),
-      top?w.webContents.capturePage({x:0,y:0,width:rect.width,height:top}):null]));
+    const images=await bounded(t,Promise.all([
+      v.webContents.capturePage().then(image=>{onStage('body-captured');return image;}),
+      top?w.webContents.capturePage({x:0,y:0,width:rect.width,height:top})
+        .then(image=>{onStage('title-captured');return image;}):null]));
     if(!active(t)||!images||images[0].isEmpty())return null;
     return {rect,top,body:'data:image/jpeg;base64,'+images[0].toJPEG(90).toString('base64'),
       title:images[1]&&!images[1].isEmpty()?images[1].toDataURL():''};
   }
   async function prepare(target,animate=true){
     cancel();const w=getWindow(),v=getView();
-    if(!animate||!available(w)||!w.isVisible()||!v||!createOverlay)return false;
+    if(!animate||!available(w)||!w.isVisible()||!v||!createOverlay){onStage('skipped');return false;}
     const from=w.getContentBounds(),x=Math.min(from.x,target.x)-12,y=Math.min(from.y,target.y)-12;
     const union={x,y,width:Math.max(from.x+from.width,target.x+target.width)-x+12,
       height:Math.max(from.y+from.height,target.y+target.height)-y+12};
@@ -40,20 +43,23 @@ function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},dura
     let abort;
     const t={opacity:w.getOpacity(),overlay:null,throttled:[],union,
       aborted:new Promise(resolve=>{abort=resolve;}),abort:()=>abort(null)};
-    task=t;t.watchdog=setTimeout(()=>{if(task===t)cancel();},timeout);t.watchdog.unref?.();
+    task=t;t.watchdog=setTimeout(()=>{if(task===t){onStage('watchdog');cancel();}},timeout);t.watchdog.unref?.();
     try{
       for(const wc of [w.webContents,v.webContents])if(typeof wc.setBackgroundThrottling==='function'){
         wc.setBackgroundThrottling(false);t.throttled.push(wc);
       }
       t.overlay=createOverlay(union);
+      onStage('capturing-source');
       const results=await bounded(t,Promise.all([capture(t),t.overlay.ready]));
       const source=results&&results[0];
       if(!source||!active(t)){if(task===t)cancel();return false;}
+      onStage('source-and-cover-ready');
       if(!active(t)||!available(t.overlay))return false;
       await bounded(t,t.overlay.webContents.executeJavaScript(`window.syterTransition.prepare(${JSON.stringify({source,union})})`));
+      onStage('cover-painted');
       if(!active(t))return false;t.overlay.showInactive();await bounded(t,sleep(34));
       if(!active(t)||!w.isVisible()){if(task===t)cancel();return false;}
-      w.setOpacity(0);return true;
+      w.setOpacity(0);onStage('live-concealed');return true;
     }catch(err){if(task===t)cancel();console.warn('Transition cover unavailable:',err.message);return false;}
   }
   async function move(target,animate=true,applyNative){
@@ -61,10 +67,13 @@ function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},dura
     const t=task;if(!animate)cancel();
     try{
       if(applyNative)applyNative();else w.setBounds(target);onFrame();
+      onStage('native-settled');
       if(!animate||!t||!active(t))return true;
       await paint(t);const destination=await capture(t);
+      onStage('destination-captured');
       if(!destination||!active(t)){if(task===t)cancel();return false;}
       await bounded(t,t.overlay.webContents.executeJavaScript(`window.syterTransition.play(${JSON.stringify({destination,duration})})`));
+      onStage('playback-completed');
       if(!active(t))return false;restore(t);await bounded(t,sleep(50));
       if(task===t)cancel();return true;
     }catch(err){if(task===t)cancel();console.warn('Transition failed; keeping the live journal:',err.message);return false;}

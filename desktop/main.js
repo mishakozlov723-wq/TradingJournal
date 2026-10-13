@@ -36,6 +36,7 @@ let deferredFullRestore = false;
 let modeGeneration = 0;
 const windowMotion = createWindowMotion({
   getWindow: () => win, getView: () => view, onFrame: layout,
+  onStage: stage => { if (process.env.SYTER_TRANSITION_TEST === '1') console.log('TRANSITION:', stage); },
   createOverlay: bounds => {
     const cover = new BrowserWindow({
       ...bounds, show: false, frame: false, transparent: true,
