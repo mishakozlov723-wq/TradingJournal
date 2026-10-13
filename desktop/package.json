@@ -8,7 +8,7 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "test": "node --test tests/mini-shortcut.test.cjs tests/window-motion.test.cjs tests/mini-mode-main.test.cjs",
+    "test": "node --test tests/mini-shortcut.test.cjs tests/window-motion.test.cjs tests/mini-mode-main.test.cjs tests/link-routing.test.cjs",
     "build": "electron-builder --win nsis --x64 --publish never && node scripts/publish-update.js",
     "release": "npm version patch --no-git-tag-version && npm run build"
   },

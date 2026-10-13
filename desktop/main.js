@@ -127,9 +127,37 @@ function isAppUrl(u) {
   try { const x = new URL(u); return x.protocol === 'https:' && APP_HOSTS.includes(x.hostname); }
   catch (e) { return false; }
 }
+function isSharedNoteUrl(u) {
+  // Model descriptions use the journal's shared Notes viewer (?note=...).
+  // The host alone must not classify that viewer as in-app navigation.
+  try { return isAppUrl(u) && new URL(u).searchParams.has('note'); }
+  catch (e) { return false; }
+}
 function openOutside(u) {
-  try { const x = new URL(u); if (x.protocol === 'https:' || x.protocol === 'http:' || x.protocol === 'mailto:') shell.openExternal(u); }
+  try {
+    const x = new URL(u);
+    if (x.protocol === 'https:' || x.protocol === 'http:' || x.protocol === 'mailto:') {
+      shell.openExternal(u).catch(err => console.warn('Could not open external link:', err.message));
+    }
+  }
   catch (e) { /* ignore bad links */ }
+}
+function installLinkHandlers(wc) {
+  // Shared Notes/model pages go to the system default browser. Ordinary journal
+  // navigation stays inside; no new Electron window is ever created.
+  wc.setWindowOpenHandler(({ url }) => {
+    if (isAppUrl(url) && !isSharedNoteUrl(url)) {
+      wc.loadURL(url);
+      return { action: 'deny' };
+    }
+    openOutside(url);
+    return { action: 'deny' };
+  });
+  wc.on('will-navigate', (e, url) => {
+    if (!isSharedNoteUrl(url) && (isAppUrl(url) || url.startsWith('file://'))) return;
+    e.preventDefault();
+    openOutside(url);
+  });
 }
 
 function showWindow() {
@@ -298,17 +326,7 @@ function start() {
 
   const wc = view.webContents;
 
-  // links: the journal stays inside, everything else opens in the normal browser
-  wc.setWindowOpenHandler(({ url }) => {
-    if (isAppUrl(url)) { wc.loadURL(url); return { action: 'deny' }; }
-    openOutside(url);
-    return { action: 'deny' };
-  });
-  wc.on('will-navigate', (e, url) => {
-    if (isAppUrl(url) || url.startsWith('file://')) return;
-    e.preventDefault();
-    openOutside(url);
-  });
+  installLinkHandlers(wc);
 
   // no internet / site unreachable -> local page with Retry
   wc.on('did-fail-load', (e, code, desc, url, isMainFrame) => {
