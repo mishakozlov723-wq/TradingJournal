@@ -9,16 +9,17 @@ function setup({ maximized = false, fullscreen = false } = {}) {
   const events = {}, handlers = {}, sent = [];
   const normal = { x: 100, y: 80, width: 1200, height: 800 };
   const area = { x: 0, y: 0, width: 1920, height: 1040 };
-  let bounds = { ...(maximized || fullscreen ? area : normal) }, pinned = false;
+  let bounds = { ...(maximized || fullscreen ? area : normal) }, pinned = false, visible = true;
   const motionCalls = [];
   const window = {
     isDestroyed: () => false, getBounds: () => ({ ...bounds }),
     getNormalBounds: () => ({ ...(maximized || fullscreen ? normal : bounds) }),
     isMaximized: () => maximized, isFullScreen: () => fullscreen, isMinimized: () => false,
-    unmaximize: () => { maximized = false; }, maximize: () => { maximized = true; },
+    unmaximize: () => { maximized = false; }, maximize: () => { maximized = true; visible = true; },
     setFullScreen: on => { fullscreen = on; }, setMinimumSize() {},
     setBounds: b => { bounds = { ...b }; }, setAlwaysOnTop: on => { pinned = on; },
-    getContentSize: () => [bounds.width, bounds.height], show() {}, focus() {},
+    getContentSize: () => [bounds.width, bounds.height],
+    isVisible: () => visible, show() { visible = true; }, hide() { visible = false; }, focus() {},
   };
   const frame = { url: 'https://retocker.web.app/' };
   const contents = { mainFrame: frame, focus() {}, send: (...args) => sent.push(args) };
@@ -46,7 +47,7 @@ function setup({ maximized = false, fullscreen = false } = {}) {
   };
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../main.js'), 'utf8') +
-    '\nglobalThis.testApi = { setMiniMode, requestMode, configure(w,v){win=w;view=v;miniReady=true;}, state(){return {miniMode,miniPinned};} };', context);
+    '\nglobalThis.testApi = { setMiniMode, requestMode, showWindow, configure(w,v){win=w;view=v;miniReady=true;}, state(){return {miniMode,miniPinned};} };', context);
   context.testApi.configure(window, view);
   return { api: context.testApi, window, view, handlers, sent, motionCalls,
     bounds: () => bounds, pinned: () => pinned,
@@ -102,4 +103,16 @@ test('mini size and position are remembered separately from the full journal', a
   assert.deepEqual(s.bounds(), original);
   await s.api.setMiniMode(true);
   assert.deepEqual(s.bounds(), moved);
+});
+test('hiding during exit does not reopen a maximized window; next request restores it', async () => {
+  const s = setup({ maximized: true });
+  await s.api.setMiniMode(true);
+  const exiting = s.api.setMiniMode(false);
+  s.window.hide();
+  await exiting;
+  assert.equal(s.window.isVisible(), false);
+  assert.equal(s.maximized(), false);
+  s.api.showWindow();
+  assert.equal(s.window.isVisible(), true);
+  assert.equal(s.maximized(), true);
 });

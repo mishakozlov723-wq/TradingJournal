@@ -64,6 +64,8 @@
       notice('Сначала завершите редактирование бэктеста или модели. Мини-журнал предназначен для обычных сделок.'); return;
     }
     switching = true;
+    var modeOwner = viewingUser;
+    document.body.dataset.syterModeTransition = '1';
     try {
       if (enabled) {
         if ($('syterModeNotice')) $('syterModeNotice').hidden = true;
@@ -76,6 +78,13 @@
       document.body.classList.toggle('syter-mini', enabled);
       var state = await api.setMiniMode(enabled, !reducedMotion);
       if (!state) throw new Error('Не удалось переключить окно.');
+      // A logout/account change or closing the form can occur during the
+      // native resize. Never finish in mini mode with a closed/foreign draft.
+      if (enabled && (!signedIn() || viewingUser !== modeOwner ||
+          !overlay.classList.contains('open') || backtestTradeMode)) {
+        state = await api.setMiniMode(false, false);
+        if (!state) throw new Error('Не удалось вернуть полный журнал.');
+      }
       mini = state.mini;
       document.body.classList.toggle('syter-mini', mini);
       $('syterMiniPin').setAttribute('aria-pressed', String(state.pinned));
@@ -83,7 +92,7 @@
       var box = overlay.querySelector('.modal-box');
       if (!reducedMotion && box.animate) box.animate([{ opacity: 0.8 }, { opacity: 1 }], { duration: 160, easing: 'ease-out' });
     } catch (err) { document.body.classList.toggle('syter-mini', mini); error(err.message); }
-    finally { switching = false; }
+    finally { switching = false; delete document.body.dataset.syterModeTransition; }
   }
   api.onModeRequest(changeMode);
   fullButton.addEventListener('click', function () { changeMode(true); });

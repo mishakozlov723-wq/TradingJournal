@@ -6,30 +6,7 @@ const path = require('node:path');
 const assert = require('node:assert/strict');
 const { chromium } = require(process.env.SYTER_PLAYWRIGHT_MODULE || 'playwright');
 
-const fixture = `<!doctype html><html><body>
-<div id="appRoot" style="display:block"></div>
-<div id="modelCreateOverlay"></div><div id="modelDeleteOverlay"></div>
-<div id="modalOverlay" class="open"><div class="modal-box">
-<div class="row"><button id="closeModalBtn">Close</button></div>
-<form id="tradeForm">
-<input id="magnitudeInput"><input id="riskPercentInput">
-<div id="tradeScreenshotField"><div class="custom-file-picker"></div>
-<input id="screenshotInput" type="file"><button id="screenshotRemoveBtn" type="button"></button>
-<img id="screenshotPreview"><div id="screenshotPreviewWrap"></div><span id="screenshotFileName"></span></div>
-<button id="tradeModalSubmitBtn" type="submit">Save</button><div id="saveError"></div>
-</form></div></div>
-<script>
-var currentUser={},viewingUser='test',tradingModelsReady=true,tradingModelsUser='test';
-var backtestTradeMode=false,currentScreenshot='draft-image',nativeCalls=[],openCount=0;
-var firebase={auth:()=>({currentUser:{}})};
-function openModal(){openCount++;document.getElementById('modalOverlay').classList.add('open');}
-window.syterDesktop={
- setMiniMode:async(mini,animate)=>{nativeCalls.push({mini,animate});return {mini,pinned:true};},
- setMiniPinned:async enabled=>enabled,
- miniReady:()=>{},
- onModeRequest:callback=>{window.requestModeForTest=callback;}
-};
-</script></body></html>`;
+const fixture = require('./renderer-fixture.cjs');
 
 async function main() {
   const browser = await chromium.launch({
@@ -72,7 +49,29 @@ async function main() {
           backtestTradeMode = true; await requestModeForTest(true); backtestTradeMode = false;
         });
         assert.equal(await page.evaluate(() => nativeCalls.length), before);
-        console.log(`${filename}: draft, image, reduced motion and blocked states passed`);
+        for (const interrupt of ['logout', 'account', 'close']) {
+          await page.evaluate(async interrupt => {
+            const original = syterDesktop.setMiniMode;
+            // The bridge object is mutable in this local fixture only.
+            syterDesktop.setMiniMode = async (mini, animate) => {
+              const result = await original(mini, animate);
+              if (mini) {
+                await new Promise(resolve => setTimeout(resolve, 20));
+                if (interrupt === 'logout') currentUser = null;
+                if (interrupt === 'account') viewingUser = 'other';
+                if (interrupt === 'close') modalOverlay.classList.remove('open');
+              }
+              return result;
+            };
+            await requestModeForTest(true);
+            syterDesktop.setMiniMode = original;
+          }, interrupt);
+          assert.equal(await page.evaluate(() => document.body.classList.contains('syter-mini')), false);
+          assert.equal(await page.evaluate(() => nativeCalls.at(-1).mini), false);
+          assert.equal(await page.evaluate(() => document.body.dataset.syterModeTransition), undefined);
+          await page.evaluate(() => { currentUser = {}; viewingUser = 'test'; modalOverlay.classList.add('open'); });
+        }
+        console.log(`${filename}: draft, reduced motion, blocked states and mid-animation logout/account/close passed`);
       } finally { await page.close(); }
     }
   } finally { await browser.close(); }

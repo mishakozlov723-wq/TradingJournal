@@ -32,6 +32,7 @@ function stopCapture(){if(captureTimer)clearInterval(captureTimer);captureTimer=
 function clipboardPayload(){const img=clipboard.readImage();if(img.isEmpty())return null;const z=img.getSize();if(z.width*z.height>40000000)throw Error('Изображение больше 40 Мп.');const png=img.toPNG();if(png.length>25*1024*1024)throw Error('Изображение больше 25 МБ.');return {hash:crypto.createHash('sha256').update(png).digest('hex'),data:'data:image/png;base64,'+png.toString('base64')};}
 let miniMode = false, miniReady = false, miniPinned = true;
 let fullState = null, miniBounds = null;
+let deferredFullRestore = false;
 let modeGeneration = 0;
 const windowMotion = createWindowMotion({ getWindow: () => win, onFrame: layout });
 const miniShortcut = createMiniShortcut({
@@ -73,6 +74,7 @@ async function setMiniMode(enabled, animate = true) {
   const initialBounds = win.getBounds();
   let target;
   if (enabled) {
+    deferredFullRestore = false;
     fullState = { bounds: win.getNormalBounds(), maximized: win.isMaximized(), fullscreen: win.isFullScreen() };
     if (win.isFullScreen()) win.setFullScreen(false);
     if (win.isMaximized()) win.unmaximize();
@@ -101,8 +103,13 @@ async function setMiniMode(enabled, animate = true) {
     if (fullState) {
       // Preserve the original restore rectangle, not the intermediate work area.
       if (fullState.maximized || fullState.fullscreen) win.setBounds(fitBounds(fullState.bounds, { x: 80, y: 80, width: 1440, height: 900 }));
-      if (fullState.maximized) win.maximize();
-      if (fullState.fullscreen) win.setFullScreen(true);
+      // Closing to the tray may cancel an in-flight transition. Native maximize
+      // can show a hidden window on Windows; defer it until the user reopens it.
+      deferredFullRestore = typeof win.isVisible === 'function' && !win.isVisible();
+      if (!deferredFullRestore) {
+        if (fullState.maximized) win.maximize();
+        if (fullState.fullscreen) win.setFullScreen(true);
+      }
     }
   }
   layout(); saveState();
@@ -163,6 +170,11 @@ function installLinkHandlers(wc) {
 function showWindow() {
   if (!win || win.isDestroyed()) return;
   if (win.isMinimized()) win.restore();
+  if (deferredFullRestore && !miniMode && fullState) {
+    deferredFullRestore = false;
+    if (fullState.maximized) win.maximize();
+    if (fullState.fullscreen) win.setFullScreen(true);
+  }
   win.show();
   win.focus();
   if (view && !view.webContents.isDestroyed()) view.webContents.focus();
@@ -247,7 +259,8 @@ function loadState() {
 function saveState() {
   if (!win || win.isDestroyed()) return;
   try {
-    const s = { maximized: miniMode && fullState ? fullState.maximized : win.isMaximized(), bounds: miniMode && fullState ? fullState.bounds : win.getNormalBounds(), miniBounds: miniMode ? win.getNormalBounds() : miniBounds, miniPinned };
+    const keepFullState = (miniMode || deferredFullRestore) && fullState;
+    const s = { maximized: keepFullState ? fullState.maximized : win.isMaximized(), bounds: keepFullState ? fullState.bounds : win.getNormalBounds(), miniBounds: miniMode ? win.getNormalBounds() : miniBounds, miniPinned };
     fs.writeFileSync(stateFile(), JSON.stringify(s));
   } catch (e) { /* not critical */ }
 }
