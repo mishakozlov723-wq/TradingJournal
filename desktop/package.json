@@ -43,7 +43,9 @@
       "mode-transition.html",
       "mode-transition.css",
       "mode-transition.js",
-      "mini-view-state.js"
+      "mini-view-state.js",
+      "build/app-icon.png",
+      "build/tray-icon.png"
     ],
     "win": {
       "target": [

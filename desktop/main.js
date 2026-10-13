@@ -19,7 +19,9 @@ const APP_HOSTS = ['retocker.web.app', 'retocker.firebaseapp.com'];
 const UPDATE_EVERY_MS = 6 * 60 * 60 * 1000; // re-check every 6 hours
 const TITLEBAR_H = 36;                      // px, black strip above the site
 const REMEMBER_MS = 6 * 60 * 60 * 1000;     // auto sign-in animation works for 6 h after a manual sign-in
-const ICON_PATH = path.join(__dirname, 'build', 'icon.ico');
+// Use decoded RGBA PNGs at runtime, not a legacy HICON serialization.
+const ICON_PATH = path.join(__dirname, 'build', 'app-icon.png');
+const TRAY_ICON_PATH = path.join(__dirname, 'build', 'tray-icon.png');
 
 let win = null;      // frame + title bar
 let view = null;     // the site
@@ -211,7 +213,7 @@ function toggleWindow() {
 // ── tray ──
 function createTray() {
   if (tray) return;
-  tray = new Tray(nativeImage.createFromPath(ICON_PATH));
+  tray = new Tray(nativeImage.createFromPath(TRAY_ICON_PATH));
   tray.setToolTip('SYTER');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Открыть журнал', click: () => requestMode(false) },
