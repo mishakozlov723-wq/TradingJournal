@@ -7,7 +7,19 @@
     if(data.title&&top){const title=new Image();title.src=data.title;
       title.style.top='0';title.style.height=top+'px';layer.append(title);images.push(title);}
     const body=new Image();body.src=data.body;body.style.top=top+'px';body.style.height=`calc(100% - ${top}px)`;
-    layer.append(body);images.push(body);await Promise.all(images.map(im=>im.decode()));return layer;
+    layer.append(body);images.push(body);
+    // Electron page capture excludes the system caption buttons. Keep their
+    // visual counterparts present so they do not blink out during the cover.
+    if(top){
+      const controls=document.createElement('div');controls.className='caption-controls';
+      controls.style.width=138*source.rect.width/data.rect.width+'px';controls.style.height=top+'px';
+      controls.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 138 36" preserveAspectRatio="none" fill="none" stroke="#cfd6e4" stroke-width="1">'+
+        '<path d="M18 18h10"/>'+
+        (data.maximized?'<path d="M65 14h9v9M63 16h9v9h-9z"/>':'<path d="M64 14h10v10H64z"/>')+
+        '<path d="m110 14 10 10m0-10-10 10"/></svg>';
+      layer.append(controls);
+    }
+    await Promise.all(images.map(im=>im.decode()));return layer;
   }
   window.syterTransition={
     async prepare(data){
@@ -23,7 +35,9 @@
       const end=`translate(${b.x-a.x}px, ${b.y-a.y}px) scale(${b.width/a.width}, ${b.height/a.height})`;
       const options={duration,easing:'cubic-bezier(.22,.68,0,1)',fill:'forwards'};
       running=[stage.animate([{transform:'none'},{transform:end}],options),
-        old.animate([{opacity:1},{opacity:0,offset:.48},{opacity:0}],options),
+        // Keep the old picture opaque behind the crossfade; otherwise both
+        // half-transparent pictures briefly darken against a black backing.
+        old.animate([{opacity:1},{opacity:1,offset:.85},{opacity:0}],options),
         next.animate([{opacity:0},{opacity:0,offset:.16},{opacity:1,offset:.72},{opacity:1}],options)];
       await Promise.race([Promise.all(running.map(a=>a.finished.catch(()=>{}))),
         new Promise(resolve=>setTimeout(resolve,duration+180))]);

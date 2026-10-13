@@ -38,6 +38,9 @@
   var capturedQueue=[],captureDraining=false;
   async function drainCapture(){
     if(captureDraining||switching||saving||form.dataset.saving==='1')return;
+    // Returning to the journal must not reopen Add Trade because an image
+    // arrived during the transition. Resume this queue with the draft instead.
+    if(journalView&&journalView.isParked()&&!mini)return;
     captureDraining=true;
     try{while(capturedQueue.length&&!saving&&form.dataset.saving!=='1'){
       const item=capturedQueue.shift();if(!signedIn()||item.owner!==viewingUser)continue;

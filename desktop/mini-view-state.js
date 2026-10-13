@@ -4,7 +4,8 @@
   const overlay=document.getElementById('modalOverlay'),root=document.getElementById('appRoot');
   if(!overlay||!root||window.syterJournalView)return;
   let entry=null,parkedOwner=null;
-  function scrolls(){return [...root.querySelectorAll('*')].filter(el=>el.scrollTop||el.scrollLeft)
+  function scrolls(){return [root,...root.querySelectorAll('*'),overlay.querySelector('.modal-box')]
+    .filter(el=>el&&(el.scrollTop||el.scrollLeft))
     .map(el=>({el,top:el.scrollTop,left:el.scrollLeft}));}
   function restoreScroll(){
     if(!entry||document.body.classList.contains('syter-mini'))return;
@@ -52,6 +53,7 @@
       if(window.TJMedia)window.TJMedia.reset();if(typeof currentScreenshot!=='undefined')currentScreenshot=null;
       const image=document.getElementById('screenshotPreview');if(image)image.removeAttribute('src');
       const wrap=document.getElementById('screenshotPreviewWrap');if(wrap)wrap.style.display='none';
+      const filename=document.getElementById('screenshotFileName');if(filename)filename.textContent='No file chosen';
     }
   },250);
 })();

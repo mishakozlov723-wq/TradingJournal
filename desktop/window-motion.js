@@ -30,7 +30,8 @@ function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},onSt
       top?w.webContents.capturePage({x:0,y:0,width:rect.width,height:top})
         .then(image=>{onStage('title-captured');return image;}):null]));
     if(!active(t)||!images||images[0].isEmpty())return null;
-    return {rect,top,body:'data:image/jpeg;base64,'+images[0].toJPEG(90).toString('base64'),
+    return {rect,top,maximized:typeof w.isMaximized==='function'&&w.isMaximized(),
+      body:'data:image/jpeg;base64,'+images[0].toJPEG(90).toString('base64'),
       title:images[1]&&!images[1].isEmpty()?images[1].toDataURL():''};
   }
   async function prepare(target,animate=true){

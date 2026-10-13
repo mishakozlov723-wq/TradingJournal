@@ -84,7 +84,13 @@ function fitBounds(bounds, defaults) {
 }
 
 function modeTarget(enabled) {
-  if (enabled) return fitBounds(miniBounds, { x: NaN, y: NaN, width: 420, height: 730 });
+  if (enabled) {
+    if (miniBounds) return fitBounds(miniBounds, { x: NaN, y: NaN, width: 420, height: 730 });
+    // First use stays on the journal's monitor, not necessarily the primary.
+    const area = screen.getDisplayMatching(win.getBounds()).workArea;
+    return fitBounds({ x: area.x + area.width - Math.min(420, area.width),
+      y: area.y + 30, width: 420, height: 730 }, { width: 420, height: 730 });
+  }
   if (!fullState) return win.getBounds();
   if (fullState.fullscreen) return screen.getDisplayMatching(fullState.bounds).bounds;
   if (fullState.maximized) return screen.getDisplayMatching(fullState.bounds).workArea;
