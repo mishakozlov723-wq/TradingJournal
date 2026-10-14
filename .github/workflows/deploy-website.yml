@@ -1,0 +1,80 @@
+name: Deploy website
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_live:
+        description: 'Publish main to the live website retocker.web.app'
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-hosting-retocker-live
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Require main and explicit live confirmation
+        env:
+          CONFIRM_LIVE: ${{ inputs.deploy_live }}
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Select the main branch. Other branches cannot deploy the live website."
+            exit 1
+          fi
+          if [ "$CONFIRM_LIVE" != "true" ]; then
+            echo "::error::Tick Publish main to the live website before running this workflow."
+            exit 1
+          fi
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Verify website syntax and targeted regression tests
+        run: |
+          node --check public/app.js
+          node --check public/replay-space.js
+          node --test tests/backtest-model-filter.test.cjs tests/chart-resize.test.cjs
+          test -s public/index.html
+          test -s public/app.css
+      - name: Check Firebase deploy credential
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RETOCKER }}
+        run: |
+          node <<'JS'
+          const value = process.env.FIREBASE_SERVICE_ACCOUNT;
+          if (!value) {
+            console.error('::error::Add repository Actions secret FIREBASE_SERVICE_ACCOUNT_RETOCKER before deploying.');
+            process.exit(1);
+          }
+          try {
+            const key = JSON.parse(value);
+            if (key.type !== 'service_account' || key.project_id !== 'retocker' || !key.client_email || !key.private_key) throw new Error('invalid');
+          } catch {
+            console.error('::error::The secret must contain the complete service-account JSON key for project retocker.');
+            process.exit(1);
+          }
+          JS
+      - name: Deploy only Firebase Hosting (not Firestore rules or desktop)
+        uses: FirebaseExtended/action-hosting-deploy@500ac625ca2dd40cbd15f7659af953801858032a # v0, pinned
+        with:
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RETOCKER }}
+          projectId: retocker
+          channelId: live
+      - name: Record published source
+        run: |
+          {
+            echo '## Website deployed'
+            echo '- Website: https://retocker.web.app/'
+            echo "- Source commit: $GITHUB_SHA"
+            echo '- Scope: Firebase Hosting only. No EXE rebuild or Firestore rules deployment.'
+          } >> "$GITHUB_STEP_SUMMARY"
