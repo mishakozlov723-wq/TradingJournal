@@ -13,40 +13,20 @@ const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 const { createMiniShortcut, LABEL: MINI_SHORTCUT_LABEL } = require('./mini-shortcut');
 const { createWindowMotion } = require('./window-motion');
+const { handlePreviewInput } = require('./interface-preview-shortcut');
 const { createViewLayout } = require('./view-layout');
 const { createWindowWidthPolicy, PAGE_MINIMUM_SCRIPT } = require('./window-width-policy');
-const diagnostics = require('./resize-diagnostics');
-// Packaged candidate starts in the user's confirmed smoothest shell.
-const RESIZE_PROBE = app.isPackaged && !process.argv.some(arg => arg.startsWith(diagnostics.PREFIX))
-  ? 'overlay-off' : diagnostics.readProbe();
-diagnostics.configureGpu(app);
-const PROBE_NO_COVER = RESIZE_PROBE !== 'baseline';
-const PROBE_NATIVE_FRAME = RESIZE_PROBE === 'native-frame';
-const { opaqueSnapshotMatcher, armPresentation } = require('./cover-presentation');
-
+// Production: hardware acceleration remains enabled; no diagnostic switches.
 const APP_URL = 'https://retocker.web.app/';
 const APP_HOSTS = ['retocker.web.app', 'retocker.firebaseapp.com'];
-// Isolated A/B animation test: the confirmed hidden-star fix is always on.
-// It applies only to our own site, never to external pages or local titlebars.
-let autumnMotionMode = 'numeric';
-function setAutumnMotionMode(mode) {
-  autumnMotionMode = mode;
-  const contents = [view && view.webContents, win && win.webContents];
-  for (const contentsItem of contents) {
-    if (!contentsItem || contentsItem.isDestroyed() || !isAppUrl(contentsItem.getURL())) continue;
-    contentsItem.executeJavaScript(`window.__syterAutumnMotion?.setMode(${JSON.stringify(mode)})`)
-      .catch(error => console.warn('Autumn A/B mode unavailable:', error.message));
-  }
-}
 app.on('web-contents-created', (_event, contents) => {
   contents.on('zoom-changed',()=>Promise.resolve().then(()=>widthPolicy.refresh()));
   contents.on('dom-ready', async () => {
     if (contents.isDestroyed() || !isAppUrl(contents.getURL())) return;
     try {
-      const autumnMotionSource = fs.readFileSync(path.join(__dirname, 'autumn-motion-probe.js'), 'utf8');
+      const autumnMotionSource = fs.readFileSync(path.join(__dirname, 'autumn-motion.js'), 'utf8');
       await contents.executeJavaScript(autumnMotionSource);
-      await contents.executeJavaScript(`window.__syterAutumnMotion?.setMode(${JSON.stringify(autumnMotionMode)})`);
-    } catch (error) { console.warn('Autumn A/B injection unavailable:', error.message); }
+    } catch (error) { console.warn('Autumn animation unavailable:', error.message); }
     if (contents === siteContents()) {
       try { widthPolicy.updateCssMinimum(await contents.executeJavaScript(PAGE_MINIMUM_SCRIPT)); }
       catch (error) { console.warn('Using fallback equity width:',error.message); }
@@ -56,7 +36,7 @@ app.on('web-contents-created', (_event, contents) => {
 });
 
 const UPDATE_EVERY_MS = 6 * 60 * 60 * 1000; // re-check every 6 hours
-const TITLEBAR_H = PROBE_NATIVE_FRAME ? 0 : 36;                      // px, black strip above the site
+const TITLEBAR_H = 36;                      // px, black strip above the site
 const REMEMBER_MS = 6 * 60 * 60 * 1000;     // auto sign-in animation works for 6 h after a manual sign-in
 // Use decoded RGBA PNGs at runtime, not a legacy HICON serialization.
 const ICON_PATH = path.join(__dirname, 'build', 'app-icon.png');
@@ -90,24 +70,7 @@ function installWidthPolicy() {
 const windowMotion = createWindowMotion({
   getWindow: () => win, getView: () => view, onFrame: layout,
   onStage: stage => { if (process.env.SYTER_TRANSITION_TEST === '1') console.log('TRANSITION:', stage); },
-  createOverlay: bounds => {
-    const cover = new BrowserWindow({
-      ...bounds, show: false, frame: false, transparent: true,
-      backgroundColor: '#00000000', focusable: false, skipTaskbar: true,
-      resizable: false, movable: false, hasShadow: false, roundedCorners: false,
-      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true,
-        backgroundThrottling: false, spellcheck: false },
-    });
-    // BrowserWindow's initial placement can be constrained to the work area.
-    // Our compositor canvas must match the requested union exactly.
-    cover.setBounds(bounds);
-    cover.setIgnoreMouseEvents(true);
-    cover.setAlwaysOnTop(true, 'pop-up-menu');
-    cover.armPresentation = (source, union) => armPresentation(cover.webContents,
-      opaqueSnapshotMatcher(source, union, value => nativeImage.createFromDataURL(value)));
-    cover.ready = cover.loadFile(path.join(__dirname, 'mode-transition.html'));
-    return cover;
-  },
+
 });
 const miniShortcut = createMiniShortcut({
   globalShortcut,
@@ -124,7 +87,6 @@ const miniShortcut = createMiniShortcut({
 });
 
 function requestMode(mini) {
-  if (PROBE_NO_COVER) { if (!mini) showWindow(); return; }
   // show()/focus() on an already focused journal can repaint its native frame.
   // A global request still restores a hidden/minimized/background journal.
   if (win && (!win.isVisible() || win.isMinimized() || !win.isFocused())) showWindow();
@@ -158,12 +120,10 @@ function modeTarget(enabled) {
   return widthPolicy.constrain(fitBounds(fullState.bounds, { x: 80, y: 80, width: 1440, height: 900 }));
 }
 async function prepareMiniMode(enabled, animate = true) {
-  if (PROBE_NO_COVER) return false;
   if (!win || enabled === miniMode) return false;
-  return windowMotion.prepare(modeTarget(enabled), animate, enabled);
+  return windowMotion.prepare(modeTarget(enabled), false, enabled);
 }
 async function setMiniMode(enabled, animate = true) {
-  if (PROBE_NO_COVER) return { mini: false, pinned: miniPinned };
   enabled = !!enabled;
   if (!win || enabled === miniMode) return { mini: miniMode, pinned: miniPinned };
   const generation = ++modeGeneration;
@@ -176,7 +136,7 @@ async function setMiniMode(enabled, animate = true) {
     miniBounds = win.getNormalBounds();
     miniMode = false;
   }
-  await windowMotion.move(target, animate, () => {
+  await windowMotion.move(target, false, () => {
     if (enabled) {
       if (win.isFullScreen()) win.setFullScreen(false);
       if (win.isMaximized()) win.unmaximize();
@@ -275,15 +235,10 @@ function toggleWindow() {
 function createTray() {
   if (tray) return;
   tray = new Tray(nativeImage.createFromPath(TRAY_ICON_PATH));
-  tray.setToolTip('SYTER · equity-width-v1 · ' + diagnostics.BUILD + ' · ' + RESIZE_PROBE);
+  tray.setToolTip('SYTER');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Открыть журнал', click: () => requestMode(false) },
-    { label: 'Мини-журнал · ' + MINI_SHORTCUT_LABEL, enabled: !PROBE_NO_COVER, click: () => requestMode(true) },
-    { type: 'separator' },
-    ...diagnostics.menuItems({ app, dialog, clipboard, getWindow: () => win, current: RESIZE_PROBE }),
-    { type: 'separator' },
-    { label: 'Листья · исходная анимация (A)', click: () => setAutumnMotionMode('original') },
-    { label: 'Листья · новая анимация (B)', click: () => setAutumnMotionMode('numeric') },
+    { label: 'Мини-журнал · ' + MINI_SHORTCUT_LABEL, click: () => requestMode(true) },
     { type: 'separator' },
     { label: 'Выход', click: () => { isQuitting = true; app.quit(); } },
   ]));
@@ -353,7 +308,6 @@ function loadState() {
   try { return JSON.parse(fs.readFileSync(stateFile(), 'utf8')); } catch (e) { return {}; }
 }
 function saveState() {
-  if (RESIZE_PROBE !== 'baseline') return;
   if (!win || win.isDestroyed()) return;
   try {
     const keepFullState = (miniMode || deferredFullRestore) && fullState;
@@ -373,17 +327,6 @@ function layout() { viewLayout.layout(); }
 
 function start() {
   Menu.setApplicationMenu(null); // clean window: no File/Edit/View bar
-  if (RESIZE_PROBE === 'single-surface') {
-    win = diagnostics.createSingleSurfaceWindow({ BrowserWindow, icon: ICON_PATH,
-      url: APP_URL, installLinkHandlers });
-    installWidthPolicy();
-    win.on('close', event => {
-      if (!isQuitting) { event.preventDefault(); win.hide(); }
-    });
-    win.on('closed', () => { win = null; });
-    createTray();
-    return;
-  }
   const st = loadState();
   miniBounds = st.miniBounds || null;
   miniPinned = st.miniPinned !== false;
@@ -400,8 +343,8 @@ function start() {
     show: false,
     autoHideMenuBar: true,
     // black title bar with the native minimize / maximize / close buttons on top of it
-    titleBarStyle: PROBE_NATIVE_FRAME ? 'default' : 'hidden',
-    titleBarOverlay: PROBE_NATIVE_FRAME ? undefined : { color: '#000000', symbolColor: '#cfd6e4', height: TITLEBAR_H },
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#000000', symbolColor: '#cfd6e4', height: TITLEBAR_H },
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -412,10 +355,7 @@ function start() {
   installWidthPolicy();
   win.loadFile(path.join(__dirname, 'titlebar.html'));
   win.webContents.on('page-title-updated', event => event.preventDefault());
-  win.setTitle('SYTER — equity-width-v1 · ' + diagnostics.BUILD + ' · ' + RESIZE_PROBE);
-  win.webContents.on('did-finish-load', () => {
-    win.webContents.executeJavaScript(`document.querySelector('.bar span').textContent = ${JSON.stringify('SYTER · equity-width-v1 · ' + diagnostics.BUILD)}`).catch(() => {});
-  });
+  win.setTitle('SYTER');
 
   view = new WebContentsView({
     webPreferences: {
@@ -435,9 +375,6 @@ function start() {
   if (st.maximized) win.maximize();
   win.once('ready-to-show', () => {
     widthPolicy.refresh(); layout(); win.show();
-    // Warm an EMPTY click-through compositor, not a snapshot of user data.
-    // Native window-show effects must not coincide with a mode switch.
-    if (!PROBE_NO_COVER) windowMotion.warm();
   });
   win.on('focus', () => { if (view && !view.webContents.isDestroyed()) view.webContents.focus(); });
 
@@ -452,7 +389,7 @@ function start() {
   win.on('closed', () => { win = null; view = null; });
 
   createTray();
-  if (!PROBE_NO_COVER) miniShortcut.register();
+  miniShortcut.register();
 
   const wc = view.webContents;
 
@@ -466,6 +403,7 @@ function start() {
 
   // keyboard shortcuts that the hidden menu would normally give
   wc.on('before-input-event', (e, input) => {
+    if (handlePreviewInput(e, input, wc, isAppUrl)) return;
     if (miniShortcut.handleFocusedInput(e, input)) return;
     if (input.type !== 'keyDown') return;
     const k = String(input.key).toLowerCase();
@@ -501,7 +439,7 @@ function start() {
     } catch (err) { console.warn('Mini journal unavailable:', err); }
   });
   wc.loadURL(APP_URL);
-  // Auto-updates disabled in this diagnostic-only build; no public release.
+  setupUpdates();
 }
 
 // ── app self-update ──

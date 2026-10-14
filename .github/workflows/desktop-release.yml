@@ -28,9 +28,6 @@ jobs:
         working-directory: desktop
         shell: pwsh
     steps:
-      - name: Never publish diagnostic builds
-        if: ${{ inputs.publish }}
-        run: throw 'Diagnostic branch cannot publish public releases'
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
@@ -57,18 +54,10 @@ jobs:
           Get-Content resize-test.log
           Get-Content resize-test-error.log
           if ($test.ExitCode -ne 0) { throw "Live resize test failed: $($test.ExitCode)" }
-      - name: Verify all isolated resize diagnostic variants
-        run: |
-          $electron = (Resolve-Path ./node_modules/electron/dist/electron.exe).Path
-          $script = (Resolve-Path ./tests/resize-probes.native.cjs).Path
-          $test = Start-Process -FilePath $electron -ArgumentList "`"$script`"" -Wait -PassThru -NoNewWindow -RedirectStandardOutput probes-test.log -RedirectStandardError probes-test-error.log
-          Get-Content probes-test.log
-          Get-Content probes-test-error.log
-          if ($test.ExitCode -ne 0) { throw "Diagnostic probes failed: $($test.ExitCode)" }
       - name: Verify actual Windows app and global shortcut
         run: |
           $electron = (Resolve-Path ./node_modules/electron/dist/electron.exe).Path
-          $script = (Resolve-Path ./tests/desktop-release.native.cjs).Path
+          $script = (Resolve-Path ./tests/user-release.native.cjs).Path
           $test = Start-Process -FilePath $electron -ArgumentList "`"$script`"" -Wait -PassThru -NoNewWindow -RedirectStandardOutput native-test.log -RedirectStandardError native-test-error.log
           Get-Content native-test.log
           Get-Content native-test-error.log
@@ -111,3 +100,49 @@ jobs:
           path: desktop/release/*
           if-no-files-found: error
           retention-days: 14
+      - name: Publish all updater assets
+        if: ${{ inputs.publish && !inputs.check_only }}
+        env:
+          GH_TOKEN: ${{ secrets.SYTER_RELEASE_TOKEN }}
+        run: |
+          if ('${{ github.ref }}' -ne 'refs/heads/release/1.3.0' -and '${{ github.ref }}' -ne 'refs/heads/main') { throw 'Publish only approved release branch or main' }
+          if (!$env:GH_TOKEN) { throw 'SYTER_RELEASE_TOKEN is required for publishing to syter-releases' }
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $repo = 'mishakozlov723-wq/syter-releases'
+          $tag = "v$version"
+          # Never overwrite a PUBLIC version. An interrupted upload may have
+          # left our own unpublished draft; only that known draft may resume.
+          $existingText = gh release view $tag --repo $repo --json isDraft,name,body 2>$null
+          $resumeDraft = $false
+          if ($LASTEXITCODE -eq 0) {
+            $existing = ($existingText -join "`n") | ConvertFrom-Json
+            if (!$existing.isDraft) { throw "Public release $tag already exists" }
+            if ($existing.name -ne "SYTER $version" -or
+                $existing.body -notlike '*SYTER 1.3.0 production desktop release.*' -or
+                $existing.body -notlike '*Minimum desktop width protects the full Equity Curve layout.*') {
+              throw "Unrecognized draft $tag; do not overwrite"
+            }
+            $resumeDraft = $true
+          }
+          @"
+          - SYTER 1.3.0 production desktop release.
+          - Minimum desktop width protects the full Equity Curve layout.
+          - Improved resizing and optimized seasonal animations with hardware acceleration enabled.
+          - Clean SYTER title and tray menu; no diagnostic controls.
+          - Existing journal data, mini journal and automatic updates preserved.
+          "@ | Set-Content release-notes.md
+          $expected = @("latest.yml", "SYTER-Setup-$version.exe", "SYTER-Setup-$version.exe.blockmap")
+          $assets = @($expected | ForEach-Object {
+            $file = Join-Path release $_
+            if (!(Test-Path $file -PathType Leaf)) { throw "Missing updater asset: $_" }
+            (Resolve-Path $file).Path
+          })
+          if ($resumeDraft) {
+            gh release upload $tag @assets --repo $repo --clobber
+            if ($LASTEXITCODE -ne 0) { throw 'Could not finish the unpublished draft assets' }
+          } else {
+            gh release create $tag @assets --repo $repo --title "SYTER $version" --notes-file release-notes.md --draft
+            if ($LASTEXITCODE -ne 0) { throw 'Could not create complete draft release' }
+          }
+          gh release edit $tag --repo $repo --notes-file release-notes.md --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Draft upload succeeded but publishing failed' }

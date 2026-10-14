@@ -42,7 +42,7 @@ function setup({ maximized = false, fullscreen = false } = {}) {
         globalShortcut: {}, dialog: {},
       };
       if (name === 'electron-updater') return { autoUpdater: {} };
-      if (name === './resize-diagnostics') return require('../resize-diagnostics');
+      if (name === './interface-preview-shortcut') return require('../interface-preview-shortcut');
       if (name === './view-layout') return require('../view-layout');
       if (name === './window-width-policy') return require('../window-width-policy');
       if (name === './window-motion') return { createWindowMotion: () => motion };
