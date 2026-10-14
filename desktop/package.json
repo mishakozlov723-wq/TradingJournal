@@ -48,7 +48,8 @@
       "view-layout.js",
       "build/app-icon.png",
       "build/tray-icon.png",
-      "resize-diagnostics.js"
+      "resize-diagnostics.js",
+      "autumn-motion-probe.js"
     ],
     "win": {
       "target": [

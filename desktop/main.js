@@ -23,6 +23,29 @@ const { opaqueSnapshotMatcher, armPresentation } = require('./cover-presentation
 
 const APP_URL = 'https://retocker.web.app/';
 const APP_HOSTS = ['retocker.web.app', 'retocker.firebaseapp.com'];
+// Isolated A/B animation test: the confirmed hidden-star fix is always on.
+// It applies only to our own site, never to external pages or local titlebars.
+let autumnMotionMode = 'numeric';
+const autumnMotionSource = fs.readFileSync(path.join(__dirname, 'autumn-motion-probe.js'), 'utf8');
+function setAutumnMotionMode(mode) {
+  autumnMotionMode = mode;
+  const contents = [view && view.webContents, win && win.webContents];
+  for (const contentsItem of contents) {
+    if (!contentsItem || contentsItem.isDestroyed() || !isAppUrl(contentsItem.getURL())) continue;
+    contentsItem.executeJavaScript(`window.__syterAutumnMotion?.setMode(${JSON.stringify(mode)})`)
+      .catch(error => console.warn('Autumn A/B mode unavailable:', error.message));
+  }
+}
+app.on('web-contents-created', (_event, contents) => {
+  contents.on('dom-ready', async () => {
+    if (contents.isDestroyed() || !isAppUrl(contents.getURL())) return;
+    try {
+      await contents.executeJavaScript(autumnMotionSource);
+      await contents.executeJavaScript(`window.__syterAutumnMotion?.setMode(${JSON.stringify(autumnMotionMode)})`);
+    } catch (error) { console.warn('Autumn A/B injection unavailable:', error.message); }
+  });
+});
+
 const UPDATE_EVERY_MS = 6 * 60 * 60 * 1000; // re-check every 6 hours
 const TITLEBAR_H = PROBE_NATIVE_FRAME ? 0 : 36;                      // px, black strip above the site
 const REMEMBER_MS = 6 * 60 * 60 * 1000;     // auto sign-in animation works for 6 h after a manual sign-in
@@ -231,12 +254,15 @@ function toggleWindow() {
 function createTray() {
   if (tray) return;
   tray = new Tray(nativeImage.createFromPath(TRAY_ICON_PATH));
-  tray.setToolTip('SYTER · ' + diagnostics.BUILD + ' · ' + RESIZE_PROBE);
+  tray.setToolTip('SYTER · autumn-motion-v1 · ' + diagnostics.BUILD + ' · ' + RESIZE_PROBE);
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Открыть журнал', click: () => requestMode(false) },
     { label: 'Мини-журнал · ' + MINI_SHORTCUT_LABEL, enabled: !PROBE_NO_COVER, click: () => requestMode(true) },
     { type: 'separator' },
     ...diagnostics.menuItems({ app, dialog, clipboard, getWindow: () => win, current: RESIZE_PROBE }),
+    { type: 'separator' },
+    { label: 'Листья · исходная анимация (A)', click: () => setAutumnMotionMode('original') },
+    { label: 'Листья · новая анимация (B)', click: () => setAutumnMotionMode('numeric') },
     { type: 'separator' },
     { label: 'Выход', click: () => { isQuitting = true; app.quit(); } },
   ]));
@@ -363,9 +389,9 @@ function start() {
   });
   win.loadFile(path.join(__dirname, 'titlebar.html'));
   win.webContents.on('page-title-updated', event => event.preventDefault());
-  win.setTitle('SYTER — ' + diagnostics.BUILD + ' · ' + RESIZE_PROBE);
+  win.setTitle('SYTER — autumn-motion-v1 · ' + diagnostics.BUILD + ' · ' + RESIZE_PROBE);
   win.webContents.on('did-finish-load', () => {
-    win.webContents.executeJavaScript(`document.querySelector('.bar span').textContent = ${JSON.stringify('SYTER · ' + diagnostics.BUILD)}`).catch(() => {});
+    win.webContents.executeJavaScript(`document.querySelector('.bar span').textContent = ${JSON.stringify('SYTER · autumn-motion-v1 · ' + diagnostics.BUILD)}`).catch(() => {});
   });
 
   view = new WebContentsView({
