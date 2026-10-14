@@ -2926,6 +2926,12 @@
     var menu = document.getElementById('assetFilterMenu'), bar = document.getElementById('assetFilterScrollbar'), thumb = document.getElementById('assetFilterScrollbarThumb');
     if (!menu || !bar || !thumb) return;
     var control = document.getElementById('assetFilterControl');
+    // Closed filters need no geometry. Reading clientWidth here forces a
+    // viewport style flush on every resize, including on the login screen.
+    if (!control || !control.classList.contains('open')) {
+      bar.classList.remove('is-visible');
+      return;
+    }
     var measurable = menu.clientWidth > 80;
     var overflow = measurable && menu.scrollWidth > menu.clientWidth + 4;
     bar.classList.toggle('is-visible', overflow && control.classList.contains('open'));
@@ -5480,6 +5486,10 @@
   // column, so its vertical position is synced to where the builder actually starts —
   // it isn't tied to the statistics block's width or layout at all.
   function syncBacktestPanelPosition() {
+    // The drawer is only visible in an active backtest detail workspace.
+    // Do not measure its hidden builder or rewrite its styles on login resize.
+    if (!document.body.classList.contains('backtest-workspace-mode') ||
+        !document.body.classList.contains('backtest-detail-mode')) return;
     var builder = document.querySelector('.backtest-builder');
     var panel = document.getElementById('backtestInputPanel');
     var tab = document.getElementById('backtestDrawerOpenTab');
