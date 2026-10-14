@@ -192,6 +192,13 @@ async function main() {
     api.requestMode(true);await settled(true);miniFilmBounds=w.getContentBounds();await wait(180);
     filmEvents.push({stage:'request-full',time:Date.now()});
     api.requestMode(false);await settled(false);await wait(180);
+    filmEvents.push({stage:'native-maximize-start',time:Date.now()});
+    w.maximize();await until(()=>w.isMaximized(),'maximize for continuous recording');await wait(300);
+    filmEvents.push({stage:'native-maximize-end',time:Date.now()});
+    filmEvents.push({stage:'request-mini-from-maximized',time:Date.now()});
+    api.requestMode(true);await settled(true);await wait(180);
+    filmEvents.push({stage:'request-full-maximized',time:Date.now()});
+    api.requestMode(false);await settled(false);await wait(180);
   } finally {
     filming=false;fs.writeFileSync(path.join(filmDirectory,'stop'),'stop');await recorded;
     fs.writeFileSync(path.join(filmDirectory,'events.json'),JSON.stringify({area,original,mini:miniFilmBounds,events:filmEvents},null,2));
@@ -209,7 +216,12 @@ async function main() {
   const filmTimes=JSON.parse(fs.readFileSync(path.join(filmDirectory,'times.json'),'utf8'));
   assert.ok(filmTimes.length>=15,'continuous test must include actual desktop frames');
   let maxLeak=0;
+  const maximizeStart=filmEvents.find(e=>e.stage==='native-maximize-start').time;
+  const maximizeEnd=filmEvents.find(e=>e.stage==='native-maximize-end').time;
   for(let frame=0;frame<filmTimes.length;frame++){
+    // The test's separate native maximize command has its own OS animation;
+    // it is not a journal mode switch. Check every captured mode-switch frame.
+    if(filmTimes[frame]>=maximizeStart-50&&filmTimes[frame]<=maximizeEnd+50)continue;
     const image=nativeImage.createFromPath(path.join(filmDirectory,`frame-${String(frame).padStart(3,'0')}.png`));
     const pixels=image.toBitmap(),width=image.getSize().width;
     let leaking=0;
@@ -222,7 +234,8 @@ async function main() {
   }
   console.log(`TEMPORAL: ${filmTimes.length} actual-screen frames, maximum background leak ${maxLeak} pixels.`);
   nativeResizeCalls=0;
-  console.log('TEMPORAL: continuous real-desktop film saved, without per-stage capture delays.');
+  w.unmaximize();w.setBounds(original);await wait(150);nativeResizeCalls=0;
+  console.log('TEMPORAL: normal AND maximized continuous real-desktop film saved, without per-stage capture delays.');
   await wait(150);
   const liveRect=w.getContentBounds();
   const desktopBaseline=path.join(artifacts,'desktop-before.png');
