@@ -9,7 +9,7 @@ if (!process.argv.includes('--probe-child')) {
   for (const [mode] of diagnostics.MODES) {
     const result = spawnSync(process.execPath, [
       __filename, '--probe-child', diagnostics.PREFIX + mode,
-    ], { encoding: 'utf8', timeout: 30000, windowsHide: true });
+    ], { encoding: 'utf8', timeout: 30000, windowsHide: false });
     console.log(result.stdout);
     if (result.stderr) console.error(result.stderr);
     if (result.error || result.status !== 0) {
