@@ -40,6 +40,14 @@ jobs:
         run: ./scripts/prepare-build-assets.ps1
       - name: Run regression tests
         run: npm test
+      - name: Verify live resize decoration and draft preservation
+        run: |
+          $electron = (Resolve-Path ./node_modules/electron/dist/electron.exe).Path
+          $script = (Resolve-Path ./tests/resize-performance.native.cjs).Path
+          $test = Start-Process -FilePath $electron -ArgumentList "`"$script`"" -Wait -PassThru -WindowStyle Hidden -RedirectStandardOutput resize-test.log -RedirectStandardError resize-test-error.log
+          Get-Content resize-test.log
+          Get-Content resize-test-error.log
+          if ($test.ExitCode -ne 0) { throw "Live resize test failed: $($test.ExitCode)" }
       - name: Verify actual Windows app and global shortcut
         run: |
           $electron = (Resolve-Path ./node_modules/electron/dist/electron.exe).Path

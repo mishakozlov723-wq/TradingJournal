@@ -422,6 +422,8 @@ function start() {
     layout();
     if (!isAppUrl(wc.getURL())) return;
     try {
+      await wc.insertCSS(fs.readFileSync(path.join(__dirname, 'resize-performance.css'), 'utf8'));
+      await wc.executeJavaScript(fs.readFileSync(path.join(__dirname, 'resize-performance.js'), 'utf8'));
       await wc.insertCSS(fs.readFileSync(path.join(__dirname, 'mini-journal.css'), 'utf8'));
       await wc.executeJavaScript(fs.readFileSync(path.join(__dirname, 'mini-view-state.js'), 'utf8'));
       const mediaReady=await wc.executeJavaScript('Boolean(window.TJMedia)');

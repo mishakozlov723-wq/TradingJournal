@@ -1,0 +1,10 @@
+/* Freeze only decorative particles during live resizing. Pausing retains their
+   animation phase, so release resumes motion instead of restarting the scene. */
+html.syter-window-resizing :is(#appParticles, #loginParticles, #autumnParticles,
+  #winterParticles, #springParticles, #summerParticles) *,
+html.syter-window-resizing :is(#appParticles, #loginParticles, #autumnParticles,
+  #winterParticles, #springParticles, #summerParticles) *::before,
+html.syter-window-resizing :is(#appParticles, #loginParticles, #autumnParticles,
+  #winterParticles, #springParticles, #summerParticles) *::after {
+  animation-play-state: paused !important;
+}
