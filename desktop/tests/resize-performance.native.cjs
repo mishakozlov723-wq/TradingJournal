@@ -7,13 +7,14 @@ const { createViewLayout } = require('../view-layout');
 app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'syter-resize-')));
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const deadline = setTimeout(() => { console.error('Resize test timed out'); app.exit(1); }, 45000);
-function drag(bounds, delta) {
+function drag(win, delta) {
   return new Promise((resolve, reject) => {
     const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-File',
       path.join(__dirname, 'drag-window-border.ps1'),
-      '-X', String(bounds.x + bounds.width - 2), '-Y', String(bounds.y + Math.floor(bounds.height / 2)),
-      '-Delta', String(delta)], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+      '-Handle', win.getNativeWindowHandle().readBigUInt64LE(0).toString(),
+      '-Delta', String(delta)], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     let error = '';
+    child.stdout.on('data', data => console.log('NATIVE DRAG:', data.toString().trim()));
     child.stderr.on('data', data => { error += data; });
     child.on('error', reject);
     child.on('exit', code => code === 0 ? resolve() : reject(Error(error || 'Border drag failed: ' + code)));
@@ -69,7 +70,7 @@ app.whenReady().then(async () => {
   for (const delta of [-160, 160]) {
     const before = win.getBounds(), eventsBefore = willResize;
     await wc.executeJavaScript('window.watchResize=true');
-    await drag(before, delta);
+    await drag(win, delta);
     await wc.executeJavaScript('window.watchResize=false');
     await wait(120);
     assert.ok(willResize > eventsBefore, 'real mouse drag must emit will-resize (setSize does not)');
