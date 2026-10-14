@@ -44,6 +44,22 @@ app.whenReady().then(() => {
 
 const sourcePath = path.resolve(__dirname, '../main.js');
 let handoffChecks=0;
+function desktopShot(rect,output){
+  execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-File',
+    path.join(__dirname,'capture-desktop-region.ps1'),'-X',String(rect.x),'-Y',String(rect.y),
+    '-Width',String(rect.width),'-Height',String(rect.height),'-Output',output],
+    {timeout:10000,stdio:'pipe',windowsHide:true});
+}
+function pixelDifference(actual,expected){
+  assert.deepEqual(actual.getSize(),expected.getSize());
+  const a=actual.toBitmap(),b=expected.toBitmap(),size=actual.getSize();
+  let total=0,channels=0;
+  for(let y=8;y<size.height-8;y++)for(let x=8;x<size.width-8;x++){
+    const i=(y*size.width+x)*4;
+    for(let c=0;c<3;c++){total+=Math.abs(a[i+c]-b[i+c]);channels++;}
+  }
+  return total/channels;
+}
 async function inspectHandoff(stage,data){
   if(!['cover-presented','destination-presented'].includes(stage)||handoffChecks>=4)return;
   const snapshot=data.source||data.destination;
@@ -69,6 +85,11 @@ async function inspectHandoff(stage,data){
   console.log(`HANDOFF ${handoffChecks} ${stage}: native-pixel color difference ${average.toFixed(4)}`);
   assert.ok(average<1,'source/destination handoff must not change text contrast or introduce a blank frame');
   const artifacts=path.resolve(__dirname,'../test-artifacts');fs.mkdirSync(artifacts,{recursive:true});
+  // A capturePage() match does NOT establish an invisible Windows/DWM handoff.
+  // Inspect the actual desktop placement, not another offscreen browser image.
+  const desktopPath=path.join(artifacts,`desktop-${handoffChecks}-${stage}.png`);
+  desktopShot({x:rect.x,y:rect.y+snapshot.top,width:rect.width,height:rect.height-snapshot.top},desktopPath);
+  console.log(`DESKTOP ${handoffChecks} ${stage}: actual-screen color difference ${pixelDifference(nativeImage.createFromPath(desktopPath),expected).toFixed(4)}`);
   fs.writeFileSync(path.join(artifacts,`handoff-${handoffChecks++}-${stage}.png`),actual.toPNG());
 }
 // Instrument only this isolated test process, without a production test API.
@@ -76,7 +97,7 @@ const realLoad=Module._load;
 Module._load=function(request,parent,isMain){
   const exported=realLoad.apply(this,arguments);
   if(request==='./window-motion'&&parent?.filename===sourcePath){
-    return {createWindowMotion:options=>exported.createWindowMotion({...options,
+    return {createWindowMotion:options=>exported.createWindowMotion({...options,timeout:15000,
       onStage:async(stage,data)=>{options.onStage?.(stage,data);await inspectHandoff(stage,data);}
     })};
   }
@@ -139,6 +160,13 @@ async function main() {
       await wc.executeJavaScript(`document.body.classList.contains('syter-mini') === ${mini} && !document.body.dataset.syterModeTransition`), 'mode settled');
   }
 
+  await wait(150);
+  const liveRect=w.getContentBounds();
+  const desktopBaseline=path.join(artifacts,'desktop-before.png');
+  desktopShot({x:liveRect.x,y:liveRect.y+36,width:liveRect.width,height:liveRect.height-36},desktopBaseline);
+  const liveReference=await wc.capturePage();
+  fs.writeFileSync(path.join(artifacts,'desktop-before-reference.png'),liveReference.toPNG());
+  console.log('DESKTOP baseline: actual-screen color difference '+pixelDifference(nativeImage.createFromPath(desktopBaseline),liveReference).toFixed(4));
   api.requestMode(true);
   let cover;
   await until(() => {
