@@ -1,7 +1,7 @@
 {
   "name": "syter-desktop",
   "productName": "SYTER",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "description": "SYTER Trading Journal",
   "author": "SYTER",
   "main": "main.js",
@@ -45,6 +45,8 @@
       "mode-transition.css",
       "mode-transition.js",
       "mini-view-state.js",
+      "resize-performance.js",
+      "resize-performance.css",
       "build/app-icon.png",
       "build/tray-icon.png"
     ],
