@@ -105,7 +105,7 @@ jobs:
           @"
           - Ctrl + Shift + Ё switches the same window between full and mini journal.
           - Snapshot-based transitions avoid live layout tearing and extra maximize jumps.
-          - Lossless snapshots, paint-acknowledged handoffs and native-size final frames reduce switching flicker.
+          - A prewarmed compositor replaces per-switch window creation and whole-pane fades; the smooth movement is preserved.
           - Returning from mini restores the previous screen; an unsaved draft stays available.
           - Visible tray, taskbar and installer icons with preserved 32-bit transparency.
           - Model descriptions open in the system default browser.
