@@ -40,6 +40,10 @@ if (!process.argv.includes('--probe-child')) {
       if (host?.isVisible() && site && !site.isLoading()) break;
       await wait(50);
     }
+    console.log('PROBE STARTUP:', JSON.stringify({ mode, argv: process.argv,
+      windows: BrowserWindow.getAllWindows().map(win => ({ url: win.webContents.getURL(), visible: win.isVisible(), bounds: win.getBounds() })),
+      contents: webContents.getAllWebContents().map(wc => ({ url: wc.getURL(), loading: wc.isLoading() })),
+    }));
     assert.ok(host?.isVisible() && site, 'probe host and local fixture are visible');
     await wait(500);
     const windows = BrowserWindow.getAllWindows();

@@ -79,7 +79,7 @@ const miniShortcut = createMiniShortcut({
 });
 
 function requestMode(mini) {
-  if (PROBE_NO_COVER) return;
+  if (PROBE_NO_COVER) { if (!mini) showWindow(); return; }
   // show()/focus() on an already focused journal can repaint its native frame.
   // A global request still restores a hidden/minimized/background journal.
   if (win && (!win.isVisible() || win.isMinimized() || !win.isFocused())) showWindow();
