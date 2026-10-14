@@ -16,6 +16,7 @@ function setup({failCapture=false,failCover=false,hold=false,holdReveal=false,ti
    createOverlay:rect=>{
      if(failCover)throw Error('cover failed');
      const cover={ready:Promise.resolve(),isDestroyed:()=>cover.dead,
+       moveTop(){calls.push(['raiseCover']);},
        showInactive(){calls.push(['showCover']);},destroy(){cover.dead=true;calls.push(['destroyCover']);},
        webContents:{executeJavaScript:async code=>{
          const stage=code.match(/syterTransition\.(\w+)\(/)[1];calls.push([stage,code]);
@@ -35,6 +36,7 @@ test('live native window is resized once, not every animation frame',async()=>{
  const s=setup();await s.motion.prepare(compact);assert.equal(await s.motion.move(compact),true);
  assert.deepEqual(s.moves,[compact]);assert.equal(s.opacity(),1);assert.equal(s.motion.isActive(),false);
  assert.ok(s.calls.some(c=>c[0]==='play'));assert.equal(s.covers[0].dead,true);
+ assert.ok(s.calls.findIndex(c=>c[0]==='raiseCover')<s.calls.findIndex(c=>c[0]==='play'));
 });
 test('lossless cover is actually presented before the live window is concealed',async()=>{
  const s=setup();await s.motion.prepare(compact);

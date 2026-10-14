@@ -39,9 +39,11 @@ function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},onSt
   async function prepare(target,animate=true){
     cancel();const w=getWindow(),v=getView();
     if(!animate||!available(w)||!w.isVisible()||!v||!createOverlay){onStage('skipped');return false;}
-    const from=w.getContentBounds(),x=Math.min(from.x,target.x)-12,y=Math.min(from.y,target.y)-12;
-    const union={x,y,width:Math.max(from.x+from.width,target.x+target.width)-x+12,
-      height:Math.max(from.y+from.height,target.y+target.height)-y+12};
+    const from=w.getContentBounds(),x=Math.min(from.x,target.x),y=Math.min(from.y,target.y);
+    // No artificial shadow/padding: an oversized constructor viewport can be
+    // clamped to the work area on Windows, clipping the destination by 12 px.
+    const union={x,y,width:Math.max(from.x+from.width,target.x+target.width)-x,
+      height:Math.max(from.y+from.height,target.y+target.height)-y};
     if(union.width*union.height>14000000)return false;
     let abort;
     const t={opacity:w.getOpacity(),overlay:null,throttled:[],union,
@@ -77,6 +79,9 @@ function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},onSt
       if(applyNative)applyNative();else w.setBounds(target);onFrame();
       onStage('native-settled');
       if(!animate||!t||!active(t))return true;
+      // Pinning the mini journal changes HWND z-order on Windows. Keep the
+      // cover above it until the live destination is ready for the handoff.
+      t.overlay.moveTop?.();
       await paint(t);const destination=await capture(t);
       onStage('destination-captured');
       if(!destination||!active(t)){if(task===t)cancel();return false;}

@@ -53,6 +53,11 @@ async function inspectHandoff(stage,data){
     width:rect.width,height:rect.height-snapshot.top,
   });
   const expected=nativeImage.createFromDataURL(snapshot.body);
+  if(JSON.stringify(actual.getSize())!==JSON.stringify(expected.getSize())){
+    console.log('HANDOFF GEOMETRY:',JSON.stringify({stage,rect,union:data.union,
+      cover:data.overlay.getBounds(),content:data.overlay.getContentBounds(),
+      expected:expected.getSize(),actual:actual.getSize()}));
+  }
   assert.deepEqual(actual.getSize(),expected.getSize(),'handoff must use native pixel dimensions');
   const a=actual.toBitmap(),b=expected.toBitmap(),size=actual.getSize();
   let difference=0,channels=0;

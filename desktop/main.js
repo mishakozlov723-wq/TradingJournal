@@ -47,6 +47,9 @@ const windowMotion = createWindowMotion({
       webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true,
         backgroundThrottling: false, spellcheck: false },
     });
+    // BrowserWindow's initial placement can be constrained to the work area.
+    // Our compositor canvas must match the requested union exactly.
+    cover.setBounds(bounds);
     cover.setIgnoreMouseEvents(true);
     cover.setAlwaysOnTop(true, 'pop-up-menu');
     cover.ready = cover.loadFile(path.join(__dirname, 'mode-transition.html'));
