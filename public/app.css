@@ -2133,6 +2133,12 @@
   #appParticles { opacity: 1; transition: opacity .45s var(--ease); }
   html.season-autumn #appParticles,
   html.season-winter #appParticles { opacity: 0; }
+  /* The autumn scene already replaces these stars with visible leaves.
+     opacity:0 alone leaves 380 animated stars participating in style/layout
+     during resize. Remove only the invisible layers; keep autumn motion.
+     Scope to the confirmed scene; removing its class restores default stars. */
+  html.season-autumn #loginParticles,
+  html.season-autumn #appParticles { display: none; }
   .autumn-particles { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; opacity: 0; transition: opacity .6s var(--ease); }
   html.season-autumn .autumn-particles { opacity: 1; }
   .winter-particles { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; opacity: 0; transition: opacity .6s var(--ease); }
