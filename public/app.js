@@ -177,9 +177,10 @@
       function() { renderMonthDetailChartUncached(arr, svgId, emptyId); }, function() { renderPeriodDetailChart(svgId, emptyId, arr); });
   }
   function renderBacktestChart(arr) {
+    arr = filterBacktestTradesByModel(arr);
     var bt = backtests.filter(function(b) { return b.id === activeBacktestId; })[0];
     renderChartOnce('backtestChart', arr, [activeBacktestId, curveColor,
-      bt && bt.pendingCurveColor, bt && bt.curveColor, viewingUser],
+      bt && bt.pendingCurveColor, bt && bt.curveColor, viewingUser, backtestModelFilterId],
       function() { renderBacktestChartUncached(arr); }, function() { renderBacktestChart(arr); });
   }
   function renderBarChart(year, arr) {
@@ -326,6 +327,7 @@
   var activeBacktestId = null;
   var backtestTrades = [];
   var allBacktestTrades = [];
+  var backtestModelFilterId = '', backtestModelFilterContext = '';
   var backtestCreationStep = null;
   var replayRangePick = null; // set by Replay Space: reuse the Backtest start→end calendar without creating a backtest
   var backtestDraftStart = null;
@@ -959,6 +961,10 @@
       }
       menu.appendChild(row);
     });
+    renderBacktestModelControl();
+    var activeBt = backtests.filter(function(b) { return b.id === activeBacktestId; })[0];
+    var modelOwner = findUser(viewingUser);
+    if (ready && activeBt && modelOwner && activeBt.uid === modelOwner.uid) renderBacktests();
   }
 
   function showModelError(message, input) {
@@ -1928,6 +1934,87 @@
     document.getElementById('tradeModalSubmitBtn').textContent = 'Save Changes';
   }
 
+  // Backtest model filter: presentation only; never rewrite trades or RR data.
+  function backtestModelCatalogue() {
+    return tradingModelsReady && tradingModelsUser === viewingUser ? tradingModels : [];
+  }
+  function validBacktestModelFilter() {
+    var context = JSON.stringify([viewingUser, activeBacktestId]);
+    if (context !== backtestModelFilterContext) {
+      backtestModelFilterContext = context; backtestModelFilterId = ''; closeBacktestModelMenu();
+    }
+    var models = backtestModelCatalogue();
+    if (!models.length || (backtestModelFilterId && backtestModelFilterId !== '__NO_MODEL__' &&
+        !models.some(function(m) { return m.id === backtestModelFilterId; }))) backtestModelFilterId = '';
+    return backtestModelFilterId;
+  }
+  function filterBacktestTradesByModel(arr) {
+    var id = validBacktestModelFilter();
+    if (!id) return arr;
+    return arr.filter(function(t) { return id === '__NO_MODEL__' ? !t.modelId : t.modelId === id; });
+  }
+  function closeBacktestModelMenu() {
+    var control = document.getElementById('backtestModelControl');
+    var trigger = document.getElementById('backtestModelTrigger');
+    if (control) control.classList.remove('open');
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+  }
+  function selectBacktestModel(id) {
+    validBacktestModelFilter();
+    if (id && id !== '__NO_MODEL__' && !backtestModelCatalogue().some(function(m) { return m.id === id; })) return;
+    backtestModelFilterId = id;
+    closeBacktestModelMenu();
+    renderBacktests();
+    document.getElementById('backtestModelTrigger').focus();
+  }
+  function renderBacktestModelControl() {
+    var row = document.getElementById('backtestModelRow');
+    if (!row) return;
+    var id = validBacktestModelFilter(), models = backtestModelCatalogue();
+    row.hidden = !activeBacktestId || !models.length;
+    if (row.hidden) closeBacktestModelMenu();
+    var selected = models.filter(function(m) { return m.id === id; })[0];
+    var name = selected ? selected.name : (id === '__NO_MODEL__' ? 'No model' : 'All models');
+    document.getElementById('backtestModelValue').textContent = name;
+    var summary = document.getElementById('backtestModelSummary');
+    if (summary) { summary.hidden = !id; summary.textContent = id ? 'Model · ' + name : ''; }
+    var empty = document.getElementById('backtestEmptyChart');
+    if (empty) empty.textContent = id ? 'No trades for this model with the current filters' : 'No trades yet — add results or close a position in Replay';
+    var menu = document.getElementById('backtestModelMenu');
+    menu.replaceChildren();
+    [{id:'',name:'All models'}].concat(models,[{id:'__NO_MODEL__',name:'No model'}]).forEach(function(m) {
+      var option = document.createElement('button'); option.type = 'button';
+      option.className = 'trade-asset-option' + (m.id === id ? ' active' : '');
+      option.setAttribute('role', 'menuitemradio'); option.setAttribute('aria-checked', String(m.id === id));
+      option.textContent = m.name;
+      option.addEventListener('click', function() { selectBacktestModel(m.id); });
+      menu.appendChild(option);
+    });
+  }
+  function handleBacktestModelKeys(e) {
+    var control = document.getElementById('backtestModelControl'), trigger = document.getElementById('backtestModelTrigger');
+    if (!control || !control.contains(e.target)) return;
+    if (e.key === 'Escape') { e.preventDefault(); closeBacktestModelMenu(); trigger.focus(); return; }
+    if (e.key === 'Tab') { closeBacktestModelMenu(); return; }
+    if (['ArrowDown','ArrowUp','Home','End'].indexOf(e.key) < 0) return;
+    e.preventDefault(); control.classList.add('open'); trigger.setAttribute('aria-expanded','true');
+    var options = Array.prototype.slice.call(document.querySelectorAll('#backtestModelMenu button'));
+    var index = options.indexOf(document.activeElement);
+    var next = e.key === 'Home' ? 0 : e.key === 'End' ? options.length - 1 :
+      (index + (e.key === 'ArrowUp' ? -1 : 1) + options.length) % options.length;
+    if (options[next]) options[next].focus();
+  }
+  document.getElementById('backtestModelTrigger').addEventListener('click', function() {
+    var control = document.getElementById('backtestModelControl');
+    var open = control.classList.toggle('open'); this.setAttribute('aria-expanded', String(open));
+  });
+  document.getElementById('backtestModelControl').addEventListener('keydown', handleBacktestModelKeys);
+  document.addEventListener('pointerdown', function(e) {
+    var control = document.getElementById('backtestModelControl');
+    if (control && !control.contains(e.target)) closeBacktestModelMenu();
+  });
+  // End backtest model filter.
+
   var lastBacktestChartSignature = null;
   function renderBacktestChartUncached(arr) {
     var svg = document.getElementById('backtestChart'), empty = document.getElementById('backtestEmptyChart');
@@ -1962,7 +2049,7 @@
     svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
     var activeBt = backtests.filter(function(b) { return b.id === activeBacktestId; })[0];
     var btColor = activeBt && /^#[0-9a-f]{6}$/i.test(String(activeBt.pendingCurveColor || activeBt.curveColor || '')) ? String(activeBt.pendingCurveColor || activeBt.curveColor).toLowerCase() : curveColor;
-    var chartSignature = (activeBacktestId || '') + '|' + data.map(function(d) { return d.equity; }).join(',');
+    var chartSignature = (activeBacktestId || '') + '|' + backtestModelFilterId + '|' + data.map(function(d) { return d.equity; }).join(',');
     var pathClass = chartSignature === lastBacktestChartSignature ? ' no-redraw-anim' : '';
     lastBacktestChartSignature = chartSignature;
     svg.innerHTML = yGrid + yLabels + '<line class="bt-zero" x1="' + pL + '" y1="' + zero + '" x2="' + (W - pR) + '" y2="' + zero + '" stroke="rgba(255,255,255,.15)"/><path class="' + pathClass.trim() + '" d="' + path + '" pathLength="1" fill="none" stroke="' + btColor + '" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>' + xLabels;
@@ -2013,6 +2100,11 @@
     if (activeBacktestId) {
       listView.style.display = 'none'; detail.style.display = 'block';
       var bt = backtests.filter(function(b) { return b.id === activeBacktestId; })[0]; if (!bt) { activeBacktestId = null; return renderBacktests(); }
+      renderBacktestModelControl();
+      var panelHint = document.querySelector('#backtestInputPanel .backtest-panel-hint');
+      if (panelHint) panelHint.textContent = bt.source === 'replay'
+        ? (backtestModelCatalogue().length ? 'Results from Replay Space. Select a model to explore its performance.' : 'Results from Replay Space. Statistics update as positions close.')
+        : 'Paste your trade results in RR — the stats and chart on the right will update instantly.';
       updateBacktestCurveColourUI();
       document.getElementById('backtestDetailTitle').textContent = bt.name || 'Backtest';
       document.getElementById('backtestDetailRange').textContent = fmtBacktestDate(bt.startDate) + ' → ' + fmtBacktestDate(bt.endDate);
@@ -2023,7 +2115,8 @@
       backtestTrades = buildBacktestTradesFromRR(bt);
       var rrCountEl = document.getElementById('backtestRRCount');
       if (rrCountEl) rrCountEl.textContent = backtestTrades.length + (backtestTrades.length === 1 ? ' value' : ' values');
-      var s = computeStats(backtestTrades);
+      var filteredBacktestTrades = filterBacktestTradesByModel(backtestTrades);
+      var s = computeStats(filteredBacktestTrades);
       document.getElementById('backtestTradeCount').textContent = s.total + ' trade' + (s.total === 1 ? '' : 's');
       document.getElementById('backtestTotalRR').textContent = fmtPercent(s.totalPercent); document.getElementById('backtestTotalRR').style.color = s.totalPercent >= 0 ? 'var(--green)' : 'var(--red)';
       var totalRRSubEl = document.getElementById('backtestTotalRRSub');
@@ -2052,6 +2145,7 @@
       playBacktestViewTransition(detail);
       return;
     }
+    closeBacktestModelMenu();
     listView.style.display = 'block'; detail.style.display = 'none'; empty.style.display = backtests.length ? 'none' : 'block';
     list.innerHTML = backtests.map(function(b) {
       var tradesForBacktest = buildBacktestTradesFromRR(b);

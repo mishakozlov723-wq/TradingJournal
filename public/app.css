@@ -5055,3 +5055,21 @@ body.mobile-mode .notes-empty-create { min-height:44px; }
 
 /* Desktop app: animated auto sign-in hides the "hold to show password" eye (the dots are decorative). */
 .login-screen.desktop-autologin .pass-eye-hold { display: none; }
+
+/* Model statistics reuse the journal's existing selector and curve animation. */
+.backtest-model-row { margin:16px 0; }
+.backtest-model-row[hidden], .backtest-model-summary[hidden] { display:none !important; }
+.backtest-model-row > .backtest-field-label { margin-bottom:8px; font-size:14px; text-transform:none; color:var(--textMain); }
+.backtest-model-control .trade-asset-trigger { min-height:44px; font-size:14px; }
+.backtest-model-control .trade-asset-trigger:focus-visible,
+.backtest-model-control .trade-asset-option:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+.backtest-model-control .trade-asset-menu { position:static; display:none; margin-top:8px; max-height:220px; transform:none; }
+.backtest-model-control.open .trade-asset-menu { display:grid; animation:backtestModelMenuIn .18s ease-out; }
+.backtest-model-control .trade-asset-option { min-height:44px; font-size:14px; color:var(--textDim); overflow-wrap:anywhere; }
+.backtest-model-control .trade-asset-option.active { color:var(--blue); }
+.backtest-equity-title { display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; min-width:0; }
+.backtest-model-summary { color:var(--textMain); border:1px solid var(--cardBorder); background:rgba(255,255,255,.04); border-radius:6px; padding:4px 8px; font-size:14px; overflow-wrap:anywhere; }
+@keyframes backtestModelMenuIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
+@media(prefers-reduced-motion:reduce) { .backtest-model-control.open .trade-asset-menu { animation:none; } #backtestChart path { animation:none; stroke-dashoffset:0; } }
+
+#backtestEmptyChart { color:var(--textDim); font-size:14px; }

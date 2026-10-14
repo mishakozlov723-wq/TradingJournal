@@ -46,7 +46,7 @@
     } catch (e) {}
   })();
 </script>
-<link rel="stylesheet" href="app.css?v=9e36d10642">
+<link rel="stylesheet" href="app.css?v=f8df168e7e">
 
 
 
@@ -622,6 +622,13 @@
 
 each value is a trade result in RR,
 separated by commas or new lines"></textarea>
+          <div class="backtest-model-row" id="backtestModelRow" hidden>
+            <div class="backtest-field-label" id="backtestModelLabel">Select model</div>
+            <div class="trade-asset-control backtest-model-control" id="backtestModelControl">
+              <button class="trade-asset-trigger" id="backtestModelTrigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="backtestModelMenu" aria-labelledby="backtestModelLabel backtestModelValue"><span id="backtestModelValue">All models</span><span class="trade-asset-arrow" aria-hidden="true"></span></button>
+              <div class="trade-asset-menu" id="backtestModelMenu" role="menu" aria-labelledby="backtestModelLabel"></div>
+            </div>
+          </div>
           <div class="backtest-field-label" style="margin-top:16px;">BACKTEST INFO</div>
           <div class="backtest-info-row"><span>Days Tested</span><input type="number" id="backtestDaysTested" class="backtest-days-input" min="0" step="1" placeholder="0"></div>
           <div class="backtest-info-row" id="backtestReplayFilterRow" style="display:none;"><span id="backtestReplayFilterLabel">Replay trades</span><div class="bt-replay-seg" role="group" aria-label="Replay trades filter"><button type="button" id="backtestFilterAll">All</button><button type="button" id="backtestFilterClean">Clean</button></div></div>
@@ -632,7 +639,7 @@ separated by commas or new lines"></textarea>
         <div class="backtest-preview-panel">
           <div class="backtest-preview-card" id="backtestPreviewCard">
             <div class="backtest-preview-brand-row"><span class="backtest-preview-dot"></span><span class="backtest-preview-brand-title">Backtest Statistics</span><span class="backtest-preview-brand-sub" id="backtestDaysTestedDisplay"></span><button class="backtest-export-btn" id="backtestExportBtn" type="button"><span class="backtest-export-btn-label">Export PNG</span></button></div>
-            <div class="card" style="margin-bottom:0;"><div class="row" style="margin-bottom:10px;"><div class="card-title" style="margin-bottom:0;">Equity Curve</div><div class="card-sub mono" id="backtestTradeCount">0 trades</div></div><div class="chart-wrap"><div class="empty-chart" id="backtestEmptyChart">Paste your trade list on the left to see the equity curve</div><svg class="backtest-chart" id="backtestChart" style="display:none;"></svg></div></div>
+            <div class="card" style="margin-bottom:0;"><div class="row" style="margin-bottom:10px;"><div class="backtest-equity-title"><div class="card-title" style="margin-bottom:0;">Equity Curve</div><span class="backtest-model-summary" id="backtestModelSummary" hidden></span></div><div class="card-sub mono" id="backtestTradeCount">0 trades</div></div><div class="chart-wrap"><div class="empty-chart" id="backtestEmptyChart">Paste your trade list on the left to see the equity curve</div><svg class="backtest-chart" id="backtestChart" style="display:none;"></svg></div></div>
             <div class="top-stats">
               <div class="stat-card"><div class="stat-label">Total Gain (%)</div><div class="stat-value mono" id="backtestTotalRR">0.0%</div><div class="stat-sub" id="backtestTotalRRSub">0 trades</div></div>
               <div class="stat-card"><div class="stat-label">Win Rate</div><div class="stat-value mono" id="backtestWinRate">0.0%</div><div class="stat-sub" id="backtestWinRateSub">0W / 0L</div></div>
@@ -1465,7 +1472,7 @@ separated by commas or new lines"></textarea>
   firebase.initializeApp(firebaseConfig);
   var db = firebase.firestore();
 </script>
-<script src="app.js?v=9ea2c1d976"></script>
+<script src="app.js?v=be9614f025"></script>
 <script src="trade-media.js?v=703d21b514"></script>
 <script src="desktop-autologin.js?v=8c2de5be35"></script>
 
