@@ -2,8 +2,13 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 $desktop = Split-Path $PSScriptRoot -Parent
 $root = Split-Path $desktop -Parent
-$source = Join-Path $root 'public/syter-icon.png'
-if (!(Test-Path $source)) { throw 'Tracked public/syter-icon.png is missing' }
+# Windows shell icons use the existing white, transparent logo.
+# The custom title bar deliberately keeps the previous dark tile unchanged.
+$source = Join-Path $root 'public/tj-icon-v4.png'
+$titlebarSource = Join-Path $root 'public/syter-icon.png'
+foreach ($asset in @($source, $titlebarSource)) {
+  if (!(Test-Path $asset)) { throw "Tracked icon source is missing: $asset" }
+}
 $build = Join-Path $desktop 'build'
 New-Item -ItemType Directory -Force $build | Out-Null
 $image = [System.Drawing.Image]::FromFile($source)
@@ -24,7 +29,6 @@ try {
       $bytes = $memory.ToArray()
       if ($size -eq 32) {
         [System.IO.File]::WriteAllBytes((Join-Path $build 'tray-icon.png'), $bytes)
-        [System.IO.File]::WriteAllBytes((Join-Path $build 'titlebar-icon.png'), $bytes)
       }
       if ($size -eq 64) { [System.IO.File]::WriteAllBytes((Join-Path $build 'app-icon.png'), $bytes) }
       # Classic 32-bit DIB frames are understood by the Windows shell at every
@@ -74,4 +78,16 @@ try {
     foreach ($frame in $frames) { $writer.Write($frame) }
   } finally { $writer.Dispose(); $stream.Dispose() }
 } finally { $image.Dispose() }
-Write-Host 'Generated visible RGBA icons: PNG tray/window/titlebar + seven ICO sizes.'
+# Render the title bar with exactly its previous source, size and drawing settings.
+$titlebarImage = [System.Drawing.Image]::FromFile($titlebarSource)
+$titlebarBitmap = [System.Drawing.Bitmap]::new(32, 32, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+$titlebarGraphics = [System.Drawing.Graphics]::FromImage($titlebarBitmap)
+try {
+  $titlebarGraphics.Clear([System.Drawing.Color]::Transparent)
+  $titlebarGraphics.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceCopy
+  $titlebarGraphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+  $titlebarGraphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+  $titlebarGraphics.DrawImage($titlebarImage, [System.Drawing.Rectangle]::new(0, 0, 32, 32))
+  $titlebarBitmap.Save((Join-Path $build 'titlebar-icon.png'), [System.Drawing.Imaging.ImageFormat]::Png)
+} finally { $titlebarGraphics.Dispose(); $titlebarBitmap.Dispose(); $titlebarImage.Dispose() }
+Write-Host 'Generated white transparent Windows icons; original dark title bar preserved.'

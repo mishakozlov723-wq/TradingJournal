@@ -28,6 +28,19 @@ function matchesLogo(image,expected,label){
 }
 app.whenReady().then(async()=>{
  assert.equal(process.platform,'win32');
+ const whiteReference=load(path.join(root,'..','public','tj-icon-v4.png'),'white transparent source');
+ const titlebarReference=load(path.join(root,'..','public','syter-icon.png'),'original dark title bar source');
+ for(const location of [path.join(root,'build'),path.join(root,'dist','win-unpacked','resources','app.asar','build')]){
+   for(const name of ['tray-icon.png','app-icon.png','icon.ico']){
+     const image=load(path.join(location,name),name);
+     matchesLogo(image,whiteReference,location+' '+name+' white logo');
+     const bits=image.toBitmap();let transparent=0;
+     for(let i=3;i<bits.length;i+=4)if(bits[i]===0)transparent++;
+     assert.ok(transparent>bits.length/4*.35,name+': background stays transparent, not a dark tile');
+   }
+   const titlebar=load(path.join(location,'titlebar-icon.png'),'unchanged title bar');
+   matchesLogo(titlebar,titlebarReference,location+' original dark title bar');
+ }
  for(const name of ['tray-icon.png','app-icon.png','titlebar-icon.png','icon.ico']){
    load(path.join(root,'build',name),'generated '+name);
    load(path.join(root,'dist','win-unpacked','resources','app.asar','build',name),'packaged '+name);
@@ -57,6 +70,8 @@ app.whenReady().then(async()=>{
  fs.writeFileSync(path.join(out,'tray-icon-16.png'),tray.resize({width:16,height:16,quality:'best'}).toPNG());
  const window=load(path.join(root,'build','app-icon.png'),'window');
  fs.writeFileSync(path.join(out,'window-icon-32.png'),window.resize({width:32,height:32,quality:'best'}).toPNG());
+ const titlebar=load(path.join(root,'build','titlebar-icon.png'),'titlebar');
+ fs.writeFileSync(path.join(out,'titlebar-icon-32.png'),titlebar.toPNG());
  const exe=path.join(root,'dist','win-unpacked','SYTER.exe');assert.ok(fs.existsSync(exe));
  const shell=visible(await app.getFileIcon(exe,{size:'large'}),'Windows EXE icon');
  fs.writeFileSync(path.join(out,'packaged-exe-icon.png'),shell.toPNG());
@@ -65,6 +80,6 @@ app.whenReady().then(async()=>{
  const setupIcon=visible(await app.getFileIcon(installer,{size:'large'}),'Windows installer icon');
  fs.writeFileSync(path.join(out,'installer-icon.png'),setupIcon.toPNG());
  matchesLogo(setupIcon,tray,'Windows installer icon');
- console.log('PASS: visible RGBA icons at every size, packaged assets, and actual SYTER logos for EXE and installer.');
+ console.log('PASS: white transparent shell/tray/window/EXE/installer icons at every size; original dark title bar preserved.');
  app.exit(0);
 }).catch(error=>{console.error(error.stack||error);app.exit(1);});
