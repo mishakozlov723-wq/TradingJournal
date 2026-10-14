@@ -40,7 +40,7 @@ jobs:
         run: ./scripts/prepare-build-assets.ps1
       - name: Run regression tests
         run: npm test
-      - name: Verify native border drag, animation continuity and draft preservation
+      - name: Verify resize animation continuity and draft preservation
         run: |
           $electron = (Resolve-Path ./node_modules/electron/dist/electron.exe).Path
           $script = (Resolve-Path ./tests/resize-performance.native.cjs).Path
@@ -112,14 +112,14 @@ jobs:
             if (!$existing.isDraft) { throw "Public release $tag already exists" }
             if ($existing.name -ne "SYTER $version" -or
                 $existing.body -notlike '*Live resizing no longer deliberately pauses decorative background animations.*' -or
-                $existing.body -notlike '*The embedded journal is pre-sized during native border drags with duplicate bounds updates skipped.*') {
+                $existing.body -notlike '*Repeated identical embedded-view bounds updates are skipped; native window resizing remains unchanged.*') {
               throw "Unrecognized draft $tag; do not overwrite"
             }
             $resumeDraft = $true
           }
           @"
           - Live resizing no longer deliberately pauses decorative background animations.
-          - The embedded journal is pre-sized during native border drags with duplicate bounds updates skipped.
+          - Repeated identical embedded-view bounds updates are skipped; native window resizing remains unchanged.
           - Preserve the white Windows icons and original dark title bar from 1.2.8.
           - No changes to the website or trading data. Real-world smoothness still requires checking on the user's PC.
           "@ | Set-Content release-notes.md

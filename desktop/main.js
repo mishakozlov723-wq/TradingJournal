@@ -309,8 +309,7 @@ function showOffline() {
   view.webContents.loadFile(path.join(__dirname, 'offline.html'));
 }
 
-// Keep the embedded page in sync before a manual native resize, not only after it.
-// The post-resize path remains authoritative for maximize/fullscreen/DPI changes.
+// Keep final content geometry authoritative and skip repeated identical bounds.
 const viewLayout = createViewLayout({ getWindow: () => win, getView: () => view, titlebarHeight: TITLEBAR_H });
 function layout() { viewLayout.layout(); }
 
@@ -354,7 +353,6 @@ function start() {
   });
   view.setBackgroundColor('#000000');
   win.contentView.addChildView(view);
-  win.on('will-resize', (_event, bounds) => viewLayout.beforeResize(bounds));
   layout();
   ['resize', 'maximize', 'unmaximize', 'restore', 'enter-full-screen', 'leave-full-screen', 'show']
     .forEach((ev) => win.on(ev, layout));

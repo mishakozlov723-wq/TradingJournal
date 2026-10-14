@@ -21,17 +21,6 @@ function createViewLayout({ getWindow, getView, titlebarHeight = 36 }) {
     const [width, height] = win.getContentSize();
     apply(width, height, win.isFullScreen());
   }
-  function beforeResize(bounds) {
-    const win = getWindow();
-    if (!win || win.isDestroyed() || !bounds ||
-        !Number.isFinite(bounds.width) || !Number.isFinite(bounds.height) ||
-        win.isFullScreen() || win.isMaximized()) return;
-    // Outer bounds and content sizes are DIP. Measure non-client margins;
-    // do not hardcode Windows border thickness or display scaling.
-    const outer = win.getBounds(), [width, height] = win.getContentSize();
-    apply(bounds.width - (outer.width - width),
-      bounds.height - (outer.height - height), false);
-  }
-  return { layout, beforeResize };
+  return { layout };
 }
 module.exports = { createViewLayout };
