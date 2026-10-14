@@ -14,12 +14,16 @@ const { autoUpdater } = require('electron-updater');
 const { createMiniShortcut, LABEL: MINI_SHORTCUT_LABEL } = require('./mini-shortcut');
 const { createWindowMotion } = require('./window-motion');
 const { createViewLayout } = require('./view-layout');
+const diagnostics = require('./resize-diagnostics');
+const RESIZE_PROBE = diagnostics.readProbe();
+const PROBE_NO_COVER = RESIZE_PROBE !== 'baseline';
+const PROBE_NATIVE_FRAME = RESIZE_PROBE === 'native-frame';
 const { opaqueSnapshotMatcher, armPresentation } = require('./cover-presentation');
 
 const APP_URL = 'https://retocker.web.app/';
 const APP_HOSTS = ['retocker.web.app', 'retocker.firebaseapp.com'];
 const UPDATE_EVERY_MS = 6 * 60 * 60 * 1000; // re-check every 6 hours
-const TITLEBAR_H = 36;                      // px, black strip above the site
+const TITLEBAR_H = PROBE_NATIVE_FRAME ? 0 : 36;                      // px, black strip above the site
 const REMEMBER_MS = 6 * 60 * 60 * 1000;     // auto sign-in animation works for 6 h after a manual sign-in
 // Use decoded RGBA PNGs at runtime, not a legacy HICON serialization.
 const ICON_PATH = path.join(__dirname, 'build', 'app-icon.png');
@@ -75,6 +79,7 @@ const miniShortcut = createMiniShortcut({
 });
 
 function requestMode(mini) {
+  if (PROBE_NO_COVER) return;
   // show()/focus() on an already focused journal can repaint its native frame.
   // A global request still restores a hidden/minimized/background journal.
   if (win && (!win.isVisible() || win.isMinimized() || !win.isFocused())) showWindow();
@@ -108,10 +113,12 @@ function modeTarget(enabled) {
   return fitBounds(fullState.bounds, { x: 80, y: 80, width: 1440, height: 900 });
 }
 async function prepareMiniMode(enabled, animate = true) {
+  if (PROBE_NO_COVER) return false;
   if (!win || enabled === miniMode) return false;
   return windowMotion.prepare(modeTarget(enabled), animate, enabled);
 }
 async function setMiniMode(enabled, animate = true) {
+  if (PROBE_NO_COVER) return { mini: false, pinned: miniPinned };
   enabled = !!enabled;
   if (!win || enabled === miniMode) return { mini: miniMode, pinned: miniPinned };
   const generation = ++modeGeneration;
@@ -223,10 +230,12 @@ function toggleWindow() {
 function createTray() {
   if (tray) return;
   tray = new Tray(nativeImage.createFromPath(TRAY_ICON_PATH));
-  tray.setToolTip('SYTER');
+  tray.setToolTip('SYTER · ' + diagnostics.BUILD + ' · ' + RESIZE_PROBE);
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Открыть журнал', click: () => requestMode(false) },
-    { label: 'Мини-журнал · ' + MINI_SHORTCUT_LABEL, click: () => requestMode(true) },
+    { label: 'Мини-журнал · ' + MINI_SHORTCUT_LABEL, enabled: !PROBE_NO_COVER, click: () => requestMode(true) },
+    { type: 'separator' },
+    ...diagnostics.menuItems({ app, dialog, clipboard, getWindow: () => win, current: RESIZE_PROBE }),
     { type: 'separator' },
     { label: 'Выход', click: () => { isQuitting = true; app.quit(); } },
   ]));
@@ -296,6 +305,7 @@ function loadState() {
   try { return JSON.parse(fs.readFileSync(stateFile(), 'utf8')); } catch (e) { return {}; }
 }
 function saveState() {
+  if (RESIZE_PROBE !== 'baseline') return;
   if (!win || win.isDestroyed()) return;
   try {
     const keepFullState = (miniMode || deferredFullRestore) && fullState;
@@ -315,6 +325,16 @@ function layout() { viewLayout.layout(); }
 
 function start() {
   Menu.setApplicationMenu(null); // clean window: no File/Edit/View bar
+  if (RESIZE_PROBE === 'single-surface') {
+    win = diagnostics.createSingleSurfaceWindow({ BrowserWindow, icon: ICON_PATH,
+      url: APP_URL, installLinkHandlers });
+    win.on('close', event => {
+      if (!isQuitting) { event.preventDefault(); win.hide(); }
+    });
+    win.on('closed', () => { win = null; });
+    createTray();
+    return;
+  }
   const st = loadState();
   miniBounds = st.miniBounds || null;
   miniPinned = st.miniPinned !== false;
@@ -331,8 +351,8 @@ function start() {
     show: false,
     autoHideMenuBar: true,
     // black title bar with the native minimize / maximize / close buttons on top of it
-    titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#000000', symbolColor: '#cfd6e4', height: TITLEBAR_H },
+    titleBarStyle: PROBE_NATIVE_FRAME ? 'default' : 'hidden',
+    titleBarOverlay: PROBE_NATIVE_FRAME ? undefined : { color: '#000000', symbolColor: '#cfd6e4', height: TITLEBAR_H },
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -341,6 +361,11 @@ function start() {
     },
   });
   win.loadFile(path.join(__dirname, 'titlebar.html'));
+  win.webContents.on('page-title-updated', event => event.preventDefault());
+  win.setTitle('SYTER — ' + diagnostics.BUILD + ' · ' + RESIZE_PROBE);
+  win.webContents.on('did-finish-load', () => {
+    win.webContents.executeJavaScript(`document.querySelector('.bar span').textContent = 'SYTER · resize-probe-v1'`).catch(() => {});
+  });
 
   view = new WebContentsView({
     webPreferences: {
@@ -362,7 +387,7 @@ function start() {
     layout(); win.show();
     // Warm an EMPTY click-through compositor, not a snapshot of user data.
     // Native window-show effects must not coincide with a mode switch.
-    windowMotion.warm();
+    if (!PROBE_NO_COVER) windowMotion.warm();
   });
   win.on('focus', () => { if (view && !view.webContents.isDestroyed()) view.webContents.focus(); });
 
@@ -377,7 +402,7 @@ function start() {
   win.on('closed', () => { win = null; view = null; });
 
   createTray();
-  miniShortcut.register();
+  if (!PROBE_NO_COVER) miniShortcut.register();
 
   const wc = view.webContents;
 
@@ -426,7 +451,7 @@ function start() {
     } catch (err) { console.warn('Mini journal unavailable:', err); }
   });
   wc.loadURL(APP_URL);
-  setupUpdates();
+  // Auto-updates disabled in this diagnostic-only build; no public release.
 }
 
 // ── app self-update ──

@@ -28,6 +28,9 @@ jobs:
         working-directory: desktop
         shell: pwsh
     steps:
+      - name: Never publish diagnostic builds
+        if: ${{ inputs.publish }}
+        run: throw 'Diagnostic branch cannot publish public releases'
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
@@ -54,6 +57,14 @@ jobs:
           Get-Content resize-test.log
           Get-Content resize-test-error.log
           if ($test.ExitCode -ne 0) { throw "Live resize test failed: $($test.ExitCode)" }
+      - name: Verify all isolated resize diagnostic variants
+        run: |
+          $electron = (Resolve-Path ./node_modules/electron/dist/electron.exe).Path
+          $script = (Resolve-Path ./tests/resize-probes.native.cjs).Path
+          $test = Start-Process -FilePath $electron -ArgumentList "`"$script`"" -Wait -PassThru -NoNewWindow -RedirectStandardOutput probes-test.log -RedirectStandardError probes-test-error.log
+          Get-Content probes-test.log
+          Get-Content probes-test-error.log
+          if ($test.ExitCode -ne 0) { throw "Diagnostic probes failed: $($test.ExitCode)" }
       - name: Verify actual Windows app and global shortcut
         run: |
           $electron = (Resolve-Path ./node_modules/electron/dist/electron.exe).Path
@@ -100,48 +111,3 @@ jobs:
           path: desktop/release/*
           if-no-files-found: error
           retention-days: 14
-      - name: Publish all updater assets
-        if: ${{ inputs.publish && !inputs.check_only }}
-        env:
-          GH_TOKEN: ${{ secrets.SYTER_RELEASE_TOKEN }}
-        run: |
-          if (!$env:GH_TOKEN) { throw 'SYTER_RELEASE_TOKEN is required for publishing to syter-releases' }
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          $repo = 'mishakozlov723-wq/syter-releases'
-          $tag = "v$version"
-          # Never overwrite a PUBLIC version. An interrupted upload may have
-          # left our own unpublished draft; only that known draft may resume.
-          $existingText = gh release view $tag --repo $repo --json isDraft,name,body 2>$null
-          $resumeDraft = $false
-          if ($LASTEXITCODE -eq 0) {
-            $existing = ($existingText -join "`n") | ConvertFrom-Json
-            if (!$existing.isDraft) { throw "Public release $tag already exists" }
-            if ($existing.name -ne "SYTER $version" -or
-                $existing.body -notlike '*Live resizing no longer deliberately pauses decorative background animations.*' -or
-                $existing.body -notlike '*Repeated identical embedded-view bounds updates are skipped; native window resizing remains unchanged.*') {
-              throw "Unrecognized draft $tag; do not overwrite"
-            }
-            $resumeDraft = $true
-          }
-          @"
-          - Upgrade the embedded engine from Electron 38.8.6 to 42.11.12 (Chromium 148), including upstream Windows resize rendering fixes.
-          - Live resizing no longer deliberately pauses decorative background animations.
-          - Repeated identical embedded-view bounds updates are skipped; native window resizing remains unchanged.
-          - Preserve the white Windows icons and original dark title bar from 1.2.8.
-          - No changes to the website or trading data. Real-world smoothness still requires checking on the user's PC.
-          "@ | Set-Content release-notes.md
-          $expected = @("latest.yml", "SYTER-Setup-$version.exe", "SYTER-Setup-$version.exe.blockmap")
-          $assets = @($expected | ForEach-Object {
-            $file = Join-Path release $_
-            if (!(Test-Path $file -PathType Leaf)) { throw "Missing updater asset: $_" }
-            (Resolve-Path $file).Path
-          })
-          if ($resumeDraft) {
-            gh release upload $tag @assets --repo $repo --clobber
-            if ($LASTEXITCODE -ne 0) { throw 'Could not finish the unpublished draft assets' }
-          } else {
-            gh release create $tag @assets --repo $repo --title "SYTER $version" --notes-file release-notes.md --draft
-            if ($LASTEXITCODE -ne 0) { throw 'Could not create complete draft release' }
-          }
-          gh release edit $tag --repo $repo --notes-file release-notes.md --draft=false --latest
-          if ($LASTEXITCODE -ne 0) { throw 'Draft upload succeeded but publishing failed' }
