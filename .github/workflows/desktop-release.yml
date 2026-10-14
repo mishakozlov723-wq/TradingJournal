@@ -111,20 +111,16 @@ jobs:
             $existing = ($existingText -join "`n") | ConvertFrom-Json
             if (!$existing.isDraft) { throw "Public release $tag already exists" }
             if ($existing.name -ne "SYTER $version" -or
-                $existing.body -notlike '*Snapshot-based transitions avoid live layout tearing and extra maximize jumps.*' -or
-                $existing.body -notlike '*Returning from mini restores the previous screen; an unsaved draft stays available.*') {
+                $existing.body -notlike '*White transparent SYTER logo for Windows tray, taskbar, shortcuts, EXE and installer.*' -or
+                $existing.body -notlike '*The custom title bar keeps its original dark icon unchanged.*') {
               throw "Unrecognized draft $tag; do not overwrite"
             }
             $resumeDraft = $true
           }
           @"
-          - Ctrl + Shift + Ё switches the same window between full and mini journal.
-          - Snapshot-based transitions avoid live layout tearing and extra maximize jumps.
-          - A prewarmed compositor replaces per-switch window creation and whole-pane fades; the smooth movement is preserved.
-          - Full-to-mini waits for a matching opaque compositor frame before concealing the live journal; the reverse movement is unchanged.
-          - Returning from mini restores the previous screen; an unsaved draft stays available.
-          - Visible tray, taskbar and installer icons with preserved 32-bit transparency.
-          - Model descriptions open in the system default browser.
+          - White transparent SYTER logo for Windows tray, taskbar, shortcuts, EXE and installer.
+          - The custom title bar keeps its original dark icon unchanged.
+          - No changes to the website, trading data or journal behavior.
           "@ | Set-Content release-notes.md
           $expected = @("latest.yml", "SYTER-Setup-$version.exe", "SYTER-Setup-$version.exe.blockmap")
           $assets = @($expected | ForEach-Object {
