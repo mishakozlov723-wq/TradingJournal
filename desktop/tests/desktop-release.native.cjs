@@ -149,13 +149,21 @@ async function main() {
   assert.equal(process.platform, 'win32', 'native release test must run on Windows');
   await until(() => api.testState().miniReady, 'journal native bridge ready');
   assert.equal(registered, true, 'global shortcut must register on the Windows runner');
-  const w = BrowserWindow.getAllWindows()[0];
+  // Enumeration order is not an identity contract: Electron 42 may return
+  // the prewarmed transparent compositor first. Select the actual journal
+  // titlebar host, never operate on whichever window happens to be first.
+  const w = BrowserWindow.getAllWindows().find(candidate =>
+    candidate.webContents.getURL().endsWith('/titlebar.html'));
   const wc = webContents.getAllWebContents().find(c => c.getURL().startsWith('https://retocker.web.app'));
   assert.ok(w && wc);
   const originalId = wc.id;
   const area = screen.getPrimaryDisplay().workArea;
-  w.setBounds({ x: area.x + 20, y: area.y + 20,
-    width: Math.min(900, area.width - 40), height: Math.min(760, area.height - 40) });
+  // The full-window restore fixture must obey the new native width floor.
+  // On the 1024-DIP CI display it occupies the work-area width; do not start
+  // it at x+20 offscreen and then mistake the required restore clamp for drift.
+  const fixtureWidth=Math.min(area.width,Math.max(w.getMinimumSize()[0],Math.min(900,area.width-40)));
+  w.setBounds({ x: area.x + Math.min(20,area.width-fixtureWidth), y: area.y + 20,
+    width: fixtureWidth, height: Math.min(760, area.height - 40) });
   await wc.executeJavaScript("magnitudeInput.value='2.25';riskPercentInput.value='0.5';syterTradeNotes.value='native draft';currentScreenshot='draft-image';");
   const original = w.getBounds();
   const artifacts = path.resolve(__dirname, '../test-artifacts');

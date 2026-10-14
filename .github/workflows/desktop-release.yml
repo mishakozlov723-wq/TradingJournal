@@ -34,13 +34,19 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: desktop/package-lock.json
-      - name: Install locked desktop dependencies
-        run: npm ci
+      - name: Install locked desktop dependencies and Electron runtime
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Locked dependency installation failed' }
+          # Newer Electron packages download their binary on first require,
+          # rather than during npm ci. Resolve it before native test paths.
+          node -e "console.log('Electron executable:', require('electron'))"
+          if ($LASTEXITCODE -ne 0) { throw 'Electron runtime installation failed' }
       - name: Prepare native icon resources
         run: ./scripts/prepare-build-assets.ps1
       - name: Run regression tests
         run: npm test
-      - name: Verify live resize decoration and draft preservation
+      - name: Verify resize animation continuity and draft preservation
         run: |
           $electron = (Resolve-Path ./node_modules/electron/dist/electron.exe).Path
           $script = (Resolve-Path ./tests/resize-performance.native.cjs).Path
@@ -51,7 +57,7 @@ jobs:
       - name: Verify actual Windows app and global shortcut
         run: |
           $electron = (Resolve-Path ./node_modules/electron/dist/electron.exe).Path
-          $script = (Resolve-Path ./tests/desktop-release.native.cjs).Path
+          $script = (Resolve-Path ./tests/user-release.native.cjs).Path
           $test = Start-Process -FilePath $electron -ArgumentList "`"$script`"" -Wait -PassThru -NoNewWindow -RedirectStandardOutput native-test.log -RedirectStandardError native-test-error.log
           Get-Content native-test.log
           Get-Content native-test-error.log
@@ -99,6 +105,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.SYTER_RELEASE_TOKEN }}
         run: |
+          if ('${{ github.ref }}' -ne 'refs/heads/release/1.3.0' -and '${{ github.ref }}' -ne 'refs/heads/main') { throw 'Publish only approved release branch or main' }
           if (!$env:GH_TOKEN) { throw 'SYTER_RELEASE_TOKEN is required for publishing to syter-releases' }
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $repo = 'mishakozlov723-wq/syter-releases'
@@ -111,16 +118,18 @@ jobs:
             $existing = ($existingText -join "`n") | ConvertFrom-Json
             if (!$existing.isDraft) { throw "Public release $tag already exists" }
             if ($existing.name -ne "SYTER $version" -or
-                $existing.body -notlike '*White transparent SYTER logo for Windows tray, taskbar, shortcuts, EXE and installer.*' -or
-                $existing.body -notlike '*The custom title bar keeps its original dark icon unchanged.*') {
+                $existing.body -notlike '*SYTER 1.3.0 production desktop release.*' -or
+                $existing.body -notlike '*Minimum desktop width protects the full Equity Curve layout.*') {
               throw "Unrecognized draft $tag; do not overwrite"
             }
             $resumeDraft = $true
           }
           @"
-          - White transparent SYTER logo for Windows tray, taskbar, shortcuts, EXE and installer.
-          - The custom title bar keeps its original dark icon unchanged.
-          - No changes to the website, trading data or journal behavior.
+          - SYTER 1.3.0 production desktop release.
+          - Minimum desktop width protects the full Equity Curve layout.
+          - Improved resizing and optimized seasonal animations with hardware acceleration enabled.
+          - Clean SYTER title and tray menu; no diagnostic controls.
+          - Existing journal data, mini journal and automatic updates preserved.
           "@ | Set-Content release-notes.md
           $expected = @("latest.yml", "SYTER-Setup-$version.exe", "SYTER-Setup-$version.exe.blockmap")
           $assets = @($expected | ForEach-Object {

@@ -13,10 +13,28 @@ const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 const { createMiniShortcut, LABEL: MINI_SHORTCUT_LABEL } = require('./mini-shortcut');
 const { createWindowMotion } = require('./window-motion');
-const { opaqueSnapshotMatcher, armPresentation } = require('./cover-presentation');
-
+const { handlePreviewInput } = require('./interface-preview-shortcut');
+const { createViewLayout } = require('./view-layout');
+const { createWindowWidthPolicy, PAGE_MINIMUM_SCRIPT } = require('./window-width-policy');
+// Production: hardware acceleration remains enabled; no diagnostic switches.
 const APP_URL = 'https://retocker.web.app/';
 const APP_HOSTS = ['retocker.web.app', 'retocker.firebaseapp.com'];
+app.on('web-contents-created', (_event, contents) => {
+  contents.on('zoom-changed',()=>Promise.resolve().then(()=>widthPolicy.refresh()));
+  contents.on('dom-ready', async () => {
+    if (contents.isDestroyed() || !isAppUrl(contents.getURL())) return;
+    try {
+      const autumnMotionSource = fs.readFileSync(path.join(__dirname, 'autumn-motion.js'), 'utf8');
+      await contents.executeJavaScript(autumnMotionSource);
+    } catch (error) { console.warn('Autumn animation unavailable:', error.message); }
+    if (contents === siteContents()) {
+      try { widthPolicy.updateCssMinimum(await contents.executeJavaScript(PAGE_MINIMUM_SCRIPT)); }
+      catch (error) { console.warn('Using fallback equity width:',error.message); }
+    }
+
+  });
+});
+
 const UPDATE_EVERY_MS = 6 * 60 * 60 * 1000; // re-check every 6 hours
 const TITLEBAR_H = 36;                      // px, black strip above the site
 const REMEMBER_MS = 6 * 60 * 60 * 1000;     // auto sign-in animation works for 6 h after a manual sign-in
@@ -37,27 +55,22 @@ let miniMode = false, miniReady = false, miniPinned = true;
 let fullState = null, miniBounds = null;
 let deferredFullRestore = false;
 let modeGeneration = 0;
+function siteContents() { return view ? view.webContents : win && win.webContents; }
+const widthPolicy = createWindowWidthPolicy({getWindow:()=>win,getContents:siteContents,screen,isMini:()=>miniMode});
+function installWidthPolicy() {
+  widthPolicy.refresh();
+  const host=win;
+  const refresh=()=>{if(win===host)widthPolicy.refresh();};
+  host.on('moved',refresh);
+  host.on('restore',refresh);
+  screen.on('display-metrics-changed',refresh);
+  host.once('closed',()=>screen.removeListener('display-metrics-changed',refresh));
+}
+
 const windowMotion = createWindowMotion({
   getWindow: () => win, getView: () => view, onFrame: layout,
   onStage: stage => { if (process.env.SYTER_TRANSITION_TEST === '1') console.log('TRANSITION:', stage); },
-  createOverlay: bounds => {
-    const cover = new BrowserWindow({
-      ...bounds, show: false, frame: false, transparent: true,
-      backgroundColor: '#00000000', focusable: false, skipTaskbar: true,
-      resizable: false, movable: false, hasShadow: false, roundedCorners: false,
-      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true,
-        backgroundThrottling: false, spellcheck: false },
-    });
-    // BrowserWindow's initial placement can be constrained to the work area.
-    // Our compositor canvas must match the requested union exactly.
-    cover.setBounds(bounds);
-    cover.setIgnoreMouseEvents(true);
-    cover.setAlwaysOnTop(true, 'pop-up-menu');
-    cover.armPresentation = (source, union) => armPresentation(cover.webContents,
-      opaqueSnapshotMatcher(source, union, value => nativeImage.createFromDataURL(value)));
-    cover.ready = cover.loadFile(path.join(__dirname, 'mode-transition.html'));
-    return cover;
-  },
+
 });
 const miniShortcut = createMiniShortcut({
   globalShortcut,
@@ -101,14 +114,14 @@ function modeTarget(enabled) {
     return fitBounds({ x: area.x + area.width - Math.min(420, area.width),
       y: area.y + 30, width: 420, height: 730 }, { width: 420, height: 730 });
   }
-  if (!fullState) return win.getBounds();
+  if (!fullState) return widthPolicy.constrain(win.getBounds());
   if (fullState.fullscreen) return screen.getDisplayMatching(fullState.bounds).bounds;
   if (fullState.maximized) return screen.getDisplayMatching(fullState.bounds).workArea;
-  return fitBounds(fullState.bounds, { x: 80, y: 80, width: 1440, height: 900 });
+  return widthPolicy.constrain(fitBounds(fullState.bounds, { x: 80, y: 80, width: 1440, height: 900 }));
 }
 async function prepareMiniMode(enabled, animate = true) {
   if (!win || enabled === miniMode) return false;
-  return windowMotion.prepare(modeTarget(enabled), animate, enabled);
+  return windowMotion.prepare(modeTarget(enabled), false, enabled);
 }
 async function setMiniMode(enabled, animate = true) {
   enabled = !!enabled;
@@ -123,7 +136,7 @@ async function setMiniMode(enabled, animate = true) {
     miniBounds = win.getNormalBounds();
     miniMode = false;
   }
-  await windowMotion.move(target, animate, () => {
+  await windowMotion.move(target, false, () => {
     if (enabled) {
       if (win.isFullScreen()) win.setFullScreen(false);
       if (win.isMaximized()) win.unmaximize();
@@ -133,10 +146,10 @@ async function setMiniMode(enabled, animate = true) {
     } else {
       win.setAlwaysOnTop(false);
       if (win.isMaximized()) win.unmaximize();
-      win.setMinimumSize(380, 500);
+      widthPolicy.refresh({grow:false});
       // Restore directly under the cover: no grow -> shrink -> maximize cycle.
       win.setBounds(fullState
-        ? fitBounds(fullState.bounds, { x: 80, y: 80, width: 1440, height: 900 }) : target);
+        ? widthPolicy.constrain(fitBounds(fullState.bounds, { x: 80, y: 80, width: 1440, height: 900 })) : target);
       if (fullState) {
         deferredFullRestore = !win.isVisible();
         if (!deferredFullRestore) {
@@ -308,13 +321,9 @@ function showOffline() {
   view.webContents.loadFile(path.join(__dirname, 'offline.html'));
 }
 
-// the site fills everything below the title bar (the whole window in full screen)
-function layout() {
-  if (!win || win.isDestroyed() || !view) return;
-  const [w, h] = win.getContentSize();
-  const top = win.isFullScreen() ? 0 : TITLEBAR_H;
-  view.setBounds({ x: 0, y: top, width: w, height: Math.max(0, h - top) });
-}
+// Keep final content geometry authoritative and skip repeated identical bounds.
+const viewLayout = createViewLayout({ getWindow: () => win, getView: () => view, titlebarHeight: TITLEBAR_H });
+function layout() { viewLayout.layout(); }
 
 function start() {
   Menu.setApplicationMenu(null); // clean window: no File/Edit/View bar
@@ -343,7 +352,10 @@ function start() {
       spellcheck: false,
     },
   });
+  installWidthPolicy();
   win.loadFile(path.join(__dirname, 'titlebar.html'));
+  win.webContents.on('page-title-updated', event => event.preventDefault());
+  win.setTitle('SYTER');
 
   view = new WebContentsView({
     webPreferences: {
@@ -362,10 +374,7 @@ function start() {
 
   if (st.maximized) win.maximize();
   win.once('ready-to-show', () => {
-    layout(); win.show();
-    // Warm an EMPTY click-through compositor, not a snapshot of user data.
-    // Native window-show effects must not coincide with a mode switch.
-    windowMotion.warm();
+    widthPolicy.refresh(); layout(); win.show();
   });
   win.on('focus', () => { if (view && !view.webContents.isDestroyed()) view.webContents.focus(); });
 
@@ -394,6 +403,7 @@ function start() {
 
   // keyboard shortcuts that the hidden menu would normally give
   wc.on('before-input-event', (e, input) => {
+    if (handlePreviewInput(e, input, wc, isAppUrl)) return;
     if (miniShortcut.handleFocusedInput(e, input)) return;
     if (input.type !== 'keyDown') return;
     const k = String(input.key).toLowerCase();
@@ -404,9 +414,9 @@ function start() {
       else if (input.shift) wc.reloadIgnoringCache(); else wc.reload();
     } else if (k === 'f11') { e.preventDefault(); win.setFullScreen(!win.isFullScreen()); }
     else if (ctrl && input.shift && k === 'i') { e.preventDefault(); wc.toggleDevTools(); }
-    else if (ctrl && (k === '=' || k === '+')) { e.preventDefault(); wc.setZoomLevel(Math.min(wc.getZoomLevel() + 0.5, 4)); }
-    else if (ctrl && k === '-') { e.preventDefault(); wc.setZoomLevel(Math.max(wc.getZoomLevel() - 0.5, -3)); }
-    else if (ctrl && k === '0') { e.preventDefault(); wc.setZoomLevel(0); }
+    else if (ctrl && (k === '=' || k === '+')) { e.preventDefault(); wc.setZoomLevel(Math.min(wc.getZoomLevel() + 0.5, 4)); widthPolicy.refresh(); }
+    else if (ctrl && k === '-') { e.preventDefault(); wc.setZoomLevel(Math.max(wc.getZoomLevel() - 0.5, -3)); widthPolicy.refresh(); }
+    else if (ctrl && k === '0') { e.preventDefault(); wc.setZoomLevel(0); widthPolicy.refresh(); }
   });
 
   // The same web view is resized: form fields and the image never cross windows.
@@ -422,8 +432,6 @@ function start() {
     layout();
     if (!isAppUrl(wc.getURL())) return;
     try {
-      await wc.insertCSS(fs.readFileSync(path.join(__dirname, 'resize-performance.css'), 'utf8'));
-      await wc.executeJavaScript(fs.readFileSync(path.join(__dirname, 'resize-performance.js'), 'utf8'));
       await wc.insertCSS(fs.readFileSync(path.join(__dirname, 'mini-journal.css'), 'utf8'));
       await wc.executeJavaScript(fs.readFileSync(path.join(__dirname, 'mini-view-state.js'), 'utf8'));
       const mediaReady=await wc.executeJavaScript('Boolean(window.TJMedia)');
