@@ -13,6 +13,25 @@ test('probe switching replaces only its own flag and preserves other launch argu
     ['--other', diagnostics.PREFIX + 'native-frame']);
   assert.throws(() => diagnostics.relaunchArgs(['SYTER.exe'], 'unknown'));
 });
+test('GPU switching preserves the selected shell and removes stale software flags', () => {
+  const argv = ['SYTER.exe', diagnostics.PREFIX + 'overlay-off', '--other'];
+  assert.deepEqual(diagnostics.gpuArgs(argv, true),
+    [diagnostics.PREFIX + 'overlay-off', '--other', diagnostics.SOFTWARE_FLAG]);
+  assert.deepEqual(diagnostics.gpuArgs(argv.concat(diagnostics.SOFTWARE_FLAG), false),
+    [diagnostics.PREFIX + 'overlay-off', '--other']);
+  assert.ok(diagnostics.relaunchArgs(argv.concat(diagnostics.SOFTWARE_FLAG), 'native-frame')
+    .includes(diagnostics.SOFTWARE_FLAG));
+});
+test('software experiment calls Electron hardware-disable API only when explicitly requested', () => {
+  let calls = 0;
+  const app = { disableHardwareAcceleration() { calls++; } };
+  assert.equal(diagnostics.configureGpu(app, ['SYTER.exe']), false);
+  assert.equal(calls, 0);
+  assert.equal(diagnostics.configureGpu(app, ['SYTER.exe', diagnostics.SOFTWARE_FLAG]), true);
+  assert.equal(calls, 1);
+  const source = fs.readFileSync(path.join(__dirname, '../main.js'), 'utf8');
+  assert.ok(source.indexOf('diagnostics.configureGpu(app)') < source.indexOf('app.whenReady()'));
+});
 test('single-surface probe uses a native window without a child view or exposed desktop bridge', () => {
   let options, loaded, handlers = 0;
   const events = {};

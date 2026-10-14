@@ -16,6 +16,7 @@ const { createWindowMotion } = require('./window-motion');
 const { createViewLayout } = require('./view-layout');
 const diagnostics = require('./resize-diagnostics');
 const RESIZE_PROBE = diagnostics.readProbe();
+diagnostics.configureGpu(app);
 const PROBE_NO_COVER = RESIZE_PROBE !== 'baseline';
 const PROBE_NATIVE_FRAME = RESIZE_PROBE === 'native-frame';
 const { opaqueSnapshotMatcher, armPresentation } = require('./cover-presentation');
@@ -364,7 +365,7 @@ function start() {
   win.webContents.on('page-title-updated', event => event.preventDefault());
   win.setTitle('SYTER — ' + diagnostics.BUILD + ' · ' + RESIZE_PROBE);
   win.webContents.on('did-finish-load', () => {
-    win.webContents.executeJavaScript(`document.querySelector('.bar span').textContent = 'SYTER · resize-probe-v1'`).catch(() => {});
+    win.webContents.executeJavaScript(`document.querySelector('.bar span').textContent = ${JSON.stringify('SYTER · ' + diagnostics.BUILD)}`).catch(() => {});
   });
 
   view = new WebContentsView({

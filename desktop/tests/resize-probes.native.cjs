@@ -6,9 +6,11 @@ const fs = require('node:fs'), os = require('node:os'), path = require('node:pat
 const { spawnSync } = require('node:child_process');
 const diagnostics = require('../resize-diagnostics');
 if (!process.argv.includes('--probe-child')) {
-  for (const [mode] of diagnostics.MODES) {
+  const cases = diagnostics.MODES.map(([mode]) => [mode, false]).concat([['overlay-off', true]]);
+  for (const [mode, software] of cases) {
     const result = spawnSync(process.execPath, [
       __filename, '--probe-child', diagnostics.PREFIX + mode,
+      ...(software ? [diagnostics.SOFTWARE_FLAG] : []),
     ], { encoding: 'utf8', timeout: 30000, windowsHide: false });
     console.log(result.stdout);
     if (result.stderr) console.error(result.stderr);
@@ -46,6 +48,11 @@ if (!process.argv.includes('--probe-child')) {
     }));
     assert.ok(host?.isVisible() && site, 'probe host and local fixture are visible');
     await wait(500);
+    const software = process.argv.includes(diagnostics.SOFTWARE_FLAG);
+    const graphics = app.getGPUFeatureStatus();
+    console.log('PROBE GPU:', JSON.stringify({ mode, software, graphics }));
+    if (software) assert.ok(!graphics.gpu_compositing.startsWith('enabled'),
+      'explicit software test disables GPU compositing');
     const windows = BrowserWindow.getAllWindows();
     assert.equal(windows.length, mode === 'baseline' ? 2 : 1,
       'only baseline retains the transition compositor');
@@ -64,7 +71,7 @@ if (!process.argv.includes('--probe-child')) {
       }
       assert.equal(await site.executeJavaScript('document.querySelector("#draft").value'), 'test draft');
     }
-    console.log('PASS probe ' + mode + ': correct window count, geometry and draft.');
+    console.log('PASS probe ' + mode + ' software=' + software + ': correct window count, geometry and draft.');
     app.exit(0);
   }).catch(error => { console.error(error.stack || error); app.exit(1); });
 }
