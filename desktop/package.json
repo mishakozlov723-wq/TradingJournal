@@ -8,7 +8,7 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "test": "node --test tests/mini-shortcut.test.cjs tests/window-motion.test.cjs tests/cover-presentation.test.cjs tests/mini-mode-main.test.cjs tests/link-routing.test.cjs tests/view-layout.test.cjs tests/resize-diagnostics.test.cjs",
+    "test": "node --test tests/mini-shortcut.test.cjs tests/window-motion.test.cjs tests/cover-presentation.test.cjs tests/mini-mode-main.test.cjs tests/link-routing.test.cjs tests/view-layout.test.cjs tests/resize-diagnostics.test.cjs tests/window-width-policy.test.cjs",
     "build": "electron-builder --win nsis --x64 --publish never && node scripts/publish-update.js",
     "release": "npm version patch --no-git-tag-version && npm run build"
   },
@@ -49,7 +49,8 @@
       "build/app-icon.png",
       "build/tray-icon.png",
       "resize-diagnostics.js",
-      "autumn-motion-probe.js"
+      "autumn-motion-probe.js",
+      "window-width-policy.js"
     ],
     "win": {
       "target": [

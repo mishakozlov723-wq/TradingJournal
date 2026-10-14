@@ -14,8 +14,11 @@ const { autoUpdater } = require('electron-updater');
 const { createMiniShortcut, LABEL: MINI_SHORTCUT_LABEL } = require('./mini-shortcut');
 const { createWindowMotion } = require('./window-motion');
 const { createViewLayout } = require('./view-layout');
+const { createWindowWidthPolicy, PAGE_MINIMUM_SCRIPT } = require('./window-width-policy');
 const diagnostics = require('./resize-diagnostics');
-const RESIZE_PROBE = diagnostics.readProbe();
+// Packaged candidate starts in the user's confirmed smoothest shell.
+const RESIZE_PROBE = app.isPackaged && !process.argv.some(arg => arg.startsWith(diagnostics.PREFIX))
+  ? 'overlay-off' : diagnostics.readProbe();
 diagnostics.configureGpu(app);
 const PROBE_NO_COVER = RESIZE_PROBE !== 'baseline';
 const PROBE_NATIVE_FRAME = RESIZE_PROBE === 'native-frame';
@@ -36,6 +39,7 @@ function setAutumnMotionMode(mode) {
   }
 }
 app.on('web-contents-created', (_event, contents) => {
+  contents.on('zoom-changed',()=>Promise.resolve().then(()=>widthPolicy.refresh()));
   contents.on('dom-ready', async () => {
     if (contents.isDestroyed() || !isAppUrl(contents.getURL())) return;
     try {
@@ -43,6 +47,11 @@ app.on('web-contents-created', (_event, contents) => {
       await contents.executeJavaScript(autumnMotionSource);
       await contents.executeJavaScript(`window.__syterAutumnMotion?.setMode(${JSON.stringify(autumnMotionMode)})`);
     } catch (error) { console.warn('Autumn A/B injection unavailable:', error.message); }
+    if (contents === siteContents()) {
+      try { widthPolicy.updateCssMinimum(await contents.executeJavaScript(PAGE_MINIMUM_SCRIPT)); }
+      catch (error) { console.warn('Using fallback equity width:',error.message); }
+    }
+
   });
 });
 
@@ -66,6 +75,18 @@ let miniMode = false, miniReady = false, miniPinned = true;
 let fullState = null, miniBounds = null;
 let deferredFullRestore = false;
 let modeGeneration = 0;
+function siteContents() { return view ? view.webContents : win && win.webContents; }
+const widthPolicy = createWindowWidthPolicy({getWindow:()=>win,getContents:siteContents,screen,isMini:()=>miniMode});
+function installWidthPolicy() {
+  widthPolicy.refresh();
+  const host=win;
+  const refresh=()=>{if(win===host)widthPolicy.refresh();};
+  host.on('moved',refresh);
+  host.on('restore',refresh);
+  screen.on('display-metrics-changed',refresh);
+  host.once('closed',()=>screen.removeListener('display-metrics-changed',refresh));
+}
+
 const windowMotion = createWindowMotion({
   getWindow: () => win, getView: () => view, onFrame: layout,
   onStage: stage => { if (process.env.SYTER_TRANSITION_TEST === '1') console.log('TRANSITION:', stage); },
@@ -131,10 +152,10 @@ function modeTarget(enabled) {
     return fitBounds({ x: area.x + area.width - Math.min(420, area.width),
       y: area.y + 30, width: 420, height: 730 }, { width: 420, height: 730 });
   }
-  if (!fullState) return win.getBounds();
+  if (!fullState) return widthPolicy.constrain(win.getBounds());
   if (fullState.fullscreen) return screen.getDisplayMatching(fullState.bounds).bounds;
   if (fullState.maximized) return screen.getDisplayMatching(fullState.bounds).workArea;
-  return fitBounds(fullState.bounds, { x: 80, y: 80, width: 1440, height: 900 });
+  return widthPolicy.constrain(fitBounds(fullState.bounds, { x: 80, y: 80, width: 1440, height: 900 }));
 }
 async function prepareMiniMode(enabled, animate = true) {
   if (PROBE_NO_COVER) return false;
@@ -165,10 +186,10 @@ async function setMiniMode(enabled, animate = true) {
     } else {
       win.setAlwaysOnTop(false);
       if (win.isMaximized()) win.unmaximize();
-      win.setMinimumSize(380, 500);
+      widthPolicy.refresh({grow:false});
       // Restore directly under the cover: no grow -> shrink -> maximize cycle.
       win.setBounds(fullState
-        ? fitBounds(fullState.bounds, { x: 80, y: 80, width: 1440, height: 900 }) : target);
+        ? widthPolicy.constrain(fitBounds(fullState.bounds, { x: 80, y: 80, width: 1440, height: 900 })) : target);
       if (fullState) {
         deferredFullRestore = !win.isVisible();
         if (!deferredFullRestore) {
@@ -254,7 +275,7 @@ function toggleWindow() {
 function createTray() {
   if (tray) return;
   tray = new Tray(nativeImage.createFromPath(TRAY_ICON_PATH));
-  tray.setToolTip('SYTER · autumn-motion-v1 · ' + diagnostics.BUILD + ' · ' + RESIZE_PROBE);
+  tray.setToolTip('SYTER · equity-width-v1 · ' + diagnostics.BUILD + ' · ' + RESIZE_PROBE);
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Открыть журнал', click: () => requestMode(false) },
     { label: 'Мини-журнал · ' + MINI_SHORTCUT_LABEL, enabled: !PROBE_NO_COVER, click: () => requestMode(true) },
@@ -355,6 +376,7 @@ function start() {
   if (RESIZE_PROBE === 'single-surface') {
     win = diagnostics.createSingleSurfaceWindow({ BrowserWindow, icon: ICON_PATH,
       url: APP_URL, installLinkHandlers });
+    installWidthPolicy();
     win.on('close', event => {
       if (!isQuitting) { event.preventDefault(); win.hide(); }
     });
@@ -387,11 +409,12 @@ function start() {
       spellcheck: false,
     },
   });
+  installWidthPolicy();
   win.loadFile(path.join(__dirname, 'titlebar.html'));
   win.webContents.on('page-title-updated', event => event.preventDefault());
-  win.setTitle('SYTER — autumn-motion-v1 · ' + diagnostics.BUILD + ' · ' + RESIZE_PROBE);
+  win.setTitle('SYTER — equity-width-v1 · ' + diagnostics.BUILD + ' · ' + RESIZE_PROBE);
   win.webContents.on('did-finish-load', () => {
-    win.webContents.executeJavaScript(`document.querySelector('.bar span').textContent = ${JSON.stringify('SYTER · autumn-motion-v1 · ' + diagnostics.BUILD)}`).catch(() => {});
+    win.webContents.executeJavaScript(`document.querySelector('.bar span').textContent = ${JSON.stringify('SYTER · equity-width-v1 · ' + diagnostics.BUILD)}`).catch(() => {});
   });
 
   view = new WebContentsView({
@@ -411,7 +434,7 @@ function start() {
 
   if (st.maximized) win.maximize();
   win.once('ready-to-show', () => {
-    layout(); win.show();
+    widthPolicy.refresh(); layout(); win.show();
     // Warm an EMPTY click-through compositor, not a snapshot of user data.
     // Native window-show effects must not coincide with a mode switch.
     if (!PROBE_NO_COVER) windowMotion.warm();
@@ -453,9 +476,9 @@ function start() {
       else if (input.shift) wc.reloadIgnoringCache(); else wc.reload();
     } else if (k === 'f11') { e.preventDefault(); win.setFullScreen(!win.isFullScreen()); }
     else if (ctrl && input.shift && k === 'i') { e.preventDefault(); wc.toggleDevTools(); }
-    else if (ctrl && (k === '=' || k === '+')) { e.preventDefault(); wc.setZoomLevel(Math.min(wc.getZoomLevel() + 0.5, 4)); }
-    else if (ctrl && k === '-') { e.preventDefault(); wc.setZoomLevel(Math.max(wc.getZoomLevel() - 0.5, -3)); }
-    else if (ctrl && k === '0') { e.preventDefault(); wc.setZoomLevel(0); }
+    else if (ctrl && (k === '=' || k === '+')) { e.preventDefault(); wc.setZoomLevel(Math.min(wc.getZoomLevel() + 0.5, 4)); widthPolicy.refresh(); }
+    else if (ctrl && k === '-') { e.preventDefault(); wc.setZoomLevel(Math.max(wc.getZoomLevel() - 0.5, -3)); widthPolicy.refresh(); }
+    else if (ctrl && k === '0') { e.preventDefault(); wc.setZoomLevel(0); widthPolicy.refresh(); }
   });
 
   // The same web view is resized: form fields and the image never cross windows.

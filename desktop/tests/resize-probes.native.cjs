@@ -1,6 +1,6 @@
 'use strict';
 // Geometry/startup checks, NOT evidence of smooth manual dragging.
-const { app, BrowserWindow, session, webContents } = require('electron');
+const { app, BrowserWindow, session, webContents, screen } = require('electron');
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
 const { spawnSync } = require('node:child_process');
@@ -56,6 +56,11 @@ if (!process.argv.includes('--probe-child')) {
     const windows = BrowserWindow.getAllWindows();
     assert.equal(windows.length, mode === 'baseline' ? 2 : 1,
       'only baseline retains the transition compositor');
+    const {DEFAULT_CSS_MINIMUM}=require('../window-width-policy');
+    const frameWidth=host.getBounds().width-host.getContentSize()[0];
+    const workArea=screen.getDisplayMatching(host.getBounds()).workArea;
+    const expectedMinimum=Math.min(workArea.width,Math.ceil(DEFAULT_CSS_MINIMUM*site.getZoomFactor()+frameWidth));
+    assert.equal(host.getMinimumSize()[0],expectedMinimum,'actual Windows tracking minimum follows equity column');
     const children = host.contentView.children;
     assert.equal(children.length, mode === 'single-surface' ? 0 : 1);
     for (const [width, height] of [[800, 650], [560, 580], [960, 710]]) {
