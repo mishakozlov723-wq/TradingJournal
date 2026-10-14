@@ -2,7 +2,7 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {createWindowMotion}=require('../window-motion');
 const compact={x:1100,y:60,width:420,height:730};
-function setup({failCapture=false,failCover=false,hold=false,holdReveal=false,timeout=3000}={}){
+function setup({failCapture=false,failCover=false,hold=false,holdReveal=false,holdFrame=false,failFrame=false,timeout=3000}={}){
  let bounds={x:0,y:0,width:1440,height:900},opacity=1,visible=true,destroyed=false;
  const moves=[],calls=[],covers=[];
  const image={isEmpty:()=>false,toJPEG:()=>{throw Error('lossy screenshots must never be used');},toDataURL:()=> 'data:image/png;base64,aW1hZ2U='};
@@ -11,11 +11,16 @@ function setup({failCapture=false,failCover=false,hold=false,holdReveal=false,ti
  const w={isDestroyed:()=>destroyed,isVisible:()=>visible,getContentBounds:()=>({...bounds}),isFullScreen:()=>false,
    getOpacity:()=>opacity,setOpacity:a=>{opacity=a;calls.push(['opacity',a]);},
    setBounds:b=>{bounds={...b};moves.push({...b});},webContents:contents()};
- let release;
+ let release,frameResolve;
  const motion=createWindowMotion({getWindow:()=>w,getView:()=>({webContents:contents()}),timeout,sleep:async()=>{},
    createOverlay:rect=>{
      if(failCover)throw Error('cover failed');
      const cover={ready:Promise.resolve(),isDestroyed:()=>cover.dead,
+       armPresentation(){
+         calls.push(['armPresentation']);
+         const promise=holdFrame?new Promise(resolve=>{frameResolve=resolve;}):Promise.resolve(!failFrame);
+         return {promise,cancel(){calls.push(['cancelPresentation']);frameResolve?.(false);}};
+       },
        setBounds(rect){calls.push(['coverBounds',rect]);},
        moveTop(){calls.push(['raiseCover']);},
        showInactive(){calls.push(['showCover']);},destroy(){cover.dead=true;calls.push(['destroyCover']);},
@@ -25,7 +30,7 @@ function setup({failCapture=false,failCover=false,hold=false,holdReveal=false,ti
          if(hold&&code.includes('.play('))return new Promise(r=>{release=r;});return true;}}};
      covers.push(cover);return cover;
    }});
- return {motion,w,moves,calls,covers,opacity:()=>opacity,bounds:()=>bounds,hide:()=>{visible=false;},destroy:()=>{destroyed=true;},release:()=>release?.()};
+ return {motion,w,moves,calls,covers,opacity:()=>opacity,bounds:()=>bounds,hide:()=>{visible=false;},destroy:()=>{destroyed=true;},release:()=>release?.(),present:()=>frameResolve?.(true)};
 }
 test('original picture is prepared before any native resize; cover does not take focus',async()=>{
  const s=setup();assert.equal(await s.motion.prepare(compact),true);
@@ -61,6 +66,30 @@ test('cancel before cover presentation never hides the live window',async()=>{
  while(!s.calls.some(c=>c[0]==='reveal'))await new Promise(r=>setImmediate(r));
  assert.equal(s.opacity(),1);s.motion.cancel();assert.equal(await done,false);
  assert.equal(s.opacity(),1);assert.equal(s.covers[0].dead,undefined);s.release();
+});
+test('a completed renderer reveal cannot hide the live window before the submitted frame is verified',async()=>{
+ const s=setup({holdFrame:true});let done=false;
+ const ready=s.motion.prepare(compact).then(value=>{done=true;return value;});
+ while(!s.calls.some(c=>c[0]==='reveal'))await new Promise(r=>setImmediate(r));
+ await new Promise(r=>setImmediate(r));
+ assert.equal(done,false);assert.equal(s.opacity(),1,'the chat must not be exposed while waiting for a real cover frame');
+ s.present();assert.equal(await ready,true);assert.equal(s.opacity(),0);s.motion.cancel();
+});
+test('an unconfirmed or unavailable compositor frame falls back without concealing the journal',async()=>{
+ const s=setup({failFrame:true});assert.equal(await s.motion.prepare(compact),false);
+ assert.ok(!s.calls.some(c=>c[0]==='opacity'&&c[1]===0));
+ assert.equal(s.opacity(),1);await s.motion.move(compact);assert.deepEqual(s.moves,[compact]);
+});
+test('cancelling while waiting for a frame detaches the subscription without hiding the app',async()=>{
+ const s=setup({holdFrame:true});const ready=s.motion.prepare(compact);
+ while(!s.calls.some(c=>c[0]==='reveal'))await new Promise(r=>setImmediate(r));
+ s.motion.cancel();assert.equal(await ready,false);assert.equal(s.opacity(),1);
+ assert.ok(s.calls.some(c=>c[0]==='cancelPresentation'));
+});
+test('the existing mini-to-full path does not use or wait for the new entry barrier',async()=>{
+ const s=setup({holdFrame:true});
+ assert.equal(await s.motion.prepare(compact,true,false),true);
+ assert.ok(!s.calls.some(c=>c[0]==='armPresentation'));s.motion.cancel();
 });
 test('reduced motion uses one immediate resize and never creates a cover',async()=>{
  const s=setup();assert.equal(await s.motion.prepare(compact,false),false);

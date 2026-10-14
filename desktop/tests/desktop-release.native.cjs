@@ -44,6 +44,7 @@ app.whenReady().then(() => {
 
 const sourcePath = path.resolve(__dirname, '../main.js');
 let handoffChecks=0;
+let verifiedEntries=0;
 let filming=false;
 const filmEvents=[];
 function desktopShot(rect,output){
@@ -102,6 +103,7 @@ Module._load=function(request,parent,isMain){
     return {createWindowMotion:options=>exported.createWindowMotion({...options,timeout:15000,
       onStage:async(stage,data)=>{
         options.onStage?.(stage,data);
+        if(stage==='source-frame-verified')verifiedEntries++;
         if(filming){filmEvents.push({stage,time:Date.now()});return;}
         await inspectHandoff(stage,data);
       }
@@ -277,6 +279,16 @@ async function main() {
   assert.equal(BrowserWindow.getAllWindows().length, 2, 'reduced motion creates no additional window');
   api.requestMode(false); await settled(false);
   await wc.executeJavaScript("window.forceReducedForTest=false;");
+
+  const verifiedBeforeStress=verifiedEntries;
+  for(let cycle=0;cycle<12;cycle++){
+    api.requestMode(true);await settled(true);
+    api.requestMode(false);await settled(false);
+    await wait(15*(cycle%3));
+  }
+  assert.equal(verifiedEntries-verifiedBeforeStress,12,
+    'every full-to-mini stress switch must receive its matching opaque compositor frame');
+  console.log('PASS: 12 consecutive full-to-mini frame receipts; no unverified conceal or fallback.');
 
   w.maximize(); await until(() => w.isMaximized(), 'maximize');
   api.requestMode(true); await settled(true);

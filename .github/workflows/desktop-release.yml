@@ -7,6 +7,10 @@ on:
         description: Publish the verified installer to syter-releases
         type: boolean
         default: false
+      check_only:
+        description: Run regression and native transition checks without building an installer
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -53,10 +57,12 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
       - name: Build installer and updater files
+        if: ${{ !inputs.check_only }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npm run build
       - name: Verify visible generated and packaged icons
+        if: ${{ !inputs.check_only }}
         run: |
           $electron = (Resolve-Path ./node_modules/electron/dist/electron.exe).Path
           $script = (Resolve-Path ./tests/icons.native.cjs).Path
@@ -65,7 +71,7 @@ jobs:
           Get-Content icon-test-error.log
           if ($test.ExitCode -ne 0) { throw "Packaged icon test failed: $($test.ExitCode)" }
       - name: Save verified icon previews
-        if: always()
+        if: ${{ always() && !inputs.check_only }}
         uses: actions/upload-artifact@v4
         with:
           name: SYTER-icon-inspection
@@ -73,6 +79,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
       - name: Save verified installer
+        if: ${{ !inputs.check_only }}
         uses: actions/upload-artifact@v4
         with:
           name: SYTER-windows-release
@@ -80,7 +87,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Publish all updater assets
-        if: inputs.publish
+        if: ${{ inputs.publish && !inputs.check_only }}
         env:
           GH_TOKEN: ${{ secrets.SYTER_RELEASE_TOKEN }}
         run: |

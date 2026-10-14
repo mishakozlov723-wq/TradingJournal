@@ -43,6 +43,7 @@ function setup({ maximized = false, fullscreen = false } = {}) {
       };
       if (name === 'electron-updater') return { autoUpdater: {} };
       if (name === './window-motion') return { createWindowMotion: () => motion };
+      if (name === './cover-presentation') return require('../cover-presentation');
       if (name === './mini-shortcut') return { LABEL: 'Ctrl + Shift + Ё', createMiniShortcut: () => ({ dispose() {} }) };
       if (name === 'fs') return { writeFileSync() {}, readFileSync() { throw Error('no state'); }, rmSync() {} };
       return require(name);

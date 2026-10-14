@@ -13,6 +13,7 @@ const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 const { createMiniShortcut, LABEL: MINI_SHORTCUT_LABEL } = require('./mini-shortcut');
 const { createWindowMotion } = require('./window-motion');
+const { opaqueSnapshotMatcher, armPresentation } = require('./cover-presentation');
 
 const APP_URL = 'https://retocker.web.app/';
 const APP_HOSTS = ['retocker.web.app', 'retocker.firebaseapp.com'];
@@ -52,6 +53,8 @@ const windowMotion = createWindowMotion({
     cover.setBounds(bounds);
     cover.setIgnoreMouseEvents(true);
     cover.setAlwaysOnTop(true, 'pop-up-menu');
+    cover.armPresentation = (source, union) => armPresentation(cover.webContents,
+      opaqueSnapshotMatcher(source, union, value => nativeImage.createFromDataURL(value)));
     cover.ready = cover.loadFile(path.join(__dirname, 'mode-transition.html'));
     return cover;
   },
@@ -105,7 +108,7 @@ function modeTarget(enabled) {
 }
 async function prepareMiniMode(enabled, animate = true) {
   if (!win || enabled === miniMode) return false;
-  return windowMotion.prepare(modeTarget(enabled), animate);
+  return windowMotion.prepare(modeTarget(enabled), animate, enabled);
 }
 async function setMiniMode(enabled, animate = true) {
   enabled = !!enabled;

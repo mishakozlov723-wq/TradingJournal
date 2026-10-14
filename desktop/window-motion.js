@@ -17,7 +17,7 @@ function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},onSt
   }
   function cancel(dispose=false){
     const t=task;
-    if(t){task=null;clearTimeout(t.watchdog);t.abort();restore(t);onStage('closed');}
+    if(t){task=null;clearTimeout(t.watchdog);t.receipt?.cancel();t.abort();restore(t);onStage('closed');}
     clearCover();
     if(dispose){try{if(available(cover))cover.destroy();}catch(_){}cover=null;coverReady=null;}
   }
@@ -65,7 +65,7 @@ function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},onSt
       body:images[0].toDataURL(),
       title:images[1]&&!images[1].isEmpty()?images[1].toDataURL():''};
   }
-  async function prepare(target,animate=true){
+  async function prepare(target,animate=true,verifyPresentation=true){
     cancel();const w=getWindow(),v=getView();
     if(!animate||!available(w)||!w.isVisible()||!v||!createOverlay){onStage('skipped');return false;}
     const from=w.getContentBounds(),x=Math.min(from.x,target.x),y=Math.min(from.y,target.y);
@@ -94,10 +94,23 @@ function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},onSt
       await bounded(t,t.overlay.webContents.executeJavaScript(`window.syterTransition.prepare(${JSON.stringify({source,union})})`));
       onStage('cover-painted');
       if(!active(t))return false;t.overlay.moveTop?.();
+      // Only full -> mini changes. Do not retune the already-good reverse
+      // movement or guess readiness from a timeout / successful rAF alone.
+      if(verifyPresentation)t.receipt=t.overlay.armPresentation(source,union);
       // No show(), new native window or whole-pane opacity animation here.
       // Present an opaque picture on the already-visible compositor.
       await bounded(t,t.overlay.webContents.executeJavaScript('window.syterTransition.reveal()'));
       if(!active(t)||!w.isVisible()){if(task===t)cancel();return false;}
+      if(verifyPresentation){
+        const accepted=await bounded(t,t.receipt.promise);
+        if(!active(t))return false;
+        if(!accepted){onStage('source-frame-unconfirmed');cancel(true);return false;}
+        // The subscription has now observed the opaque submitted picture.
+        // Let its next compositor turn run while the live journal stays up.
+        await bounded(t,t.overlay.webContents.executeJavaScript(paintScript));
+        if(!active(t))return false;
+        onStage('source-frame-verified');
+      }
       await bounded(t,onStage('cover-presented',{overlay:t.overlay,source,union}));
       if(!active(t))return false;
       w.setOpacity(0);onStage('live-concealed');return true;
