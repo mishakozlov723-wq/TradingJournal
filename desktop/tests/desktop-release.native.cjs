@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const Module = require('node:module');
 const assert = require('node:assert/strict');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawn } = require('node:child_process');
 process.env.SYTER_TRANSITION_TEST = '1';
 
 app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'syter-release-test-')));
@@ -44,6 +44,8 @@ app.whenReady().then(() => {
 
 const sourcePath = path.resolve(__dirname, '../main.js');
 let handoffChecks=0;
+let filming=false;
+const filmEvents=[];
 function desktopShot(rect,output){
   execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-File',
     path.join(__dirname,'capture-desktop-region.ps1'),'-X',String(rect.x),'-Y',String(rect.y),
@@ -98,7 +100,11 @@ Module._load=function(request,parent,isMain){
   const exported=realLoad.apply(this,arguments);
   if(request==='./window-motion'&&parent?.filename===sourcePath){
     return {createWindowMotion:options=>exported.createWindowMotion({...options,timeout:15000,
-      onStage:async(stage,data)=>{options.onStage?.(stage,data);await inspectHandoff(stage,data);}
+      onStage:async(stage,data)=>{
+        options.onStage?.(stage,data);
+        if(filming){filmEvents.push({stage,time:Date.now()});return;}
+        await inspectHandoff(stage,data);
+      }
     })};
   }
   return exported;
@@ -160,6 +166,38 @@ async function main() {
       await wc.executeJavaScript(`document.body.classList.contains('syter-mini') === ${mini} && !document.body.dataset.syterModeTransition`), 'mode settled');
   }
 
+  // Bright desktop behind the app exposes even a short transparency gap.
+  // The previous black desktop and slow stage-by-stage screenshots hid it.
+  const backdrop=new BrowserWindow({...area,show:false,frame:false,skipTaskbar:true,
+    webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false}});
+  await backdrop.loadURL('data:text/html,'+encodeURIComponent(
+    '<body style="margin:0;background:repeating-conic-gradient(#ff00d4 0% 25%,#fff 0% 50%) 0/80px 80px"></body>'));
+  backdrop.showInactive(); w.moveTop(); w.focus(); await wait(400);
+  const filmDirectory=path.join(artifacts,'temporal');fs.mkdirSync(filmDirectory,{recursive:true});
+  const recorder=spawn('powershell.exe',['-NoProfile','-NonInteractive','-File',
+    path.join(__dirname,'record-desktop.ps1'),'-X',String(area.x),'-Y',String(area.y),
+    '-Width',String(area.width),'-Height',String(area.height),'-Directory',filmDirectory],
+    {windowsHide:true,stdio:['ignore','pipe','pipe']});
+  let recorderError='';recorder.stderr.on('data',data=>{recorderError+=data;});
+  const recorded=new Promise((resolve,reject)=>{
+    recorder.on('error',reject);
+    recorder.on('exit',code=>code===0?resolve():reject(Error('Desktop recording failed: '+recorderError)));
+  });
+  await until(()=>fs.existsSync(path.join(filmDirectory,'ready')),'continuous desktop recorder');
+  filming=true;
+  try{
+    await wait(100);
+    filmEvents.push({stage:'request-mini',time:Date.now()});
+    api.requestMode(true);await settled(true);await wait(180);
+    filmEvents.push({stage:'request-full',time:Date.now()});
+    api.requestMode(false);await settled(false);await wait(180);
+  } finally {
+    filming=false;fs.writeFileSync(path.join(filmDirectory,'stop'),'stop');await recorded;
+    fs.writeFileSync(path.join(filmDirectory,'events.json'),JSON.stringify({area,original,events:filmEvents},null,2));
+    backdrop.destroy();
+  }
+  nativeResizeCalls=0;
+  console.log('TEMPORAL: continuous real-desktop film saved, without per-stage capture delays.');
   await wait(150);
   const liveRect=w.getContentBounds();
   const desktopBaseline=path.join(artifacts,'desktop-before.png');
