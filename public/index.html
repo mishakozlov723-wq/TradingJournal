@@ -19,7 +19,7 @@
    (~450 KB) loads right after the page is ready instead of before it. Their menu
    entries stay hidden until the code has loaded, exactly as before. */
 (function(){
-  var files=['accounts-config.js?v=1053adb163','accounts-space.js?v=23eb807462','vendor/lightweight-charts.js?v=37e5f4fe8b','replay-data-config.js?v=a87b6ba84a','replay-space.js?v=b733f02748'];
+  var files=['accounts-config.js?v=1053adb163','accounts-space.js?v=23eb807462','vendor/lightweight-charts.js?v=37e5f4fe8b','replay-data-config.js?v=a87b6ba84a','replay-space.js?v=a4960df8d4'];
   var started=false;
   function next(i){
     if(i>=files.length)return;
@@ -51,6 +51,7 @@
 
 
 <link rel="stylesheet" href="trade-media.css?v=4dd63ff2f5">
+<link rel="stylesheet" href="interface-mono.css?v=1fb7269225">
 </head>
 <body>
 
@@ -1472,7 +1473,7 @@ separated by commas or new lines"></textarea>
   firebase.initializeApp(firebaseConfig);
   var db = firebase.firestore();
 </script>
-<script src="app.js?v=be9614f025"></script>
+<script src="app.js?v=dc4b82888c"></script>
 <script src="trade-media.js?v=703d21b514"></script>
 <script src="desktop-autologin.js?v=8c2de5be35"></script>
 
@@ -1583,7 +1584,7 @@ separated by commas or new lines"></textarea>
 </script>
 
 <!-- Notes v3.20.3: database runtime and styles are embedded; no additional asset request. -->
-<script src="notes-workspace.js?v=144b04f1b3"></script>
+<script src="notes-workspace.js?v=9d523c777c"></script>
 
 
 
@@ -1677,5 +1678,6 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 }
 </script>
 <script src="floating-panels.js?v=2"></script>
+<script src="interface-mono.js?v=daa1e83d97"></script>
 </body>
 </html>
