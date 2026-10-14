@@ -149,7 +149,11 @@ async function main() {
   assert.equal(process.platform, 'win32', 'native release test must run on Windows');
   await until(() => api.testState().miniReady, 'journal native bridge ready');
   assert.equal(registered, true, 'global shortcut must register on the Windows runner');
-  const w = BrowserWindow.getAllWindows()[0];
+  // Enumeration order is not an identity contract: Electron 42 may return
+  // the prewarmed transparent compositor first. Select the actual journal
+  // titlebar host, never operate on whichever window happens to be first.
+  const w = BrowserWindow.getAllWindows().find(candidate =>
+    candidate.webContents.getURL().endsWith('/titlebar.html'));
   const wc = webContents.getAllWebContents().find(c => c.getURL().startsWith('https://retocker.web.app'));
   assert.ok(w && wc);
   const originalId = wc.id;
