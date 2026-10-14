@@ -8,6 +8,12 @@ app.setPath('userData',fs.mkdtempSync(path.join(os.tmpdir(),'syter-resize-')));
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const deadline=setTimeout(()=>{console.error('Resize test timed out');app.exit(1);},20000);
 app.whenReady().then(async()=>{
+ const expectedElectron=require('../package.json').devDependencies.electron;
+ assert.equal(process.versions.electron,expectedElectron,'native test uses the pinned Electron runtime');
+ const artifactDir=path.join(__dirname,'../test-artifacts');fs.mkdirSync(artifactDir,{recursive:true});
+ const runtime={versions:process.versions,gpuFeatures:app.getGPUFeatureStatus(),gpu:await app.getGPUInfo('basic')};
+ fs.writeFileSync(path.join(artifactDir,'resize-runtime.json'),JSON.stringify(runtime,null,2));
+ console.log('Resize runtime:',JSON.stringify({electron:process.versions.electron,chrome:process.versions.chrome,gpuFeatures:runtime.gpuFeatures}));
  const win=new BrowserWindow({width:900,height:700,show:false});
  const view=new WebContentsView({webPreferences:{sandbox:true,backgroundThrottling:false}});
  win.contentView.addChildView(view);
