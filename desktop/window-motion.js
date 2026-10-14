@@ -2,7 +2,7 @@
 // Animate frozen pictures, never live native bounds. The real journal stays alive.
 function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},onStage=()=>{},duration=340,timeout=3000,
   sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))}) {
-  let task=null;
+  let task=null,cover=null,coverReady=null;
   const available=w=>w&&!w.isDestroyed();
   const active=t=>task===t&&available(getWindow());
   const paintScript=`new Promise(resolve=>{const timer=setTimeout(resolve,100);requestAnimationFrame(()=>requestAnimationFrame(()=>{clearTimeout(timer);resolve();}));})`;
@@ -12,10 +12,39 @@ function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},onSt
     for(const wc of t.throttled){try{if(!wc.isDestroyed())wc.setBackgroundThrottling(true);}catch(_){}}
     t.throttled.length=0;
   }
-  function cancel(){
-    if(!task)return;const t=task;task=null;clearTimeout(t.watchdog);t.abort();restore(t);
-    try{if(available(t.overlay))t.overlay.destroy();}catch(_){}
-    onStage('closed');
+  function clearCover(){
+    if(available(cover))cover.webContents.executeJavaScript('window.syterTransition?.clear()').catch(()=>{});
+  }
+  function cancel(dispose=false){
+    const t=task;
+    if(t){task=null;clearTimeout(t.watchdog);t.abort();restore(t);onStage('closed');}
+    clearCover();
+    if(dispose){try{if(available(cover))cover.destroy();}catch(_){}cover=null;coverReady=null;}
+  }
+  async function warm(bounds){
+    if(!createOverlay)return null;
+    if(available(cover))return coverReady;
+    let candidate;
+    try{
+      candidate=createOverlay(bounds||getWindow().getContentBounds());
+      cover=candidate;
+      coverReady=(async()=>{
+        await candidate.ready;
+        if(!available(candidate))return null;
+        // Show ONE empty, click-through surface ahead of time. Windows may
+        // animate a newly shown HWND independently of the page's rAF/paint.
+        // It must finish doing so while the journal is still fully visible,
+        // never while its screenshot is replacing the live window.
+        candidate.showInactive();
+        await sleep(250);
+        return available(candidate)?candidate:null;
+      })();
+      return await coverReady;
+    }catch(err){
+      if(available(candidate))candidate.destroy();
+      if(cover===candidate){cover=null;coverReady=null;}
+      console.warn('Transition compositor unavailable:',err.message);return null;
+    }
   }
   const bounded=(t,promise)=>Promise.race([promise,t.aborted]);
   async function paint(t){
@@ -48,29 +77,31 @@ function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},onSt
     let abort;
     const t={opacity:w.getOpacity(),overlay:null,throttled:[],union,
       aborted:new Promise(resolve=>{abort=resolve;}),abort:()=>abort(null)};
-    task=t;t.watchdog=setTimeout(()=>{if(task===t){onStage('watchdog');cancel();}},timeout);t.watchdog.unref?.();
+    task=t;t.watchdog=setTimeout(()=>{if(task===t){onStage('watchdog');cancel(true);}},timeout);t.watchdog.unref?.();
     try{
       for(const wc of [w.webContents,v.webContents])if(typeof wc.setBackgroundThrottling==='function'){
         wc.setBackgroundThrottling(false);t.throttled.push(wc);
       }
-      t.overlay=createOverlay(union);
+      t.overlay=await bounded(t,warm(union));
+      if(!active(t)||!available(t.overlay)){if(task===t)cancel();return false;}
+      // The persistent surface is empty while its viewport is repositioned.
+      t.overlay.setBounds(union);
       onStage('capturing-source');
-      const results=await bounded(t,Promise.all([capture(t),t.overlay.ready]));
-      const source=results&&results[0];
+      const source=await capture(t);
       if(!source||!active(t)){if(task===t)cancel();return false;}
       onStage('source-and-cover-ready');
       if(!active(t)||!available(t.overlay))return false;
       await bounded(t,t.overlay.webContents.executeJavaScript(`window.syterTransition.prepare(${JSON.stringify({source,union})})`));
       onStage('cover-painted');
-      if(!active(t))return false;t.overlay.showInactive();
-      // Present the loaded cover while the journal is still fully visible.
-      // Never assume that sleeping 34 ms means a Windows surface was painted.
+      if(!active(t))return false;t.overlay.moveTop?.();
+      // No show(), new native window or whole-pane opacity animation here.
+      // Present an opaque picture on the already-visible compositor.
       await bounded(t,t.overlay.webContents.executeJavaScript('window.syterTransition.reveal()'));
       if(!active(t)||!w.isVisible()){if(task===t)cancel();return false;}
       await bounded(t,onStage('cover-presented',{overlay:t.overlay,source,union}));
       if(!active(t))return false;
       w.setOpacity(0);onStage('live-concealed');return true;
-    }catch(err){if(task===t)cancel();console.warn('Transition cover unavailable:',err.message);return false;}
+    }catch(err){if(task===t)cancel(true);console.warn('Transition cover unavailable:',err.message);return false;}
   }
   async function move(target,animate=true,applyNative){
     const w=getWindow();if(!available(w)){cancel();return false;}
@@ -95,8 +126,8 @@ function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},onSt
       await bounded(t,t.overlay.webContents.executeJavaScript('window.syterTransition.release()'));
       onStage('live-presented');
       if(task===t)cancel();return true;
-    }catch(err){if(task===t)cancel();console.warn('Transition failed; keeping the live journal:',err.message);return false;}
+    }catch(err){if(task===t)cancel(true);console.warn('Transition failed; keeping the live journal:',err.message);return false;}
   }
-  return {prepare,move,cancel,isActive:()=>!!task};
+  return {prepare,move,cancel,warm,isActive:()=>!!task};
 }
 module.exports={createWindowMotion};

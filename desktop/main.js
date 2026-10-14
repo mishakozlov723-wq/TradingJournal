@@ -358,7 +358,12 @@ function start() {
     .forEach((ev) => win.on(ev, layout));
 
   if (st.maximized) win.maximize();
-  win.once('ready-to-show', () => { layout(); win.show(); });
+  win.once('ready-to-show', () => {
+    layout(); win.show();
+    // Warm an EMPTY click-through compositor, not a snapshot of user data.
+    // Native window-show effects must not coincide with a mode switch.
+    windowMotion.warm();
+  });
   win.on('focus', () => { if (view && !view.webContents.isDestroyed()) view.webContents.focus(); });
 
   // the cross hides the window into the tray; "Выход" in the tray menu really quits

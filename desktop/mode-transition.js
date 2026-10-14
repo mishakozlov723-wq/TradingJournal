@@ -1,13 +1,11 @@
 'use strict';
 (()=>{
-  const stage=document.getElementById('stage');let source,union,running=[];
+  const stage=document.getElementById('stage');let source,union,running=[],generation=0;
   const painted=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-  async function handoff(from,to){
-    await painted();
-    const fade=stage.animate([{opacity:from},{opacity:to}],{duration:70,easing:'linear',fill:'forwards'});
-    running=[fade];
-    await Promise.race([fade.finished.catch(()=>{}),new Promise(resolve=>setTimeout(resolve,250))]);
-    stage.style.opacity=String(to);fade.cancel();running=[];await painted();return true;
+  function clear(){
+    generation++;
+    for(const a of running)a.cancel();running=[];
+    stage.style.opacity='0';stage.replaceChildren();source=null;
   }
   function place(rect,rounded){
     Object.assign(stage.style,{left:rect.x-union.x+'px',top:rect.y-union.y+'px',
@@ -34,19 +32,22 @@
     await Promise.all(images.map(im=>im.decode()));return layer;
   }
   window.syterTransition={
+    clear,
     async prepare(data){
-      for(const a of running)a.cancel();running=[];source=data.source;union=data.union;stage.replaceChildren();
+      clear();const current=generation;source=data.source;union=data.union;
       place(source.rect,!source.maximized&&!source.fullscreen);stage.style.opacity='0';
-      stage.append(await shot(source,source.rect.height));
+      const picture=await shot(source,source.rect.height);
+      if(current!==generation)return false;stage.append(picture);
       await painted();return true;
     },
-    reveal(){return handoff(0,1);},
-    release(){return handoff(1,0);},
+    async reveal(){stage.style.opacity='1';await painted();return true;},
+    async release(){clear();await painted();return true;},
     async play({destination,duration}){
-      const old=stage.firstElementChild,a=source.rect,b=destination.rect;
+      const current=generation,old=stage.firstElementChild,a=source.rect,b=destination.rect;
       // Keep the destination bitmap at native CSS dimensions. Transform the
       // layer, not its image layout, so the final text isn't resampled twice.
       const next=await shot(destination,b.height,b.width);
+      if(current!==generation)return false;
       Object.assign(next.style,{width:b.width+'px',height:b.height+'px',opacity:'0',
         transformOrigin:'top left',transform:`scale(${a.width/b.width}, ${a.height/b.height})`});
       stage.append(next);
@@ -60,10 +61,12 @@
         next.animate([{opacity:0},{opacity:0,offset:.16},{opacity:1,offset:.72},{opacity:1}],options)];
       await Promise.race([Promise.all(running.map(a=>a.finished.catch(()=>{}))),
         new Promise(resolve=>setTimeout(resolve,duration+180))]);
+      if(current!==generation)return false;
       for(const a of running){try{a.finish();}catch(_){}}
       // Scaling a screenshot up and then down leaves text on a filtered GPU
       // surface. Before revealing the real window, return to native geometry.
       const final=await shot(destination,destination.rect.height,destination.rect.width);
+      if(current!==generation)return false;
       place(destination.rect,!destination.maximized&&!destination.fullscreen);
       stage.replaceChildren(final);
       for(const a of running)a.cancel();running=[];

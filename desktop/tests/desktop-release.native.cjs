@@ -229,11 +229,14 @@ async function main() {
   assert.deepEqual(w.getBounds(), original);
   const draft = await wc.executeJavaScript('({rr:magnitudeInput.value,risk:riskPercentInput.value,notes:syterTradeNotes.value,image:currentScreenshot})');
   assert.deepEqual(draft, { rr: '2.25', risk: '0.5', notes: 'native draft', image: 'draft-image' });
-  assert.equal(wc.id, originalId); assert.equal(BrowserWindow.getAllWindows().length, 1);
+  assert.equal(wc.id, originalId); assert.equal(BrowserWindow.getAllWindows().length, 2);
+  const idleCover=BrowserWindow.getAllWindows().find(c=>c!==w);
+  assert.equal(await idleCover.webContents.executeJavaScript("document.getElementById('stage').childElementCount"),0,
+    'persistent cover holds no screenshots while idle');
   assert.equal(handoffChecks,4,'verify both handoffs in both transition directions');
   await wc.executeJavaScript("window.forceReducedForTest=true;");
   api.requestMode(true); await settled(true);
-  assert.equal(BrowserWindow.getAllWindows().length, 1, 'reduced motion creates no animation cover');
+  assert.equal(BrowserWindow.getAllWindows().length, 2, 'reduced motion creates no additional window');
   api.requestMode(false); await settled(false);
   await wc.executeJavaScript("window.forceReducedForTest=false;");
 
@@ -279,7 +282,7 @@ async function main() {
   assert.deepEqual(opened, [url, url]);
   assert.equal(wc.getURL(), 'https://retocker.web.app/');
   assert.equal(await wc.executeJavaScript('magnitudeInput.value'), '2.25');
-  assert.equal(BrowserWindow.getAllWindows().length, 1);
+  assert.equal(BrowserWindow.getAllWindows().length, 2);
   console.log('PASS: actual Windows/Electron resize, maximized restore, same-page draft, global OEM_3 from tray, and both model-link paths.');
 }
 app.whenReady().then(() => main()).then(() => app.exit(0)).catch(err => {
