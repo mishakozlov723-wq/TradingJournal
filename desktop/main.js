@@ -26,7 +26,6 @@ const APP_HOSTS = ['retocker.web.app', 'retocker.firebaseapp.com'];
 // Isolated A/B animation test: the confirmed hidden-star fix is always on.
 // It applies only to our own site, never to external pages or local titlebars.
 let autumnMotionMode = 'numeric';
-const autumnMotionSource = fs.readFileSync(path.join(__dirname, 'autumn-motion-probe.js'), 'utf8');
 function setAutumnMotionMode(mode) {
   autumnMotionMode = mode;
   const contents = [view && view.webContents, win && win.webContents];
@@ -40,6 +39,7 @@ app.on('web-contents-created', (_event, contents) => {
   contents.on('dom-ready', async () => {
     if (contents.isDestroyed() || !isAppUrl(contents.getURL())) return;
     try {
+      const autumnMotionSource = fs.readFileSync(path.join(__dirname, 'autumn-motion-probe.js'), 'utf8');
       await contents.executeJavaScript(autumnMotionSource);
       await contents.executeJavaScript(`window.__syterAutumnMotion?.setMode(${JSON.stringify(autumnMotionMode)})`);
     } catch (error) { console.warn('Autumn A/B injection unavailable:', error.message); }
