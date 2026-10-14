@@ -34,8 +34,14 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: desktop/package-lock.json
-      - name: Install locked desktop dependencies
-        run: npm ci
+      - name: Install locked desktop dependencies and Electron runtime
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Locked dependency installation failed' }
+          # Newer Electron packages download their binary on first require,
+          # rather than during npm ci. Resolve it before native test paths.
+          node -e "console.log('Electron executable:', require('electron'))"
+          if ($LASTEXITCODE -ne 0) { throw 'Electron runtime installation failed' }
       - name: Prepare native icon resources
         run: ./scripts/prepare-build-assets.ps1
       - name: Run regression tests
