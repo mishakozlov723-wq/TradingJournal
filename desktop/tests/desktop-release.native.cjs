@@ -185,17 +185,42 @@ async function main() {
   });
   await until(()=>fs.existsSync(path.join(filmDirectory,'ready')),'continuous desktop recorder');
   filming=true;
+  let miniFilmBounds;
   try{
     await wait(100);
     filmEvents.push({stage:'request-mini',time:Date.now()});
-    api.requestMode(true);await settled(true);await wait(180);
+    api.requestMode(true);await settled(true);miniFilmBounds=w.getContentBounds();await wait(180);
     filmEvents.push({stage:'request-full',time:Date.now()});
     api.requestMode(false);await settled(false);await wait(180);
   } finally {
     filming=false;fs.writeFileSync(path.join(filmDirectory,'stop'),'stop');await recorded;
-    fs.writeFileSync(path.join(filmDirectory,'events.json'),JSON.stringify({area,original,events:filmEvents},null,2));
+    fs.writeFileSync(path.join(filmDirectory,'events.json'),JSON.stringify({area,original,mini:miniFilmBounds,events:filmEvents},null,2));
     backdrop.destroy();
   }
+  // This bottom interior rectangle stays INSIDE both window sizes throughout
+  // the monotonic morph. A magenta checkerboard there means real transparency,
+  // not the intended desktop reveal outside the moving pane or ClearType text.
+  const roi={
+    left:Math.max(original.x,miniFilmBounds.x)-area.x+24,
+    right:Math.min(original.x+original.width,miniFilmBounds.x+miniFilmBounds.width)-area.x-24,
+    bottom:Math.min(original.y+original.height,miniFilmBounds.y+miniFilmBounds.height)-area.y-32,
+  };roi.top=roi.bottom-64;
+  assert.ok(roi.right>roi.left&&roi.top>0);
+  const filmTimes=JSON.parse(fs.readFileSync(path.join(filmDirectory,'times.json'),'utf8'));
+  assert.ok(filmTimes.length>=15,'continuous test must include actual desktop frames');
+  let maxLeak=0;
+  for(let frame=0;frame<filmTimes.length;frame++){
+    const image=nativeImage.createFromPath(path.join(filmDirectory,`frame-${String(frame).padStart(3,'0')}.png`));
+    const pixels=image.toBitmap(),width=image.getSize().width;
+    let leaking=0;
+    for(let y=roi.top;y<roi.bottom;y++)for(let x=roi.left;x<roi.right;x++){
+      const i=(y*width+x)*4,b=pixels[i],g=pixels[i+1],r=pixels[i+2];
+      if(r>24&&b>24&&g<Math.min(r,b)*.3)leaking++;
+    }
+    maxLeak=Math.max(maxLeak,leaking);
+    assert.ok(leaking<=32,`desktop checkerboard leaked inside the pane in frame ${frame}: ${leaking} pixels`);
+  }
+  console.log(`TEMPORAL: ${filmTimes.length} actual-screen frames, maximum background leak ${maxLeak} pixels.`);
   nativeResizeCalls=0;
   console.log('TEMPORAL: continuous real-desktop film saved, without per-stage capture delays.');
   await wait(150);
@@ -282,7 +307,9 @@ async function main() {
   assert.deepEqual(opened, [url, url]);
   assert.equal(wc.getURL(), 'https://retocker.web.app/');
   assert.equal(await wc.executeJavaScript('magnitudeInput.value'), '2.25');
-  assert.equal(BrowserWindow.getAllWindows().length, 2);
+  assert.equal(BrowserWindow.getAllWindows().filter(c=>
+    !c.webContents.getURL().endsWith('mode-transition.html')).length, 1,
+    'model links must not create an application window; a cancelled navigation may dispose the empty compositor');
   console.log('PASS: actual Windows/Electron resize, maximized restore, same-page draft, global OEM_3 from tray, and both model-link paths.');
 }
 app.whenReady().then(() => main()).then(() => app.exit(0)).catch(err => {
