@@ -5542,7 +5542,7 @@
       overlay.classList.remove('open');
       overlay.setAttribute('aria-hidden', 'true');
       backtestTransitionTimer = null;
-    }, 2800);
+    }, document.documentElement.getAttribute('data-syter-interface') === 'mono' ? 120 : 2800);
   }
   function exitBacktestWorkspace() {
     if (backtestTransitionTimer) return;
@@ -5559,7 +5559,7 @@
       overlay.setAttribute('aria-hidden', 'true');
       document.getElementById('backtestTransitionText').textContent = 'Your backtest space is almost ready';
       backtestTransitionTimer = null;
-    }, 950);
+    }, document.documentElement.getAttribute('data-syter-interface') === 'mono' ? 120 : 950);
   }
   document.getElementById('goBacktestBtn').addEventListener('click', enterBacktestWorkspace);
   document.getElementById('exitBacktestWorkspaceBtn').addEventListener('click', exitBacktestWorkspace);
