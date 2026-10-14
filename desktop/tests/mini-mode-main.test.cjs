@@ -42,6 +42,7 @@ function setup({ maximized = false, fullscreen = false } = {}) {
         globalShortcut: {}, dialog: {},
       };
       if (name === 'electron-updater') return { autoUpdater: {} };
+      if (name === './view-layout') return require('../view-layout');
       if (name === './window-motion') return { createWindowMotion: () => motion };
       if (name === './cover-presentation') return require('../cover-presentation');
       if (name === './mini-shortcut') return { LABEL: 'Ctrl + Shift + Ё', createMiniShortcut: () => ({ dispose() {} }) };

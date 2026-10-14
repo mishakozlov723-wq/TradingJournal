@@ -13,6 +13,7 @@ const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 const { createMiniShortcut, LABEL: MINI_SHORTCUT_LABEL } = require('./mini-shortcut');
 const { createWindowMotion } = require('./window-motion');
+const { createViewLayout } = require('./view-layout');
 const { opaqueSnapshotMatcher, armPresentation } = require('./cover-presentation');
 
 const APP_URL = 'https://retocker.web.app/';
@@ -308,13 +309,10 @@ function showOffline() {
   view.webContents.loadFile(path.join(__dirname, 'offline.html'));
 }
 
-// the site fills everything below the title bar (the whole window in full screen)
-function layout() {
-  if (!win || win.isDestroyed() || !view) return;
-  const [w, h] = win.getContentSize();
-  const top = win.isFullScreen() ? 0 : TITLEBAR_H;
-  view.setBounds({ x: 0, y: top, width: w, height: Math.max(0, h - top) });
-}
+// Keep the embedded page in sync before a manual native resize, not only after it.
+// The post-resize path remains authoritative for maximize/fullscreen/DPI changes.
+const viewLayout = createViewLayout({ getWindow: () => win, getView: () => view, titlebarHeight: TITLEBAR_H });
+function layout() { viewLayout.layout(); }
 
 function start() {
   Menu.setApplicationMenu(null); // clean window: no File/Edit/View bar
@@ -356,6 +354,7 @@ function start() {
   });
   view.setBackgroundColor('#000000');
   win.contentView.addChildView(view);
+  win.on('will-resize', (_event, bounds) => viewLayout.beforeResize(bounds));
   layout();
   ['resize', 'maximize', 'unmaximize', 'restore', 'enter-full-screen', 'leave-full-screen', 'show']
     .forEach((ev) => win.on(ev, layout));
@@ -422,8 +421,6 @@ function start() {
     layout();
     if (!isAppUrl(wc.getURL())) return;
     try {
-      await wc.insertCSS(fs.readFileSync(path.join(__dirname, 'resize-performance.css'), 'utf8'));
-      await wc.executeJavaScript(fs.readFileSync(path.join(__dirname, 'resize-performance.js'), 'utf8'));
       await wc.insertCSS(fs.readFileSync(path.join(__dirname, 'mini-journal.css'), 'utf8'));
       await wc.executeJavaScript(fs.readFileSync(path.join(__dirname, 'mini-view-state.js'), 'utf8'));
       const mediaReady=await wc.executeJavaScript('Boolean(window.TJMedia)');

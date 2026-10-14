@@ -40,7 +40,7 @@ jobs:
         run: ./scripts/prepare-build-assets.ps1
       - name: Run regression tests
         run: npm test
-      - name: Verify live resize decoration and draft preservation
+      - name: Verify native border drag, animation continuity and draft preservation
         run: |
           $electron = (Resolve-Path ./node_modules/electron/dist/electron.exe).Path
           $script = (Resolve-Path ./tests/resize-performance.native.cjs).Path
@@ -111,16 +111,17 @@ jobs:
             $existing = ($existingText -join "`n") | ConvertFrom-Json
             if (!$existing.isDraft) { throw "Public release $tag already exists" }
             if ($existing.name -ne "SYTER $version" -or
-                $existing.body -notlike '*White transparent SYTER logo for Windows tray, taskbar, shortcuts, EXE and installer.*' -or
-                $existing.body -notlike '*The custom title bar keeps its original dark icon unchanged.*') {
+                $existing.body -notlike '*Live resizing no longer deliberately pauses decorative background animations.*' -or
+                $existing.body -notlike '*The embedded journal is pre-sized during native border drags with duplicate bounds updates skipped.*') {
               throw "Unrecognized draft $tag; do not overwrite"
             }
             $resumeDraft = $true
           }
           @"
-          - White transparent SYTER logo for Windows tray, taskbar, shortcuts, EXE and installer.
-          - The custom title bar keeps its original dark icon unchanged.
-          - No changes to the website, trading data or journal behavior.
+          - Live resizing no longer deliberately pauses decorative background animations.
+          - The embedded journal is pre-sized during native border drags with duplicate bounds updates skipped.
+          - Preserve the white Windows icons and original dark title bar from 1.2.8.
+          - No changes to the website or trading data. Real-world smoothness still requires checking on the user's PC.
           "@ | Set-Content release-notes.md
           $expected = @("latest.yml", "SYTER-Setup-$version.exe", "SYTER-Setup-$version.exe.blockmap")
           $assets = @($expected | ForEach-Object {
