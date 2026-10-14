@@ -20,6 +20,21 @@ async function main() {
         await page.setContent(fixture);
         await page.addScriptTag({ content: fs.readFileSync(path.join(__dirname, '..', 'mini-view-state.js'), 'utf8') });
         await page.addScriptTag({ content: fs.readFileSync(path.join(__dirname, '..', filename), 'utf8') });
+        // The source must retain its focus/caret and current appearance until
+        // the cover acknowledges presentation, not become inert prematurely.
+        await page.evaluate(async()=>{
+          const prepare=syterDesktop.prepareMiniMode;
+          magnitudeInput.focus();
+          syterDesktop.prepareMiniMode=async(mini,animate)=>{
+            if(document.activeElement!==magnitudeInput||tradeForm.inert||document.body.dataset.syterModeTransition)
+              throw Error('Source appearance changed before cover presentation');
+            return prepare(mini,animate);
+          };
+          await requestModeForTest(true);
+          syterDesktop.prepareMiniMode=prepare;
+          await requestModeForTest(false);
+          nativeCalls=[];prepareCalls=[];
+        });
         await page.evaluate(async () => {
           magnitudeInput.value = '1.75';
           riskPercentInput.value = '0.5';

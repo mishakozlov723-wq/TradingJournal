@@ -1,6 +1,6 @@
 'use strict';
 // Run with Electron on the Windows build runner, never against a real account.
-const { app, session, BrowserWindow, webContents, shell, globalShortcut, screen } = require('electron');
+const { app, session, BrowserWindow, webContents, shell, globalShortcut, screen, nativeImage } = require('electron');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -43,11 +43,46 @@ app.whenReady().then(() => {
 });
 
 const sourcePath = path.resolve(__dirname, '../main.js');
+let handoffChecks=0;
+async function inspectHandoff(stage,data){
+  if(!['cover-presented','destination-presented'].includes(stage)||handoffChecks>=4)return;
+  const snapshot=data.source||data.destination;
+  const rect=snapshot.rect;
+  const actual=await data.overlay.webContents.capturePage({
+    x:rect.x-data.union.x,y:rect.y-data.union.y+snapshot.top,
+    width:rect.width,height:rect.height-snapshot.top,
+  });
+  const expected=nativeImage.createFromDataURL(snapshot.body);
+  assert.deepEqual(actual.getSize(),expected.getSize(),'handoff must use native pixel dimensions');
+  const a=actual.toBitmap(),b=expected.toBitmap(),size=actual.getSize();
+  let difference=0,channels=0;
+  for(let y=8;y<size.height-8;y++)for(let x=8;x<size.width-8;x++){
+    const i=(y*size.width+x)*4;
+    for(let c=0;c<3;c++){difference+=Math.abs(a[i+c]-b[i+c]);channels++;}
+  }
+  const average=difference/channels;
+  console.log(`HANDOFF ${handoffChecks} ${stage}: native-pixel color difference ${average.toFixed(4)}`);
+  assert.ok(average<1,'source/destination handoff must not change text contrast or introduce a blank frame');
+  const artifacts=path.resolve(__dirname,'../test-artifacts');fs.mkdirSync(artifacts,{recursive:true});
+  fs.writeFileSync(path.join(artifacts,`handoff-${handoffChecks++}-${stage}.png`),actual.toPNG());
+}
+// Instrument only this isolated test process, without a production test API.
+const realLoad=Module._load;
+Module._load=function(request,parent,isMain){
+  const exported=realLoad.apply(this,arguments);
+  if(request==='./window-motion'&&parent?.filename===sourcePath){
+    return {createWindowMotion:options=>exported.createWindowMotion({...options,
+      onStage:async(stage,data)=>{options.onStage?.(stage,data);await inspectHandoff(stage,data);}
+    })};
+  }
+  return exported;
+};
 const production = new Module(sourcePath, module);
 production.filename = sourcePath;
 production.paths = Module._nodeModulePaths(path.dirname(sourcePath));
 production._compile(fs.readFileSync(sourcePath, 'utf8') +
   '\nmodule.exports.testState=()=>({miniMode,miniReady});module.exports.requestMode=requestMode;', sourcePath);
+Module._load=realLoad;
 const api = production.exports;
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(check, label, timeout = 15000) {
@@ -124,6 +159,7 @@ async function main() {
   const draft = await wc.executeJavaScript('({rr:magnitudeInput.value,risk:riskPercentInput.value,notes:syterTradeNotes.value,image:currentScreenshot})');
   assert.deepEqual(draft, { rr: '2.25', risk: '0.5', notes: 'native draft', image: 'draft-image' });
   assert.equal(wc.id, originalId); assert.equal(BrowserWindow.getAllWindows().length, 1);
+  assert.equal(handoffChecks,4,'verify both handoffs in both transition directions');
   await wc.executeJavaScript("window.forceReducedForTest=true;");
   api.requestMode(true); await settled(true);
   assert.equal(BrowserWindow.getAllWindows().length, 1, 'reduced motion creates no animation cover');

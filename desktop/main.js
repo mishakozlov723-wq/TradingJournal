@@ -68,7 +68,9 @@ const miniShortcut = createMiniShortcut({
 });
 
 function requestMode(mini) {
-  showWindow();
+  // show()/focus() on an already focused journal can repaint its native frame.
+  // A global request still restores a hidden/minimized/background journal.
+  if (win && (!win.isVisible() || win.isMinimized() || !win.isFocused())) showWindow();
   if (!miniReady) {
     // Keep the sign-in window interactive while the page is loading.
     return;

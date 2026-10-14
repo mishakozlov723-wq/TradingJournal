@@ -101,13 +101,15 @@
     }
     switching = true;
     var modeOwner = viewingUser;
-    document.body.dataset.syterModeTransition = '1';
-    var wasInert = form.inert; form.inert = true;
+    var wasInert = form.inert;
     var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     try {
       if (enabled && journalView) journalView.begin(modeOwner);
       // Freeze the ORIGINAL screen before opening the form or changing its layout.
       if (api.prepareMiniMode) await api.prepareMiniMode(enabled, !reducedMotion);
+      // inert clears focus/caret; CSS interaction locks clear hover. Apply them
+      // only after the original picture covers the real journal.
+      document.body.dataset.syterModeTransition = '1'; form.inert = true;
       if (enabled && (!signedIn() || viewingUser !== modeOwner)) {
         if (journalView) journalView.invalidate();
         return;

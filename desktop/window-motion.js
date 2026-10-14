@@ -7,6 +7,7 @@ function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},onSt
   const active=t=>task===t&&available(getWindow());
   const paintScript=`new Promise(resolve=>{const timer=setTimeout(resolve,100);requestAnimationFrame(()=>requestAnimationFrame(()=>{clearTimeout(timer);resolve();}));})`;
   function restore(t){
+    if(t.restored)return;t.restored=true;
     const w=getWindow();if(available(w)){try{w.setOpacity(t.opacity);}catch(_){}}
     for(const wc of t.throttled){try{if(!wc.isDestroyed())wc.setBackgroundThrottling(true);}catch(_){}}
     t.throttled.length=0;
@@ -30,8 +31,9 @@ function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},onSt
       top?w.webContents.capturePage({x:0,y:0,width:rect.width,height:top})
         .then(image=>{onStage('title-captured');return image;}):null]));
     if(!active(t)||!images||images[0].isEmpty())return null;
-    return {rect,top,maximized:typeof w.isMaximized==='function'&&w.isMaximized(),
-      body:'data:image/jpeg;base64,'+images[0].toJPEG(90).toString('base64'),
+    return {rect,top,maximized:typeof w.isMaximized==='function'&&w.isMaximized(),fullscreen:w.isFullScreen(),
+      // A handoff must not change text contrast/color through JPEG artifacts.
+      body:images[0].toDataURL(),
       title:images[1]&&!images[1].isEmpty()?images[1].toDataURL():''};
   }
   async function prepare(target,animate=true){
@@ -58,8 +60,13 @@ function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},onSt
       if(!active(t)||!available(t.overlay))return false;
       await bounded(t,t.overlay.webContents.executeJavaScript(`window.syterTransition.prepare(${JSON.stringify({source,union})})`));
       onStage('cover-painted');
-      if(!active(t))return false;t.overlay.showInactive();await bounded(t,sleep(34));
+      if(!active(t))return false;t.overlay.showInactive();
+      // Present the loaded cover while the journal is still fully visible.
+      // Never assume that sleeping 34 ms means a Windows surface was painted.
+      await bounded(t,t.overlay.webContents.executeJavaScript('window.syterTransition.reveal()'));
       if(!active(t)||!w.isVisible()){if(task===t)cancel();return false;}
+      await bounded(t,onStage('cover-presented',{overlay:t.overlay,source,union}));
+      if(!active(t))return false;
       w.setOpacity(0);onStage('live-concealed');return true;
     }catch(err){if(task===t)cancel();console.warn('Transition cover unavailable:',err.message);return false;}
   }
@@ -75,7 +82,13 @@ function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},onSt
       if(!destination||!active(t)){if(task===t)cancel();return false;}
       await bounded(t,t.overlay.webContents.executeJavaScript(`window.syterTransition.play(${JSON.stringify({destination,duration})})`));
       onStage('playback-completed');
-      if(!active(t))return false;restore(t);await bounded(t,sleep(50));
+      if(!active(t))return false;
+      // play() finishes on an unscaled, pixel-aligned destination picture.
+      await bounded(t,onStage('destination-presented',{overlay:t.overlay,destination,union:t.union}));
+      if(!active(t))return false;restore(t);await paint(t);
+      if(!active(t))return false;
+      await bounded(t,t.overlay.webContents.executeJavaScript('window.syterTransition.release()'));
+      onStage('live-presented');
       if(task===t)cancel();return true;
     }catch(err){if(task===t)cancel();console.warn('Transition failed; keeping the live journal:',err.message);return false;}
   }

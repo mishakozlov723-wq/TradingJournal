@@ -9,7 +9,8 @@ function setup({ maximized = false, fullscreen = false } = {}) {
   const events = {}, handlers = {}, sent = [];
   const normal = { x: 100, y: 80, width: 1200, height: 800 };
   const area = { x: 0, y: 0, width: 1920, height: 1040 };
-  let bounds = { ...(maximized || fullscreen ? area : normal) }, pinned = false, visible = true;
+  let bounds = { ...(maximized || fullscreen ? area : normal) }, pinned = false, visible = true, focused=true;
+  const presentationCalls=[];
   const motionCalls = [];
   const window = {
     isDestroyed: () => false, getBounds: () => ({ ...bounds }),
@@ -19,7 +20,9 @@ function setup({ maximized = false, fullscreen = false } = {}) {
     setFullScreen: on => { fullscreen = on; }, setMinimumSize() {},
     setBounds: b => { bounds = { ...b }; }, setAlwaysOnTop: on => { pinned = on; },
     getContentSize: () => [bounds.width, bounds.height],
-    isVisible: () => visible, show() { visible = true; }, hide() { visible = false; }, focus() {},
+    isVisible: () => visible, isFocused:()=>focused,
+    show() { visible = true;presentationCalls.push('show'); }, hide() { visible = false; },
+    focus() {focused=true;presentationCalls.push('focus');},
   };
   const frame = { url: 'https://retocker.web.app/' };
   const contents = { mainFrame: frame, focus() {}, send: (...args) => sent.push(args) };
@@ -50,7 +53,8 @@ function setup({ maximized = false, fullscreen = false } = {}) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../main.js'), 'utf8') +
     '\nglobalThis.testApi = { setMiniMode, requestMode, showWindow, configure(w,v){win=w;view=v;miniReady=true;}, state(){return {miniMode,miniPinned};} };', context);
   context.testApi.configure(window, view);
-  return { api: context.testApi, window, view, handlers, sent, motionCalls,
+  return { api: context.testApi, window, view, handlers, sent, motionCalls,presentationCalls,
+    blur:()=>{focused=false;},
     bounds: () => bounds, pinned: () => pinned,
     maximized: () => maximized, fullscreen: () => fullscreen };
 }
@@ -89,6 +93,14 @@ test('request only sends a mode command: it does not reload or replace the page'
   assert.equal(s.sent.length, 1);
   assert.deepEqual(s.sent[0], ['syter:mode-request', true]);
   assert.equal(s.api.state().miniMode, false);
+  assert.deepEqual(s.presentationCalls,[],'focused visible journal must not be shown/focused again');
+});
+test('a hidden or background journal is still restored by the global mode request',()=>{
+ for(const action of ['hide','blur']){
+   const s=setup();if(action==='hide')s.window.hide();else s.blur();
+   s.api.requestMode(true);assert.deepEqual(s.presentationCalls,['show','focus']);
+   assert.equal(s.window.isVisible(),true);assert.equal(s.sent.length,1);
+ }
 });
 test('repeated requests for the already-active mode do not resize again', async () => {
   const s = setup();

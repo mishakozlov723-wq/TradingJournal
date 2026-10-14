@@ -2,10 +2,10 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {createWindowMotion}=require('../window-motion');
 const compact={x:1100,y:60,width:420,height:730};
-function setup({failCapture=false,failCover=false,hold=false,timeout=3000}={}){
+function setup({failCapture=false,failCover=false,hold=false,holdReveal=false,timeout=3000}={}){
  let bounds={x:0,y:0,width:1440,height:900},opacity=1,visible=true,destroyed=false;
  const moves=[],calls=[],covers=[];
- const image={isEmpty:()=>false,toJPEG:()=>Buffer.from('image'),toDataURL:()=> 'data:image/png;base64,aW1hZ2U='};
+ const image={isEmpty:()=>false,toJPEG:()=>{throw Error('lossy screenshots must never be used');},toDataURL:()=> 'data:image/png;base64,aW1hZ2U='};
  const contents=()=>({isDestroyed:()=>false,setBackgroundThrottling:b=>calls.push(['throttle',b]),
    capturePage:async()=>{if(failCapture)throw Error('capture failed');return image;},executeJavaScript:async()=>true});
  const w={isDestroyed:()=>destroyed,isVisible:()=>visible,getContentBounds:()=>({...bounds}),isFullScreen:()=>false,
@@ -17,7 +17,9 @@ function setup({failCapture=false,failCover=false,hold=false,timeout=3000}={}){
      if(failCover)throw Error('cover failed');
      const cover={ready:Promise.resolve(),isDestroyed:()=>cover.dead,
        showInactive(){calls.push(['showCover']);},destroy(){cover.dead=true;calls.push(['destroyCover']);},
-       webContents:{executeJavaScript:async code=>{calls.push([code.includes('.play(')?'play':'prepare']);
+       webContents:{executeJavaScript:async code=>{
+         const stage=code.match(/syterTransition\.(\w+)\(/)[1];calls.push([stage,code]);
+         if(holdReveal&&stage==='reveal')return new Promise(r=>{release=r;});
          if(hold&&code.includes('.play('))return new Promise(r=>{release=r;});return true;}}};
      covers.push(cover);return cover;
    }});
@@ -33,6 +35,28 @@ test('live native window is resized once, not every animation frame',async()=>{
  const s=setup();await s.motion.prepare(compact);assert.equal(await s.motion.move(compact),true);
  assert.deepEqual(s.moves,[compact]);assert.equal(s.opacity(),1);assert.equal(s.motion.isActive(),false);
  assert.ok(s.calls.some(c=>c[0]==='play'));assert.equal(s.covers[0].dead,true);
+});
+test('lossless cover is actually presented before the live window is concealed',async()=>{
+ const s=setup();await s.motion.prepare(compact);
+ const names=s.calls.map(c=>c[0]);
+ assert.ok(names.indexOf('prepare')<names.indexOf('showCover'));
+ assert.ok(names.indexOf('showCover')<names.indexOf('reveal'));
+ assert.ok(names.indexOf('reveal')<names.indexOf('opacity'));
+ const payload=JSON.parse(s.calls.find(c=>c[0]==='prepare')[1].match(/\((.*)\)$/)[1]);
+ assert.ok(payload.source.body.startsWith('data:image/png;'));
+ s.motion.cancel();
+});
+test('the opaque live destination is ready before the cover releases; no redundant opacity restore',async()=>{
+ const s=setup();await s.motion.prepare(compact);await s.motion.move(compact);
+ const names=s.calls.map(c=>c[0]),reveal=names.indexOf('release');
+ assert.ok(names.indexOf('play')<reveal);assert.ok(reveal<names.indexOf('destroyCover'));
+ assert.deepEqual(s.calls.filter(c=>c[0]==='opacity').map(c=>c[1]),[0,1]);
+});
+test('cancel before cover presentation never hides the live window',async()=>{
+ const s=setup({holdReveal:true});const done=s.motion.prepare(compact);
+ while(!s.calls.some(c=>c[0]==='reveal'))await new Promise(r=>setImmediate(r));
+ assert.equal(s.opacity(),1);s.motion.cancel();assert.equal(await done,false);
+ assert.equal(s.opacity(),1);assert.equal(s.covers[0].dead,true);s.release();
 });
 test('reduced motion uses one immediate resize and never creates a cover',async()=>{
  const s=setup();assert.equal(await s.motion.prepare(compact,false),false);
