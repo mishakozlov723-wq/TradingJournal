@@ -126,6 +126,8 @@ jobs:
           if ((Get-FileHash verified-updater.zip -Algorithm SHA256).Hash.ToLower() -ne '2533bf5f4c318d3940f15a40aed0a76162deef77a1f4752f0af9b1887782bae3') { throw 'Verified artifact digest mismatch' }
           & 'C:/Program Files/7-Zip/7z.exe' x verified-updater.zip -orelease -y
           if ($LASTEXITCODE -ne 0) { throw 'Verified updater extraction failed' }
+          New-Item dist -ItemType Directory -Force | Out-Null
+          Copy-Item release/SYTER-Setup-1.3.7.exe dist/SYTER-Setup-1.3.7.exe
           node scripts/build-branded-installer.js
           if ($LASTEXITCODE -ne 0) { throw 'Native wrapper build failed' }
       - name: Verify visible generated and packaged icons
