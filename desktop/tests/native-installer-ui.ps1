@@ -2,12 +2,6 @@
 param([string]$InstallerPath)
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName System.Windows.Forms,System.Drawing
-Add-Type @'
-using System;using System.Runtime.InteropServices;
-public static class NativeUiCapture {
- [DllImport("user32.dll")]public static extern bool PrintWindow(IntPtr h,IntPtr dc,uint flags);
-}
-'@
 [Windows.Forms.Application]::SetUnhandledExceptionMode([Windows.Forms.UnhandledExceptionMode]::ThrowException)
 [Windows.Forms.Application]::EnableVisualStyles()
 Write-Host "UI: loading production assembly"
@@ -21,8 +15,10 @@ function Field($form,$name){$type.GetField($name,$flags).GetValue($form)}
 function Invoke($form,$method,[object[]]$values){$type.GetMethod($method,$flags).Invoke($form,$values)}
 function Pump([int]$milliseconds){$watch=[Diagnostics.Stopwatch]::StartNew();while($watch.ElapsedMilliseconds -lt $milliseconds){[Windows.Forms.Application]::DoEvents();Start-Sleep -Milliseconds 10}}
 function Capture($form,$name){
- $b=[Drawing.Bitmap]::new($form.Width,$form.Height);$g=[Drawing.Graphics]::FromImage($b);$dc=$g.GetHdc()
- try{if(![NativeUiCapture]::PrintWindow($form.Handle,$dc,2)){throw 'UI capture failed'}}finally{$g.ReleaseHdc($dc)}
+ $b=[Drawing.Bitmap]::new($form.Width,$form.Height)
+ # PrintWindow on the current thread can block in the DWM capture path.
+ # DrawToBitmap renders the same shipped controls directly at their actual size.
+ $form.DrawToBitmap($b,[Drawing.Rectangle]::new(0,0,$form.Width,$form.Height))
  $b.Save((Join-Path $artifacts "native-installer-ui-$name.png"),[Drawing.Imaging.ImageFormat]::Png);$g.Dispose();return $b
 }
 function CropBytes($bitmap,$rectangle){$crop=$bitmap.Clone($rectangle,[Drawing.Imaging.PixelFormat]::Format32bppArgb);$stream=[IO.MemoryStream]::new();$crop.Save($stream,[Drawing.Imaging.ImageFormat]::Png);$bytes=$stream.ToArray();$crop.Dispose();$stream.Dispose();return [Convert]::ToBase64String($bytes)}
