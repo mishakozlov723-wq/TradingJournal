@@ -2,8 +2,8 @@
 'use strict';
 // Preserve upstream two-pass uninstaller generation/signing. Adapt only the
 // final installer section in memory; no dependency files are modified.
-const { NsisTarget } = require('app-builder-lib/out/targets/nsis/NsisTarget');
 const { build, Platform, Arch } = require('electron-builder');
+const { NsisTarget } = require('app-builder-lib/out/targets/nsis/NsisTarget');
 const original = NsisTarget.prototype.computeScriptAndSignUninstaller;
 NsisTarget.prototype.computeScriptAndSignUninstaller = async function (...args) {
   const result = await original.apply(this,args);
