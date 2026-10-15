@@ -10,15 +10,18 @@ function setup({ maximized = false, fullscreen = false } = {}) {
   const normal = { x: 100, y: 80, width: 1200, height: 800 };
   const area = { x: 0, y: 0, width: 1920, height: 1040 };
   let bounds = { ...(maximized || fullscreen ? area : normal) }, pinned = false, visible = true, focused=true;
-  const presentationCalls=[];
+  const presentationCalls=[], listeners={};
+  let restoreBounds={...normal};
   const motionCalls = [], nativeCalls = [];
   let maximizable = true, fullscreenable = true;
   const window = {
     isDestroyed: () => false, getBounds: () => ({ ...bounds }),
-    getNormalBounds: () => ({ ...(maximized || fullscreen ? normal : bounds) }),
+    getNormalBounds: () => ({ ...(maximized || fullscreen ? restoreBounds : bounds) }),
+    on: (event,cb) => { (listeners[event] ||= []).push(cb); },
     isMaximized: () => maximized, isFullScreen: () => fullscreen, isMinimized: () => false,
-    unmaximize: () => { maximized = false; }, maximize: () => { maximized = true; visible = true; },
-    setFullScreen: on => { fullscreen = on; },
+    unmaximize: () => { maximized=false;bounds={...restoreBounds};for(const cb of listeners.unmaximize||[])cb(); },
+    maximize: () => { nativeCalls.push({kind:'maximize',bounds:{...bounds}});restoreBounds={...bounds};maximized=true;visible=true;bounds={...area}; },
+    setFullScreen: on => { nativeCalls.push({kind:'fullscreen',on,bounds:{...bounds}});if(on){restoreBounds={...bounds};fullscreen=true;bounds={...area};}else{fullscreen=false;bounds={...restoreBounds};for(const cb of listeners['leave-full-screen']||[])cb();} },
     setMaximizable: on => { maximizable = on; }, setFullScreenable: on => { fullscreenable = on; },
     setMinimumSize: (width, height) => { nativeCalls.push({kind:'minimum',width,height,bounds:{...bounds}}); },
     setBounds: b => { nativeCalls.push({kind:"bounds",bounds:{...b}}); bounds = { ...b }; }, setAlwaysOnTop: on => { pinned = on; },
@@ -48,6 +51,7 @@ function setup({ maximized = false, fullscreen = false } = {}) {
       if (name === './interface-preview-shortcut') return require('../interface-preview-shortcut');
       if (name === './view-layout') return require('../view-layout');
       if (name === './window-width-policy') return require('../window-width-policy');
+      if (name === './return-compositor') return require('../return-compositor');
       if (name === './window-motion') return { createWindowMotion: () => motion };
       if (name === './cover-presentation') return require('../cover-presentation');
       if (name === './mini-shortcut') return { LABEL: 'Ctrl + Shift + Ё', createMiniShortcut: () => ({ dispose() {} }) };
@@ -58,7 +62,7 @@ function setup({ maximized = false, fullscreen = false } = {}) {
   };
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../main.js'), 'utf8') +
-    '\nglobalThis.testApi = { setMiniMode, requestMode, showWindow, configure(w,v){win=w;view=v;miniReady=true;}, state(){return {miniMode,miniPinned};} };', context);
+    '\nglobalThis.testApi = { setMiniMode, requestMode, showWindow, configure(w,v){win=w;view=v;miniReady=true;if(typeof installNormalBoundsRestore==="function")installNormalBoundsRestore(w);}, state(){return {miniMode,miniPinned};} };', context);
   context.testApi.configure(window, view);
   return { api: context.testApi, window, view, handlers, sent, motionCalls,presentationCalls,
     blur:()=>{focused=false;},
@@ -80,6 +84,7 @@ test('maximized full window restores its maximized state', async () => {
   const s = setup({ maximized: true });
   await s.api.setMiniMode(true); assert.equal(s.maximized(), false);
   await s.api.setMiniMode(false); assert.equal(s.maximized(), true);
+  s.window.unmaximize();
   assert.deepEqual(s.bounds(), { x: 100, y: 80, width: 1200, height: 800 });
 });
 test('fullscreen state is restored after leaving mini mode', async () => {
@@ -152,4 +157,29 @@ test('mini blocks maximize/fullscreen but full mode restores both capabilities',
   assert.equal(s.maximizable(),false);assert.equal(s.fullscreenable(),false);
   await s.api.setMiniMode(false);
   assert.equal(s.maximizable(),true);assert.equal(s.fullscreenable(),true);
+});
+
+for (const position of [{x:1500,y:10},{x:0,y:300},{x:700,y:180}]) {
+ test('maximized expansion starts exactly at moved mini '+JSON.stringify(position),async()=>{
+  const s=setup({maximized:true});await s.api.setMiniMode(true);
+  const source={...position,width:420,height:730};s.window.setBounds(source);s.nativeCalls.length=0;
+  await s.api.setMiniMode(false);
+  const expansion=s.nativeCalls.find(c=>c.kind==='maximize');
+  assert.ok(expansion);assert.deepEqual(expansion.bounds,source,'native expansion source must be the current mini rectangle');
+  assert.equal(s.nativeCalls.filter(c=>c.kind==='bounds').length,0,'no preposition to the saved normal rectangle');
+  s.window.unmaximize();assert.deepEqual(s.bounds(),{x:100,y:80,width:1200,height:800});
+ });
+}
+test('repeated maximized cycles keep the original full normal rectangle',async()=>{
+ const s=setup({maximized:true});
+ for(let i=0;i<5;i++){await s.api.setMiniMode(true);s.window.setBounds({x:100+i*100,y:30,width:420,height:730});await s.api.setMiniMode(false);}
+ s.window.unmaximize();assert.deepEqual(s.bounds(),{x:100,y:80,width:1200,height:800});
+});
+test('fullscreen expansion starts at the mini rectangle without preposition',async()=>{
+ const s=setup({fullscreen:true});await s.api.setMiniMode(true);
+ const source={x:1300,y:100,width:420,height:730};s.window.setBounds(source);s.nativeCalls.length=0;
+ await s.api.setMiniMode(false);
+ assert.deepEqual(s.nativeCalls.find(c=>c.kind==='fullscreen'&&c.on).bounds,source);
+ assert.equal(s.nativeCalls.filter(c=>c.kind==='bounds').length,0);
+ s.window.setFullScreen(false);assert.deepEqual(s.bounds(),{x:100,y:80,width:1200,height:800});
 });

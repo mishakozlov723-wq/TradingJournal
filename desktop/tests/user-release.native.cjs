@@ -55,6 +55,9 @@ app.whenReady().then(() => {
   });
 });
 
+const stages=[];process.env.SYTER_TRANSITION_TEST='1';
+const nativeLog=console.log;console.log=(...args)=>{if(args[0]==='TRANSITION:')stages.push(args[1]);nativeLog(...args);};
+const journalWindowCount=()=>BrowserWindow.getAllWindows().filter(w=>!w.webContents.getURL().endsWith('/mode-transition.html')).length;
 const sourcePath=path.resolve(__dirname,'../main.js');
 const production=new Module(sourcePath,module);
 production.filename=sourcePath;production.paths=Module._nodeModulePaths(path.dirname(sourcePath));
@@ -84,6 +87,35 @@ Start-Sleep -Milliseconds 70
 [SyterKeys]::keybd_event(0x11,0,2,[UIntPtr]::Zero)
 `], { timeout: 10000, stdio: 'pipe' });
 }
+async function recordDesktop(){
+ const out=path.resolve(__dirname,'../test-artifacts/mini-expand-screen');fs.mkdirSync(out,{recursive:true});
+ const ready=path.join(out,'ready');
+ const script=`
+Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
+$bounds=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+$clock=[System.Diagnostics.Stopwatch]::StartNew()
+$times=@()
+for($i=0;$i -lt 45;$i++){
+ $bmp=New-Object System.Drawing.Bitmap($bounds.Width,$bounds.Height)
+ $g=[System.Drawing.Graphics]::FromImage($bmp)
+ try{
+  $times+=$clock.Elapsed.TotalMilliseconds
+  $g.CopyFromScreen($bounds.Location,[System.Drawing.Point]::Empty,$bounds.Size)
+  $bmp.Save(('${out.replaceAll("'","''")}\\frame-{0:D3}.png' -f $i),[System.Drawing.Imaging.ImageFormat]::Png)
+ }finally{$g.Dispose();$bmp.Dispose()}
+ if($i -eq 0){Set-Content -Path '${ready.replaceAll("'","''")}' -Value ready}
+ Start-Sleep -Milliseconds 16
+}
+$times|ConvertTo-Json|Set-Content '${out.replaceAll("'","''")}\\timestamps.json'
+`;
+ const child=spawn('powershell.exe',['-NoProfile','-NonInteractive','-Command',script],{windowsHide:true});
+ let error='';child.stderr.on('data',data=>error+=data);
+ const completed=new Promise((resolve,reject)=>{child.on('error',reject);child.on('exit',code=>code===0?resolve():reject(Error('Desktop capture failed: '+error)));});
+ await until(()=>fs.existsSync(ready),'desktop capture ready');await wait(100);
+ // Wrap the promise: returning it directly would await the whole recording.
+ return {done:completed};
+}
 async function main(){
  assert.equal(process.platform,'win32');
  await until(()=>api.testState().miniReady,'journal native bridge ready');
@@ -95,7 +127,7 @@ async function main(){
  assert.equal(await w.webContents.executeJavaScript("document.querySelector('.bar span').textContent"),'SYTER');
  assert.equal(trayTip,'SYTER');
  assert.deepEqual(trayItems.filter(i=>i.label).map(i=>i.label),['Открыть журнал','Мини-журнал · Ctrl + Shift + Ё','Выход']);
- assert.equal(BrowserWindow.getAllWindows().length,1,'no auxiliary animation window');
+ assert.equal(journalWindowCount(),1,'no auxiliary animation window');
  assert.equal(w.getOpacity(),1);
  const area=screen.getPrimaryDisplay().workArea;
  const frame=w.getBounds().width-w.getContentSize()[0];
@@ -112,13 +144,46 @@ async function main(){
   const before=resizeCalls;api.requestMode(true);await settled(true);
   assert.equal(w.getBounds().width,420);assert.equal(w.getMinimumSize()[0],380);
   assert.equal(w.getOpacity(),1);assert.equal(resizeCalls-before,1);
-  assert.equal(BrowserWindow.getAllWindows().length,1);
+  assert.equal(journalWindowCount(),1);
   api.requestMode(false);await settled(false);assert.deepEqual(w.getBounds(),original);
   assert.equal(w.getOpacity(),1);assert.equal(wc.id,originalId);assert.deepEqual(await draft(),expected);
  }
- w.maximize();await until(()=>w.isMaximized(),'maximized');
- api.requestMode(true);await settled(true);api.requestMode(false);await settled(false);assert.equal(w.isMaximized(),true);
- w.unmaximize();await wait(100);
+ // Inspect the SOURCE of native maximize, not just the final rectangle.
+ const results=[];
+ for(const [label,fx,fy] of [['right-top',1,0],['left-bottom',0,1],['middle',.5,.4]]){
+  w.maximize();await until(()=>w.isMaximized(),'maximized');await wait(200);
+  api.requestMode(true);await settled(true);
+  assert.equal(w.isMaximizable(),false);assert.equal(w.isFullScreenable(),false);
+  const small=w.getBounds();small.height=Math.max(480,Math.min(small.height,area.height-160));
+  w.setBounds({x:area.x+Math.round((area.width-small.width)*fx),y:area.y+Math.round((area.height-small.height)*fy),width:small.width,height:small.height});
+  await wait(200);const source=w.getBounds(),operations=[];
+  const nativeMaximize=w.maximize.bind(w),nativeBounds=w.setBounds.bind(w),nativeMinimum=w.setMinimumSize.bind(w);
+  w.maximize=()=>{operations.push({kind:'maximize',source:w.getBounds(),normal:w.getNormalBounds()});return nativeMaximize();};
+  w.setBounds=(...args)=>{operations.push({kind:'setBounds',source:w.getBounds(),args});return nativeBounds(...args);};
+  w.setMinimumSize=(...args)=>{operations.push({kind:'minimum',source:w.getBounds(),args});return nativeMinimum(...args);};
+  let recorder=null;
+  if(label==='right-top')recorder=await recordDesktop();
+  const stageStart=stages.length;
+  api.requestMode(false);await settled(false);await until(()=>w.isMaximized(),'maximized from mini');
+  const cycleStages=stages.slice(stageStart);
+  for(const stage of ['source-frame-verified','playback-completed','live-presented'])assert.ok(cycleStages.includes(stage),'return compositor reached '+stage);
+  assert.ok(cycleStages.indexOf('source-frame-verified')<cycleStages.indexOf('live-concealed'),'conceal only after source has really been presented');
+  if(recorder)await recorder.done;
+  w.maximize=nativeMaximize;w.setBounds=nativeBounds;w.setMinimumSize=nativeMinimum;
+  const expansion=operations.find(o=>o.kind==='maximize');
+  assert.ok(expansion,'native maximize called');
+  assert.deepEqual(expansion.source,source,'maximize must start at the moved MINI rectangle');
+  assert.deepEqual(expansion.normal,source,'Windows normal placement must still be the current mini rectangle');
+  assert.equal(operations.filter(o=>o.kind==='setBounds').length,0,'no intermediate relocation');
+  const maxIndex=operations.indexOf(expansion);
+  assert.equal(operations.slice(0,maxIndex).filter(o=>o.kind==='minimum').length,0,'no minimum-size growth before expansion');
+  results.push({label,source,operations,cycleStages});
+  assert.deepEqual(await draft(),expected);
+  w.unmaximize();await wait(150);assert.deepEqual(w.getBounds(),original,'manual normal restore must not return a mini-sized full journal');
+ }
+ fs.mkdirSync(path.join(__dirname,'../test-artifacts'),{recursive:true});
+ fs.writeFileSync(path.join(__dirname,'../test-artifacts/mini-expand-origin.json'),JSON.stringify(results,null,2));
+ console.log('PASS: native expansion from three moved mini positions; no preposition/width change; original normal rectangle and draft restored.');
  for(const layout of ['00000419','00000409']){
   w.hide();await wait(450);const before=shortcutCalls;pressShortcut(layout);
   await until(()=>shortcutCalls===before+1,'actual global OEM_3 '+layout);await settled(true);assert.equal(w.isVisible(),true);
@@ -147,7 +212,7 @@ async function main(){
  assert.equal(wc.getURL(),'https://retocker.web.app/');assert.deepEqual(await draft(),expected);
  w.close();assert.equal(w.isVisible(),false);assert.equal(wc.id,originalId);
  api.requestMode(false);await until(()=>w.isVisible(),'restore from tray');
- assert.equal(BrowserWindow.getAllWindows().length,1);
- console.log('PASS: production title/tray, Windows minimum width, 12 no-overlay mini cycles, drafts, maximized restore, actual global shortcuts, private UI hook vs Ctrl+0, optimized leaves, links and tray restore.');
+ assert.equal(journalWindowCount(),1);
+ console.log('PASS: production title/tray, Windows minimum width, 12 inbound-unchanged / verified-return mini cycles, drafts, maximized restore, actual global shortcuts, private UI hook vs Ctrl+0, optimized leaves, links and tray restore.');
 }
 app.whenReady().then(main).then(()=>app.exit(0)).catch(error=>{console.error(error.stack||error);app.exit(1);});

@@ -13,6 +13,7 @@ const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 const { createMiniShortcut, LABEL: MINI_SHORTCUT_LABEL } = require('./mini-shortcut');
 const { createWindowMotion } = require('./window-motion');
+const { createReturnCompositor } = require('./return-compositor');
 const { handlePreviewInput } = require('./interface-preview-shortcut');
 const { createViewLayout } = require('./view-layout');
 const { createWindowWidthPolicy, PAGE_MINIMUM_SCRIPT } = require('./window-width-policy');
@@ -54,9 +55,12 @@ function clipboardPayload(){const img=clipboard.readImage();if(img.isEmpty())ret
 let miniMode = false, miniReady = false, miniPinned = true;
 let fullState = null, miniBounds = null;
 let deferredFullRestore = false;
+// Native maximize must start at the current mini rectangle, not the saved
+// normal rectangle. Keep the latter separately until a genuine normal restore.
+let fullRestoreBounds = null, restoringFullWindow = false;
 let modeGeneration = 0;
 function siteContents() { return view ? view.webContents : win && win.webContents; }
-const widthPolicy = createWindowWidthPolicy({getWindow:()=>win,getContents:siteContents,screen,isMini:()=>miniMode});
+const widthPolicy = createWindowWidthPolicy({getWindow:()=>win,getContents:siteContents,screen,isMini:()=>miniMode || restoringFullWindow});
 function installWidthPolicy() {
   widthPolicy.refresh();
   const host=win;
@@ -69,6 +73,8 @@ function installWidthPolicy() {
 
 const windowMotion = createWindowMotion({
   getWindow: () => win, getView: () => view, onFrame: layout,
+  createOverlay: bounds => createReturnCompositor({BrowserWindow,nativeImage},bounds),
+  timeout: 6000,
   onStage: stage => { if (process.env.SYTER_TRANSITION_TEST === '1') console.log('TRANSITION:', stage); },
 
 });
@@ -121,7 +127,7 @@ function modeTarget(enabled) {
 }
 async function prepareMiniMode(enabled, animate = true) {
   if (!win || enabled === miniMode) return false;
-  return windowMotion.prepare(modeTarget(enabled), false, enabled);
+  return windowMotion.prepare(modeTarget(enabled), !enabled && animate, true);
 }
 async function setMiniMode(enabled, animate = true) {
   enabled = !!enabled;
@@ -130,13 +136,13 @@ async function setMiniMode(enabled, animate = true) {
   const target = modeTarget(enabled);
   if (enabled) {
     deferredFullRestore = false;
-    fullState = { bounds: win.getNormalBounds(), maximized: win.isMaximized(), fullscreen: win.isFullScreen() };
+    fullState = { bounds: fullRestoreBounds || win.getNormalBounds(), maximized: win.isMaximized(), fullscreen: win.isFullScreen() };
     miniMode = true;
   } else {
     miniBounds = win.getNormalBounds();
     miniMode = false;
   }
-  await windowMotion.move(target, false, () => {
+  await windowMotion.move(target, !enabled && animate, () => {
     if (enabled) {
       if (win.isFullScreen()) win.setFullScreen(false);
       if (win.isMaximized()) win.unmaximize();
@@ -146,28 +152,51 @@ async function setMiniMode(enabled, animate = true) {
       win.setMaximizable(false);
       win.setFullScreenable(false);
     } else {
-      win.setAlwaysOnTop(false);
-      if (win.isMaximized()) win.unmaximize();
-      win.setMaximizable(true);
-      win.setFullScreenable(true);
-      // Place the full rectangle before restoring its tracking limits. On
-      // Windows setMinimumSize can move/resize a still-compact native window;
-      // grow:false does not make that native constraint update geometry-free.
-      win.setBounds(fullState
-        ? widthPolicy.constrain(fitBounds(fullState.bounds, { x: 80, y: 80, width: 1440, height: 900 })) : target);
-      widthPolicy.refresh({grow:false});
-      if (fullState) {
-        deferredFullRestore = !win.isVisible();
-        if (!deferredFullRestore) {
+      // Capability/z-order changes can emit moved/restore notifications. Do not
+      // let the desktop width policy grow/reposition the compact source first.
+      restoringFullWindow = true;
+      try {
+        win.setAlwaysOnTop(false);
+        if (win.isMaximized()) win.unmaximize();
+        win.setMaximizable(true);
+        win.setFullScreenable(true);
+        const normal = fullState
+          ? widthPolicy.constrain(fitBounds(fullState.bounds, { x: 80, y: 80, width: 1440, height: 900 })) : target;
+        deferredFullRestore = !!fullState && !win.isVisible();
+        if (fullState && !deferredFullRestore && (fullState.maximized || fullState.fullscreen)) {
+          // NO setBounds(normal) here: that teleports the mini window before
+          // Windows starts its expansion. Maximize the actual current source.
+          fullRestoreBounds = normal;
           if (fullState.maximized) win.maximize();
           if (fullState.fullscreen) win.setFullScreen(true);
+        } else {
+          fullRestoreBounds = null;
+          win.setBounds(normal);
         }
+      } finally {
+        restoringFullWindow = false;
       }
+      widthPolicy.refresh({grow:false});
     }
   });
   if (generation !== modeGeneration || !win || win.isDestroyed()) return { mini: miniMode, pinned: miniPinned };
   layout(); saveState();
   return { mini: miniMode, pinned: miniPinned };
+}
+
+// Preserve the user's normal full-window rectangle without visiting it during
+// mini -> maximized expansion. A real unmaximize/leave-fullscreen restores it.
+function installNormalBoundsRestore(host) {
+  const restore = () => {
+    if (win !== host || host.isDestroyed() || !fullRestoreBounds) return;
+    if (miniMode) { fullRestoreBounds = null; return; }
+    if (host.isMaximized() || host.isFullScreen()) return;
+    const normal = fullRestoreBounds;
+    fullRestoreBounds = null;
+    host.setBounds(normal);
+  };
+  host.on('unmaximize', restore);
+  host.on('leave-full-screen', restore);
 }
 
 // ── one window only: a second launch focuses the first ──
@@ -317,7 +346,7 @@ function saveState() {
   if (!win || win.isDestroyed()) return;
   try {
     const keepFullState = (miniMode || deferredFullRestore) && fullState;
-    const s = { maximized: keepFullState ? fullState.maximized : win.isMaximized(), bounds: keepFullState ? fullState.bounds : win.getNormalBounds(), miniBounds: miniMode ? win.getNormalBounds() : miniBounds, miniPinned };
+    const s = { maximized: keepFullState ? fullState.maximized : win.isMaximized(), bounds: keepFullState ? fullState.bounds : (fullRestoreBounds || win.getNormalBounds()), miniBounds: miniMode ? win.getNormalBounds() : miniBounds, miniPinned };
     fs.writeFileSync(stateFile(), JSON.stringify(s));
   } catch (e) { /* not critical */ }
 }
@@ -358,6 +387,7 @@ function start() {
       spellcheck: false,
     },
   });
+  installNormalBoundsRestore(win);
   installWidthPolicy();
   win.loadFile(path.join(__dirname, 'titlebar.html'));
   win.webContents.on('page-title-updated', event => event.preventDefault());

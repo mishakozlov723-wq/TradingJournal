@@ -60,7 +60,7 @@ function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},onSt
       top?w.webContents.capturePage({x:0,y:0,width:rect.width,height:top})
         .then(image=>{onStage('title-captured');return image;}):null]));
     if(!active(t)||!images||images[0].isEmpty())return null;
-    return {rect,top,maximized:typeof w.isMaximized==='function'&&w.isMaximized(),fullscreen:w.isFullScreen(),
+    return {rect,top,maximizable:typeof w.isMaximizable!=='function'||w.isMaximizable(),maximized:typeof w.isMaximized==='function'&&w.isMaximized(),fullscreen:w.isFullScreen(),
       // A handoff must not change text contrast/color through JPEG artifacts.
       body:images[0].toDataURL(),
       title:images[1]&&!images[1].isEmpty()?images[1].toDataURL():''};
@@ -94,8 +94,7 @@ function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},onSt
       await bounded(t,t.overlay.webContents.executeJavaScript(`window.syterTransition.prepare(${JSON.stringify({source,union})})`));
       onStage('cover-painted');
       if(!active(t))return false;t.overlay.moveTop?.();
-      // Only full -> mini changes. Do not retune the already-good reverse
-      // movement or guess readiness from a timeout / successful rAF alone.
+      // Verify an opaque submitted source frame, not a timeout or rAF alone.
       if(verifyPresentation)t.receipt=t.overlay.armPresentation(source,union);
       // No show(), new native window or whole-pane opacity animation here.
       // Present an opaque picture on the already-visible compositor.

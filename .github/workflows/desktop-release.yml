@@ -225,7 +225,9 @@ jobs:
           @"
           - SYTER $version production desktop release.
           - Branded Windows installation and in-app updates.
-          - Mini journal: restore full window bounds before applying its minimum width.
+          - Mini journal: expand directly from its current position without visiting the saved normal-window position first.
+          - Hide intermediate native/renderer relayout behind a verified source frame; animate the return from the current mini position.
+          - Preserve the original normal-window restore rectangle across repeated mini/maximized cycles.
           - Mini journal: disable maximize and fullscreen; keep minimize and close available.
           - Updates download only after confirmation; restart and install when you choose.
           - Existing journal profile and settings are preserved.

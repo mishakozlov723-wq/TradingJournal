@@ -22,11 +22,12 @@
     // visual counterparts present so they do not blink out during the cover.
     if(top){
       const controls=document.createElement('div');controls.className='caption-controls';
-      controls.style.width=138*baseWidth/data.rect.width+'px';controls.style.height=top+'px';
-      controls.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 138 36" preserveAspectRatio="none" fill="none" stroke="#cfd6e4" stroke-width="1">'+
+      const buttons=data.maximizable===false?92:138;
+      controls.style.width=buttons*baseWidth/data.rect.width+'px';controls.style.height=top+'px';
+      controls.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+buttons+' 36" preserveAspectRatio="none" fill="none" stroke="#cfd6e4" stroke-width="1">'+
         '<path d="M18 18h10"/>'+
-        (data.maximized?'<path d="M65 14h9v9M63 16h9v9h-9z"/>':'<path d="M64 14h10v10H64z"/>')+
-        '<path d="m110 14 10 10m0-10-10 10"/></svg>';
+        (data.maximizable===false?'':data.maximized?'<path d="M65 14h9v9M63 16h9v9h-9z"/>':'<path d="M64 14h10v10H64z"/>')+
+        '<path d="m'+(buttons-28)+' 14 10 10m0-10-10 10"/></svg>';
       layer.append(controls);
     }
     await Promise.all(images.map(im=>im.decode()));return layer;
