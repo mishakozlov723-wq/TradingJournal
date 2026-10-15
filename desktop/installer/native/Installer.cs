@@ -49,17 +49,26 @@ namespace SyterInstaller {
    p.AddArc(r.X,r.Y,d,d,180,90);p.AddArc(r.Right-d,r.Y,d,d,270,90);p.AddArc(r.Right-d,r.Bottom-d,d,d,0,90);p.AddArc(r.X,r.Bottom-d,d,d,90,90);p.CloseFigure();return p;
   }
  }
- // Draw text at the final DPI-scaled font size, never stretch a rendered bitmap.
- sealed class BrandLabel:Label {
-  public BrandLabel(){SetStyle(ControlStyles.UserPaint|ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer,true);}
-  protected override void OnPaint(PaintEventArgs e){
-   var g=e.Graphics;g.Clear(BackColor);g.TextRenderingHint=TextRenderingHint.AntiAliasGridFit;
-   using(var brush=new SolidBrush(ForeColor))using(var format=new StringFormat()){
-    format.Alignment=TextAlign==ContentAlignment.TopRight?StringAlignment.Far:StringAlignment.Near;
-    format.LineAlignment=StringAlignment.Near;
-    g.DrawString(Text,Font,brush,new RectangleF(0,0,Width,Height),format);
+ // Render glyphs at 3x target resolution and downsample for smooth grayscale edges.
+ // Fonts and layout are sized for the final DPI; no low-resolution bitmap is enlarged.
+ static class TextPaint {
+  public static void Draw(Graphics target,string text,Font font,Color color,Rectangle area,bool centered=false,bool right=false){
+   if(String.IsNullOrEmpty(text)||area.Width<=0||area.Height<=0)return;
+   const int sample=3;
+   using(var image=new Bitmap(area.Width*sample,area.Height*sample,System.Drawing.Imaging.PixelFormat.Format32bppPArgb))
+   using(var g=Graphics.FromImage(image))using(var brush=new SolidBrush(color))using(var format=new StringFormat()){
+    g.Clear(Color.Transparent);g.ScaleTransform(sample,sample);g.TextRenderingHint=TextRenderingHint.AntiAliasGridFit;
+    format.Alignment=centered?StringAlignment.Center:right?StringAlignment.Far:StringAlignment.Near;
+    format.LineAlignment=centered?StringAlignment.Center:StringAlignment.Near;
+    g.DrawString(text,font,brush,new RectangleF(0,0,area.Width,area.Height),format);
+    var state=target.Save();
+    try{target.InterpolationMode=InterpolationMode.HighQualityBicubic;target.PixelOffsetMode=PixelOffsetMode.HighQuality;target.DrawImage(image,area,new Rectangle(0,0,image.Width,image.Height),GraphicsUnit.Pixel);}finally{target.Restore(state);}
    }
   }
+ }
+ sealed class BrandLabel:Label {
+  public BrandLabel(){SetStyle(ControlStyles.UserPaint|ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer,true);}
+  protected override void OnPaint(PaintEventArgs e){e.Graphics.Clear(BackColor);TextPaint.Draw(e.Graphics,Text,Font,ForeColor,ClientRectangle,false,TextAlign==ContentAlignment.TopRight);}
  }
  sealed class BrandButton:Button {
   public bool CloseButton,KeyboardFocusVisible;
@@ -70,8 +79,7 @@ namespace SyterInstaller {
    float scale=Font.Size/15f;
    using(var shape=Shapes.Round(new RectangleF(0,0,Width-1,Height-1),12*scale))
    using(var brush=new LinearGradientBrush(ClientRectangle,Enabled?Color.FromArgb(78,230,171):Color.FromArgb(38,114,85),Enabled?Color.FromArgb(52,211,153):Color.FromArgb(27,100,76),45f))g.FillPath(brush,shape);
-   using(var brush=new SolidBrush(Color.FromArgb(6,37,26)))
-   using(var format=new StringFormat(){Alignment=StringAlignment.Center,LineAlignment=StringAlignment.Center})g.DrawString(Text,Font,brush,ClientRectangle,format);
+   TextPaint.Draw(g,Text,Font,Color.FromArgb(6,37,26),ClientRectangle,true);
    if(Focused&&Enabled&&KeyboardFocusVisible){using(var p=new Pen(Color.White,1))using(var shape=Shapes.Round(new RectangleF(3*scale,3*scale,Width-7*scale,Height-7*scale),9*scale))g.DrawPath(p,shape);}
   }
  }
@@ -80,6 +88,8 @@ namespace SyterInstaller {
   readonly Stopwatch clock=Stopwatch.StartNew();readonly bool animate;
   [DllImport("user32.dll")]static extern bool SystemParametersInfo(uint action,uint param,out bool value,uint flags);
   public FileProgress(){SetStyle(ControlStyles.UserPaint|ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer,true);AccessibleRole=AccessibleRole.ProgressBar;AccessibleName="Installation file progress";bool enabled;animate=!SystemParametersInfo(0x1042,0,out enabled,0)||enabled;}
+  public void Waiting(bool value){if(Indeterminate==value)return;Indeterminate=value;AccessibleName=value?"Preparing installation":"Installation file progress";AccessibilityNotifyClients(AccessibleEvents.NameChange,-1);}
+  protected override void OnVisibleChanged(EventArgs e){base.OnVisibleChanged(e);if(Visible)AccessibilityNotifyClients(AccessibleEvents.Show,-1);}
   public void Pulse(){if(Visible&&animate&&(Indeterminate||Finishing))Invalidate();}
   protected override void OnPaint(PaintEventArgs e){
    var g=e.Graphics;g.Clear(BackColor);g.SmoothingMode=SmoothingMode.AntiAlias;
@@ -160,7 +170,7 @@ namespace SyterInstaller {
 
   void Drag(object sender,MouseEventArgs e){if(e.Button!=MouseButtons.Left||e.Y>58&&sender==this)return;ReleaseCapture();SendMessage(Handle,0xA1,(IntPtr)2,IntPtr.Zero);}
   protected override void OnPaint(PaintEventArgs e){base.OnPaint(e);using(var pen=new Pen(Color.FromArgb(35,38,40),1))e.Graphics.DrawRectangle(pen,0,0,ClientSize.Width-1,ClientSize.Height-1);}
-  void Busy(string heading,string status,bool waiting=false){busy=true;close.Enabled=false;primary.Enabled=false;primary.Text="Please wait…";primary.AccessibleName="Please wait";title.Text=heading;subtitle.Visible=false;version.Top=(int)Math.Round(151*dpiScale);platform.Top=version.Top;stage.Text=status;stage.Visible=!waiting;percent.Text="";percent.Visible=false;progress.Indeterminate=waiting;progress.Finishing=false;progress.Percent=0;progress.AccessibleName=waiting?"Preparing installation":"Installation file progress";progress.Visible=waiting;if(waiting){timer.Start();progress.Invalidate();}transfer.Visible=false;location.Visible=false;error.Visible=false;}
+  void Busy(string heading,string status,bool waiting=false){busy=true;close.Enabled=false;primary.Enabled=false;primary.Text="Please wait…";primary.AccessibleName="Please wait";title.Text=heading;subtitle.Visible=false;version.Top=(int)Math.Round(151*dpiScale);platform.Top=version.Top;stage.Text=status;stage.Visible=!waiting;percent.Text="";percent.Visible=false;progress.Waiting(waiting);progress.Finishing=false;progress.Percent=0;progress.AccessibleName=waiting?"Preparing installation":"Installation file progress";progress.Visible=waiting;if(waiting){timer.Start();progress.Invalidate();}transfer.Visible=false;location.Visible=false;error.Visible=false;}
   void Ready(){busy=false;installed=true;timer.Stop();title.Text="SYTER is installed.";subtitle.Text="Everything is ready. Open your journal.";subtitle.Visible=true;version.Top=(int)Math.Round(193*dpiScale);platform.Top=version.Top;stage.Visible=percent.Visible=progress.Visible=transfer.Visible=false;location.Top=(int)Math.Round(233*dpiScale);location.Text=Path.GetDirectoryName(installedExe);location.Visible=true;close.Enabled=true;primary.Enabled=true;primary.Text="Launch SYTER →";primary.AccessibleName="Launch SYTER";}
   void Failure(Exception ex){busy=false;timer.Stop();title.Text="Let’s try that again.";subtitle.Text="The same SYTER. A dedicated desktop app.";subtitle.Visible=true;version.Top=platform.Top=(int)Math.Round(193*dpiScale);stage.Visible=percent.Visible=progress.Visible=transfer.Visible=location.Visible=false;error.Text=retryLaunch?"SYTER was installed but could not open. Try launching it again.":"Installation could not finish. Close SYTER if it is running, then try again.";error.Visible=true;close.Enabled=primary.Enabled=true;primary.Text="Try again →";primary.AccessibleName="Try again";Debug.WriteLine(ex);}
   async void Primary(object sender,EventArgs e){
@@ -200,7 +210,7 @@ namespace SyterInstaller {
     title.Text=finishing?"Finishing setup…":"Installing SYTER…";
     stage.Visible=true;stage.Text=finishing?"Registering SYTER and shortcuts":copied>0||raw=="copying"?"Installing files":"Unpacking files";
     double value=100.0*done/totalWork;percent.Text=Math.Floor(value)+"%";percent.Visible=true;
-    progress.Indeterminate=false;progress.AccessibleName="Installation file progress";progress.Percent=value;progress.Finishing=finishing;progress.Visible=true;progress.Invalidate();
+    progress.Waiting(false);progress.AccessibleName="Installation file progress";progress.Percent=value;progress.Finishing=finishing;progress.Visible=true;progress.Invalidate();
     transfer.Text=(done/1048576.0).ToString("F1")+" / "+(totalWork/1048576.0).ToString("F1")+" MB processed";transfer.Visible=true;
     location.Top=(int)Math.Round(279*dpiScale);location.Text=Convert.ToString(key.GetValue("Location"));location.Visible=!String.IsNullOrEmpty(location.Text);
    }}catch(IOException){}catch(System.Security.SecurityException){}

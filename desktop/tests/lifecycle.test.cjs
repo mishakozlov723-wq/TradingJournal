@@ -102,8 +102,8 @@ test('optimized native installer does not unpack a second Electron before showin
 test('native waiting uses the same bar without fabricated percentages',()=>{
  const source=fs.readFileSync(path.join(__dirname,'../installer/native/Installer.cs'),'utf8');
  assert.match(source,/session=null;Busy\("Installing SYTER…","",true\)/);
- assert.match(source,/progress.Indeterminate=waiting/);
- assert.match(source,/progress.Indeterminate=false/);
+ assert.match(source,/progress.Waiting\(waiting\)/);
+ assert.match(source,/progress.Waiting\(false\)/);
  assert.match(source,/Math.Floor\(value\)/);
  assert.match(source,/timer.Interval=40/);
  assert.match(source,/SystemParametersInfo\(0x1042/);

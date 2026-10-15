@@ -78,11 +78,18 @@ try{
   $bounds=$window.Current.BoundingRectangle
   Click $button
   if($pass -eq 0){
-   $all=$window.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Condition]::TrueCondition)
-   $waiting=@($all|Where-Object{$_.Current.Name -eq 'Preparing installation' -and !$_.Current.IsOffscreen})
-   if(!$waiting.Count){throw 'Actual Install click did not reveal waiting bar'}
-   if(Element $window 'Percent'){throw 'Preparing phase exposed a fabricated percentage'}
    Screenshot $handle 'waiting'
+   $picture=[Drawing.Bitmap]::new((Join-Path $artifacts 'native-installer-waiting.png'))
+   try{
+    $factor=$bounds.Width/520;$y=[int][Math]::Round(232*$factor);$green=0;$samples=0
+    for($x=[int][Math]::Round(31*$factor);$x -lt [int][Math]::Round(489*$factor);$x++){
+     $pixel=$picture.GetPixel($x,$y);$samples++
+     if($pixel.G -gt 75 -and $pixel.G -gt $pixel.R*1.3 -and $pixel.G -gt $pixel.B*1.05){$green++}
+    }
+    if($green -lt $samples*0.8){throw "Actual waiting bar not rendered: $green / $samples green pixels"}
+   }finally{$picture.Dispose()}
+   $early=Element $window 'Percent'
+   if($early -and !$early.Current.IsOffscreen){throw 'Preparing phase exposed a fabricated percentage'}
   }
   $ready=$false;$sawIntermediate=$false;$sawProgressShot=$false;$wait=[Diagnostics.Stopwatch]::StartNew()
   while($wait.ElapsedMilliseconds -lt 180000){

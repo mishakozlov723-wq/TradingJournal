@@ -16,7 +16,6 @@ function Invoke($form,$method,[object[]]$values){$type.GetMethod($method,$flags)
 function Pump([int]$milliseconds){$watch=[Diagnostics.Stopwatch]::StartNew();while($watch.ElapsedMilliseconds -lt $milliseconds){[Windows.Forms.Application]::DoEvents();Start-Sleep -Milliseconds 10}}
 function Capture($form,$name){
  $b=[Drawing.Bitmap]::new($form.Width,$form.Height)
- # PrintWindow on the current thread can block in the DWM capture path.
  # DrawToBitmap renders the same shipped controls directly at their actual size.
  Write-Host "UI capture: draw controls"
  $form.DrawToBitmap($b,[Drawing.Rectangle]::new(0,0,$form.Width,$form.Height))
