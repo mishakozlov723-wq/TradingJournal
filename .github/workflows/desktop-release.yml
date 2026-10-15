@@ -110,6 +110,12 @@ jobs:
           run-id: 38718005829
           github-token: ${{ github.token }}
           path: desktop/baseline
+      - name: Verify delivered branded installer EXE
+        if: ${{ !inputs.check_only }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./tests/native-installer.ps1
+          if (!(Test-Path test-artifacts/native-installer-success.txt)) { throw 'Native installer verification did not complete' }
       - name: Verify native installer typography, keyboard focus and waiting animation
         if: ${{ !inputs.check_only }}
         run: |
@@ -118,18 +124,12 @@ jobs:
           $test = Start-Process powershell.exe -ArgumentList $arguments -PassThru -RedirectStandardOutput test-artifacts/native-installer-ui-test.log -RedirectStandardError test-artifacts/native-installer-ui-test-error.log
           try {
             if (!$test.WaitForExit(60000)) { Stop-Process -Id $test.Id -Force; throw 'Native UI checks timed out' }
-            if ($test.ExitCode -ne 0) { throw 'Native installer UI verification failed' }
+            if ($test.ExitCode -ne 0) { throw "Native installer UI verification failed: exit $($test.ExitCode)" }
             if (!(Test-Path test-artifacts/native-installer-ui-success.txt)) { throw 'Native UI checks did not finish' }
           } finally {
             Get-Content test-artifacts/native-installer-ui-test.log
             Get-Content test-artifacts/native-installer-ui-test-error.log
           }
-      - name: Verify delivered branded installer EXE
-        if: ${{ !inputs.check_only }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          ./tests/native-installer.ps1
-          if (!(Test-Path test-artifacts/native-installer-success.txt)) { throw 'Native installer verification did not complete' }
       - name: Save branded installer and update previews
         if: always()
         uses: actions/upload-artifact@v4

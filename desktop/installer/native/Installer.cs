@@ -32,7 +32,7 @@ namespace SyterInstaller {
  }
  sealed class Fonts : IDisposable {
   public readonly PrivateFontCollection Regular=new PrivateFontCollection(),Bold=new PrivateFontCollection();
-  IntPtr p1,p2;
+  IntPtr p1,p2;readonly List<Font> ownedFonts=new List<Font>();
   public Fonts(){p1=Load("FontRegular",Regular);p2=Load("FontBold",Bold);}
   static IntPtr Load(string resource,PrivateFontCollection collection){
    using(var stream=Assembly.GetExecutingAssembly().GetManifestResourceStream(resource)){
@@ -40,8 +40,8 @@ namespace SyterInstaller {
     IntPtr p=Marshal.AllocHGlobal(data.Length);Marshal.Copy(data,0,p,data.Length);collection.AddMemoryFont(p,data.Length);return p;
    }
   }
-  public Font Get(float size,bool bold=false){return new Font((bold?Bold:Regular).Families[0],size,FontStyle.Regular,GraphicsUnit.Pixel);}
-  public void Dispose(){Regular.Dispose();Bold.Dispose();Marshal.FreeHGlobal(p1);Marshal.FreeHGlobal(p2);}
+  public Font Get(float size,bool bold=false){var font=new Font((bold?Bold:Regular).Families[0],size,FontStyle.Regular,GraphicsUnit.Pixel);ownedFonts.Add(font);return font;}
+  public void Dispose(){foreach(var font in ownedFonts)font.Dispose();ownedFonts.Clear();Regular.Dispose();Bold.Dispose();Marshal.FreeHGlobal(p1);Marshal.FreeHGlobal(p2);}
  }
  static class Shapes {
   public static GraphicsPath Round(RectangleF r,float radius){
@@ -152,7 +152,8 @@ namespace SyterInstaller {
    MinimumSize=MaximumSize=Size.Empty;
    float factor=displayScale*LayoutScale,difference=factor/dpiScale;
    Scale(new SizeF(difference,difference));dpiScale=factor;
-   foreach(var entry in typeSizes){var previous=entry.Key.Font;entry.Key.Font=fonts.Get(entry.Value.Item1*factor,entry.Value.Item2);previous.Dispose();}
+   // Keep fonts alive until controls have been disposed: native paint caches can still reference the old size.
+   foreach(var entry in typeSizes)entry.Key.Font=fonts.Get(entry.Value.Item1*factor,entry.Value.Item2);
    ClientSize=new Size((int)Math.Round(520*factor),(int)Math.Round(440*factor));
    MinimumSize=MaximumSize=Size;CenterToScreen();
   }

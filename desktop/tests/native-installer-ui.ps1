@@ -18,7 +18,9 @@ function Capture($form,$name){
  $b=[Drawing.Bitmap]::new($form.Width,$form.Height)
  # PrintWindow on the current thread can block in the DWM capture path.
  # DrawToBitmap renders the same shipped controls directly at their actual size.
+ Write-Host "UI capture: draw controls"
  $form.DrawToBitmap($b,[Drawing.Rectangle]::new(0,0,$form.Width,$form.Height))
+ Write-Host "UI capture: save $name"
  $b.Save((Join-Path $artifacts "native-installer-ui-$name.png"),[Drawing.Imaging.ImageFormat]::Png);$g.Dispose();return $b
 }
 function CropBytes($bitmap,$rectangle){$crop=$bitmap.Clone($rectangle,[Drawing.Imaging.PixelFormat]::Format32bppArgb);$stream=[IO.MemoryStream]::new();$crop.Save($stream,[Drawing.Imaging.ImageFormat]::Png);$bytes=$stream.ToArray();$crop.Dispose();$stream.Dispose();return [Convert]::ToBase64String($bytes)}
