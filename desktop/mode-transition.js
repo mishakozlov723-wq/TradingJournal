@@ -39,9 +39,11 @@
       place(source.rect,!source.maximized&&!source.fullscreen);stage.style.opacity='0';
       const picture=await shot(source,source.rect.height);
       if(current!==generation)return false;stage.append(picture);
-      await painted();return true;
+      // Still invisible: decoded images are ready; no presentation is needed
+      // until reveal. The native frame subscription verifies the opaque result.
+      return true;
     },
-    async reveal(){stage.style.opacity='1';await painted();return true;},
+    async reveal({waitForPaint=true}={}){stage.style.opacity='1';if(waitForPaint)await painted();return true;},
     async release(){clear();await painted();return true;},
     async play({destination,duration}){
       const current=generation,old=stage.firstElementChild,a=source.rect,b=destination.rect;

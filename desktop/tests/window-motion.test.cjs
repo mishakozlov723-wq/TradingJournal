@@ -139,3 +139,20 @@ test('hidden/destroyed windows and enormous multi-monitor surfaces skip animatio
  s.destroy();assert.equal(await s.motion.move(compact),false);
  const wide=setup();assert.equal(await wide.motion.prepare({x:20000,y:0,width:400,height:700}),false);
 });
+
+test('verified reveal avoids redundant paint waits but never bypasses the frame receipt',async()=>{
+ const s=setup({holdFrame:true});const done=s.motion.prepare(compact);
+ while(!s.calls.some(c=>c[0]==='reveal'))await new Promise(r=>setImmediate(r));
+ assert.match(s.calls.find(c=>c[0]==='reveal')[1],/"waitForPaint":false/);
+ assert.equal(s.opacity(),1);s.present();assert.equal(await done,true);s.motion.cancel();
+ const fallback=setup();await fallback.motion.prepare(compact,true,false);
+ assert.match(fallback.calls.find(c=>c[0]==='reveal')[1],/"waitForPaint":true/);fallback.motion.cancel();
+});
+test('invisible source preparation has no unnecessary rAF; animation and handoff barriers remain',()=>{
+ const text=require('node:fs').readFileSync(require('node:path').join(__dirname,'../mode-transition.js'),'utf8');
+ const prepare=text.slice(text.indexOf('async prepare('),text.indexOf('async reveal('));
+ assert.doesNotMatch(prepare,/await painted/);
+ assert.match(text,/async release\(\)\{clear\(\);await painted\(\)/);
+ assert.match(text,/cubic-bezier\(\.4,0,\.2,1\)/);
+ assert.match(require('node:fs').readFileSync(require('node:path').join(__dirname,'../window-motion.js'),'utf8'),/duration=340/);
+});

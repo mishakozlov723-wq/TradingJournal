@@ -55,8 +55,15 @@ app.whenReady().then(() => {
   });
 });
 
-const stages=[];process.env.SYTER_TRANSITION_TEST='1';
-const nativeLog=console.log;console.log=(...args)=>{if(args[0]==='TRANSITION:')stages.push(args[1]);nativeLog(...args);};
+const stages=[],stageTimes=[],timings=[];process.env.SYTER_TRANSITION_TEST='1';
+app.on('web-contents-created',(_e,contents)=>{
+ const execute=contents.executeJavaScript.bind(contents);
+ contents.executeJavaScript=(code,...args)=>{
+  if(contents.getURL().endsWith('/mode-transition.html')&&code.includes('syterTransition.play('))console.log('TRANSITION:','playback-started');
+  return execute(code,...args);
+ };
+});
+const nativeLog=console.log;console.log=(...args)=>{if(args[0]==='TRANSITION:'){stages.push(args[1]);stageTimes.push(performance.now());}nativeLog(...args);};
 const journalWindowCount=()=>BrowserWindow.getAllWindows().filter(w=>!w.webContents.getURL().endsWith('/mode-transition.html')).length;
 const sourcePath=path.resolve(__dirname,'../main.js');
 const production=new Module(sourcePath,module);
@@ -88,6 +95,7 @@ Start-Sleep -Milliseconds 70
 `], { timeout: 10000, stdio: 'pipe' });
 }
 async function recordDesktop(label){
+ if(process.env.SYTER_TIMING_BASELINE==='1')return null;
  const out=path.resolve(__dirname,'../test-artifacts/mode-cycle-'+label);fs.mkdirSync(out,{recursive:true});
  const ready=path.join(out,'ready');
  const script=`
@@ -120,6 +128,10 @@ function assertAnimated(start,label){
  const cycle=stages.slice(start);
  for(const stage of ['source-frame-verified','cover-presented','playback-completed','destination-presented','live-presented'])assert.ok(cycle.includes(stage),label+' reached '+stage);
  assert.ok(cycle.indexOf('source-frame-verified')<cycle.indexOf('live-concealed'),label+' never hides live source before verified cover');
+ const at=name=>stageTimes[start+cycle.indexOf(name)];
+ assert.ok(cycle.includes('playback-started'),label+' has measured playback start');
+ timings.push({label,sourceToMotionMs:at('playback-started')-at('source-and-cover-ready'),
+   concealedToMotionMs:at('playback-started')-at('live-concealed')});
  return cycle;
 }
 async function main(){
@@ -181,7 +193,7 @@ async function main(){
   if(label==='right-top')recorder=await recordDesktop('moved-mini-to-maximized');
   const stageStart=stages.length;
   api.requestMode(false);await settled(false);await until(()=>w.isMaximized(),'maximized from mini');
-  const cycleStages=stages.slice(stageStart);
+  const cycleStages=assertAnimated(stageStart,'moved mini to max '+label);
   for(const stage of ['source-frame-verified','playback-completed','live-presented'])assert.ok(cycleStages.includes(stage),'return compositor reached '+stage);
   assert.ok(cycleStages.indexOf('source-frame-verified')<cycleStages.indexOf('live-concealed'),'conceal only after source has really been presented');
   if(recorder)await recorder.done;
@@ -229,6 +241,23 @@ async function main(){
  w.close();assert.equal(w.isVisible(),false);assert.equal(wc.id,originalId);
  api.requestMode(false);await until(()=>w.isVisible(),'restore from tray');
  assert.equal(journalWindowCount(),1);
+ const timingPath=path.join(__dirname,'../test-artifacts/transition-timing-'+(process.env.SYTER_TIMING_BASELINE==='1'?'baseline':'optimized')+'.json');
+ fs.writeFileSync(timingPath,JSON.stringify(timings,null,2));
+ if(process.env.SYTER_TIMING_BASELINE!=='1'){
+  const previous=path.join(__dirname,'../test-artifacts/transition-timing-baseline.json');
+  if(fs.existsSync(previous)){
+   const baseline=JSON.parse(fs.readFileSync(previous,'utf8'));
+   const median=values=>values.sort((a,b)=>a-b)[Math.floor(values.length/2)];
+   const result={};
+   for(const key of ['sourceToMotionMs','concealedToMotionMs']){
+    const before=median(baseline.map(t=>t[key])),after=median(timings.map(t=>t[key]));
+    result[key]={beforeMs:before,afterMs:after,savedMs:before-after};
+   }
+   fs.writeFileSync(path.join(__dirname,'../test-artifacts/transition-timing-comparison.json'),JSON.stringify(result,null,2));
+   console.log('TIMING_COMPARISON:',JSON.stringify(result));
+   assert.ok(result.sourceToMotionMs.savedMs>20,'source freeze must be measurably shorter, not only animation duration');
+  }
+ }
  console.log('PASS: production title/tray, Windows minimum width, 12 verified-animated bidirectional mini cycles, drafts, maximized restore, actual global shortcuts, private UI hook vs Ctrl+0, optimized leaves, links and tray restore.');
 }
 app.whenReady().then(main).then(()=>app.exit(0)).catch(error=>{console.error(error.stack||error);app.exit(1);});

@@ -49,8 +49,9 @@ function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},onSt
   const bounded=(t,promise)=>Promise.race([promise,t.aborted]);
   async function paint(t){
     const v=getView(),w=getWindow();if(!active(t)||!v||v.webContents.isDestroyed())return;
-    await bounded(t,v.webContents.executeJavaScript(paintScript));
-    if(active(t))await bounded(t,w.webContents.executeJavaScript(paintScript));
+    // Both renderers must paint, but their independent barriers can run together.
+    await bounded(t,Promise.all([v.webContents.executeJavaScript(paintScript),
+      w.webContents.executeJavaScript(paintScript)]));
   }
   async function capture(t){
     const w=getWindow(),v=getView();if(!active(t)||!v||v.webContents.isDestroyed())return null;
@@ -98,16 +99,14 @@ function createWindowMotion({getWindow,getView,createOverlay,onFrame=()=>{},onSt
       if(verifyPresentation)t.receipt=t.overlay.armPresentation(source,union);
       // No show(), new native window or whole-pane opacity animation here.
       // Present an opaque picture on the already-visible compositor.
-      await bounded(t,t.overlay.webContents.executeJavaScript('window.syterTransition.reveal()'));
+      await bounded(t,t.overlay.webContents.executeJavaScript(`window.syterTransition.reveal(${JSON.stringify({waitForPaint:!verifyPresentation})})`));
       if(!active(t)||!w.isVisible()){if(task===t)cancel();return false;}
       if(verifyPresentation){
         const accepted=await bounded(t,t.receipt.promise);
         if(!active(t))return false;
         if(!accepted){onStage('source-frame-unconfirmed');cancel(true);return false;}
-        // The subscription has now observed the opaque submitted picture.
-        // Let its next compositor turn run while the live journal stays up.
-        await bounded(t,t.overlay.webContents.executeJavaScript(paintScript));
-        if(!active(t))return false;
+        // The submitted opaque frame IS the presentation receipt. Do not
+        // stack another pair of rAFs on top of this stronger native barrier.
         onStage('source-frame-verified');
       }
       await bounded(t,onStage('cover-presented',{overlay:t.overlay,source,union}));
