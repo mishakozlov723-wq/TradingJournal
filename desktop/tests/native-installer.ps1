@@ -129,6 +129,7 @@ try{
  if($after -ge $before*0.85){throw "Startup improvement not established: before=$before after=$after"}
  Write-Host "PASS: native startup: baseline $($baseline -join ', ') ms; optimized $($optimized -join ', ') ms; size $oldSize -> $newSize bytes"
  Write-Host 'PASS: actual branded EXE launches, waits for consent, verifies payload, shows real intermediate progress, installs and reinstalls preserving data, launches installed app and exits'
+ 'verified'|Set-Content (Join-Path $artifacts 'native-installer-success.txt') -Encoding utf8
 }finally{
  foreach($p in $processes){if(!$p.HasExited){taskkill.exe /PID $p.Id /T /F 2>$null|Out-Null}}
  if($installedPath){Get-CimInstance Win32_Process|Where-Object{$_.ExecutablePath -eq $installedPath}|ForEach-Object{Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue}}

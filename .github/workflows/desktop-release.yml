@@ -113,8 +113,9 @@ jobs:
       - name: Verify delivered branded installer EXE
         if: ${{ !inputs.check_only }}
         run: |
+          $ErrorActionPreference = 'Stop'
           ./tests/native-installer.ps1
-          if ($LASTEXITCODE -ne 0) { throw "Native installer verification failed" }
+          if (!(Test-Path test-artifacts/native-installer-success.txt)) { throw 'Native installer verification did not complete' }
       - name: Save branded installer and update previews
         if: always()
         uses: actions/upload-artifact@v4
