@@ -226,7 +226,13 @@
     if(accountsState.connecting)return;
     var disconnectUid=accCurrentUid();
     accountsState.connecting=true; accSetError(''); accSetWarning('');
-    try{ await accApi('disconnect',null,{method:'POST',connection:false,body:{}}); }catch(_){}
+    try{
+      var result=await accApi('disconnect',null,{method:'POST',connection:false,body:{}});
+      if(!result.revoked)throw new Error('Server did not confirm token revocation. Update the Accounts proxy and retry.');
+    }catch(err){
+      if(accCurrentUid()===disconnectUid)accSetError('Could not revoke Myfxbook connection: '+err.message);
+      accountsState.connecting=false;return;
+    }
     if(disconnectUid)accSaveConnectionToken('',disconnectUid);
     if(accCurrentUid()!==disconnectUid){ accountsState.connecting=false; return; }
     accountsState.listRequestSeq++; accountsState.detailRequestSeq++; accountsState.loadingList=false; accountsState.loadingDetail=false; accountsState.loadingDetailId=null; accSetRefreshBusy(false);
