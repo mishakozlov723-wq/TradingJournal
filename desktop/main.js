@@ -143,13 +143,19 @@ async function setMiniMode(enabled, animate = true) {
       win.setMinimumSize(380, 480);
       win.setAlwaysOnTop(miniPinned);
       win.setBounds(target);
+      win.setMaximizable(false);
+      win.setFullScreenable(false);
     } else {
       win.setAlwaysOnTop(false);
       if (win.isMaximized()) win.unmaximize();
-      widthPolicy.refresh({grow:false});
-      // Restore directly under the cover: no grow -> shrink -> maximize cycle.
+      win.setMaximizable(true);
+      win.setFullScreenable(true);
+      // Place the full rectangle before restoring its tracking limits. On
+      // Windows setMinimumSize can move/resize a still-compact native window;
+      // grow:false does not make that native constraint update geometry-free.
       win.setBounds(fullState
         ? widthPolicy.constrain(fitBounds(fullState.bounds, { x: 80, y: 80, width: 1440, height: 900 })) : target);
+      widthPolicy.refresh({grow:false});
       if (fullState) {
         deferredFullRestore = !win.isVisible();
         if (!deferredFullRestore) {
@@ -412,7 +418,7 @@ function start() {
       e.preventDefault();
       if (wc.getURL().startsWith('file://')) wc.loadURL(APP_URL);
       else if (input.shift) wc.reloadIgnoringCache(); else wc.reload();
-    } else if (k === 'f11') { e.preventDefault(); win.setFullScreen(!win.isFullScreen()); }
+    } else if (k === 'f11') { e.preventDefault(); if (!miniMode) win.setFullScreen(!win.isFullScreen()); }
     else if (ctrl && input.shift && k === 'i') { e.preventDefault(); wc.toggleDevTools(); }
     else if (ctrl && (k === '=' || k === '+')) { e.preventDefault(); wc.setZoomLevel(Math.min(wc.getZoomLevel() + 0.5, 4)); widthPolicy.refresh(); }
     else if (ctrl && k === '-') { e.preventDefault(); wc.setZoomLevel(Math.max(wc.getZoomLevel() - 0.5, -3)); widthPolicy.refresh(); }

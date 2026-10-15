@@ -225,10 +225,11 @@ jobs:
           @"
           - SYTER $version production desktop release.
           - Branded Windows installation and in-app updates.
-          - Lightweight installer startup, actual file-operation progress and smoother installation/launch transitions.
+          - Mini journal: restore full window bounds before applying its minimum width.
+          - Mini journal: disable maximize and fullscreen; keep minimize and close available.
           - Updates download only after confirmation; restart and install when you choose.
           - Existing journal profile and settings are preserved.
-          - Upgrade directly from 1.3.0; the new update interface applies after this upgrade.
+          - Update directly from earlier versions; website unchanged.
           "@ | Set-Content release-notes.md
           $expected = @("latest.yml", "SYTER-Setup-$version.exe", "SYTER-Setup-$version.exe.blockmap", "SYTER-Install-$version.exe", "installer-manifest.json")
           $assets = @($expected | ForEach-Object {

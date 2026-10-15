@@ -11,14 +11,17 @@ function setup({ maximized = false, fullscreen = false } = {}) {
   const area = { x: 0, y: 0, width: 1920, height: 1040 };
   let bounds = { ...(maximized || fullscreen ? area : normal) }, pinned = false, visible = true, focused=true;
   const presentationCalls=[];
-  const motionCalls = [];
+  const motionCalls = [], nativeCalls = [];
+  let maximizable = true, fullscreenable = true;
   const window = {
     isDestroyed: () => false, getBounds: () => ({ ...bounds }),
     getNormalBounds: () => ({ ...(maximized || fullscreen ? normal : bounds) }),
     isMaximized: () => maximized, isFullScreen: () => fullscreen, isMinimized: () => false,
     unmaximize: () => { maximized = false; }, maximize: () => { maximized = true; visible = true; },
-    setFullScreen: on => { fullscreen = on; }, setMinimumSize() {},
-    setBounds: b => { bounds = { ...b }; }, setAlwaysOnTop: on => { pinned = on; },
+    setFullScreen: on => { fullscreen = on; },
+    setMaximizable: on => { maximizable = on; }, setFullScreenable: on => { fullscreenable = on; },
+    setMinimumSize: (width, height) => { nativeCalls.push({kind:'minimum',width,height,bounds:{...bounds}}); },
+    setBounds: b => { nativeCalls.push({kind:"bounds",bounds:{...b}}); bounds = { ...b }; }, setAlwaysOnTop: on => { pinned = on; },
     getContentSize: () => [bounds.width, bounds.height],
     isVisible: () => visible, isFocused:()=>focused,
     show() { visible = true;presentationCalls.push('show'); }, hide() { visible = false; },
@@ -59,7 +62,8 @@ function setup({ maximized = false, fullscreen = false } = {}) {
   context.testApi.configure(window, view);
   return { api: context.testApi, window, view, handlers, sent, motionCalls,presentationCalls,
     blur:()=>{focused=false;},
-    bounds: () => bounds, pinned: () => pinned,
+    bounds: () => bounds, pinned: () => pinned, nativeCalls,
+    maximizable:()=>maximizable, fullscreenable:()=>fullscreenable,
     maximized: () => maximized, fullscreen: () => fullscreen };
 }
 
@@ -131,4 +135,21 @@ test('hiding during exit does not reopen a maximized window; next request restor
   s.api.showWindow();
   assert.equal(s.window.isVisible(), true);
   assert.equal(s.maximized(), true);
+});
+
+test('exit positions the full window BEFORE applying the full minimum width', async () => {
+  const s=setup();
+  await s.api.setMiniMode(true);
+  const originalMini={...s.bounds()};s.nativeCalls.length=0;
+  await s.api.setMiniMode(false);
+  const floor=s.nativeCalls.find(call=>call.kind==='minimum'&&call.width>originalMini.width);
+  assert.ok(floor,'full tracking limit restored');
+  assert.ok(floor.bounds.width>=floor.width,'never enforce the full minimum on the live compact window');
+  assert.equal(s.nativeCalls[0].kind,'bounds','the first geometry operation is the saved full rectangle');
+});
+test('mini blocks maximize/fullscreen but full mode restores both capabilities', async () => {
+  const s=setup();await s.api.setMiniMode(true);
+  assert.equal(s.maximizable(),false);assert.equal(s.fullscreenable(),false);
+  await s.api.setMiniMode(false);
+  assert.equal(s.maximizable(),true);assert.equal(s.fullscreenable(),true);
 });
