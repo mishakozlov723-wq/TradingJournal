@@ -1,4 +1,4 @@
-# Rendering checks exercise the shipped assembly directly, without production debug hooks.
+﻿# Rendering checks exercise the shipped assembly directly, without production debug hooks.
 param([string]$InstallerPath)
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName System.Windows.Forms,System.Drawing
