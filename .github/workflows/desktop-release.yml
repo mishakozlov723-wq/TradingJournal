@@ -3,6 +3,10 @@ name: Verify and build SYTER desktop
 on:
   workflow_dispatch:
     inputs:
+      reuse_verified_update:
+        description: Reuse the verified 1.3.7 update payload; only build the native wrapper
+        type: boolean
+        default: false
       local_update_test:
         description: Build a private local 1.3.6 to 1.3.7 update test instead of a release
         type: boolean
@@ -96,10 +100,34 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
       - name: Build installer and updater files
-        if: ${{ !inputs.check_only }}
+        if: ${{ !inputs.check_only && !inputs.reuse_verified_update }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npm run build
+      - name: Fetch exact verified 1.3.7 updater payload
+        if: ${{ !inputs.check_only && inputs.reuse_verified_update }}
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            const source = 'f660c2af3a6b1b0d1c7a3dd80533af88a9e789fe';
+            const diff = await github.rest.repos.compareCommits({owner:context.repo.owner,repo:context.repo.repo,base:source,head:context.sha});
+            for (const f of diff.data.files || []) {
+              if (!f.filename.startsWith('.github/workflows/') && !f.filename.startsWith('desktop/update-test/') && !['desktop/package.json','desktop/package-lock.json','desktop/tests/user-release.test.cjs'].includes(f.filename)) {
+                throw Error('Packaged source changed since the tested payload: '+f.filename);
+              }
+            }
+            const r = await github.rest.actions.downloadArtifact({owner:context.repo.owner,repo:context.repo.repo,artifact_id:11977522018,archive_format:'zip'});
+            fs.writeFileSync('desktop/verified-updater.zip',Buffer.from(r.data));
+      - name: Wrap verified updater in the approved native installer
+        if: ${{ !inputs.check_only && inputs.reuse_verified_update }}
+        run: |
+          if ((Get-Content package.json -Raw|ConvertFrom-Json).version -ne '1.3.7') { throw 'Verified payload only supports version 1.3.7' }
+          if ((Get-FileHash verified-updater.zip -Algorithm SHA256).Hash.ToLower() -ne '2533bf5f4c318d3940f15a40aed0a76162deef77a1f4752f0af9b1887782bae3') { throw 'Verified artifact digest mismatch' }
+          & 'C:/Program Files/7-Zip/7z.exe' x verified-updater.zip -orelease -y
+          if ($LASTEXITCODE -ne 0) { throw 'Verified updater extraction failed' }
+          node scripts/build-branded-installer.js
+          if ($LASTEXITCODE -ne 0) { throw 'Native wrapper build failed' }
       - name: Verify visible generated and packaged icons
         if: ${{ !inputs.check_only && !inputs.installer_only }}
         run: |
@@ -186,18 +214,19 @@ jobs:
             $existing = ($existingText -join "`n") | ConvertFrom-Json
             if (!$existing.isDraft) { throw "Public release $tag already exists" }
             if ($existing.name -ne "SYTER $version" -or
-                $existing.body -notlike '*SYTER 1.3.0 production desktop release.*' -or
-                $existing.body -notlike '*Minimum desktop width protects the full Equity Curve layout.*') {
+                $existing.body -notlike "*SYTER $version production desktop release.*" -or
+                $existing.body -notlike '*Branded Windows installation and in-app updates.*') {
               throw "Unrecognized draft $tag; do not overwrite"
             }
             $resumeDraft = $true
           }
           @"
-          - SYTER 1.3.0 production desktop release.
-          - Minimum desktop width protects the full Equity Curve layout.
-          - Improved resizing and optimized seasonal animations with hardware acceleration enabled.
-          - Clean SYTER title and tray menu; no diagnostic controls.
-          - Existing journal data, mini journal and automatic updates preserved.
+          - SYTER $version production desktop release.
+          - Branded Windows installation and in-app updates.
+          - Lightweight installer startup, actual file-operation progress and smoother installation/launch transitions.
+          - Updates download only after confirmation; restart and install when you choose.
+          - Existing journal profile and settings are preserved.
+          - Upgrade directly from 1.3.0; the new update interface applies after this upgrade.
           "@ | Set-Content release-notes.md
           $expected = @("latest.yml", "SYTER-Setup-$version.exe", "SYTER-Setup-$version.exe.blockmap", "SYTER-Install-$version.exe", "installer-manifest.json")
           $assets = @($expected | ForEach-Object {
