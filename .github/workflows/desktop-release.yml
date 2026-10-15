@@ -22,7 +22,7 @@ concurrency:
 jobs:
   windows:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: desktop
@@ -62,6 +62,14 @@ jobs:
           Get-Content native-test.log
           Get-Content native-test-error.log
           if ($test.ExitCode -ne 0) { throw "Native Electron test failed: $($test.ExitCode)" }
+      - name: Verify branded updater windows and consent
+        run: |
+          $electron = (Resolve-Path ./node_modules/electron/dist/electron.exe).Path
+          $script = (Resolve-Path ./tests/lifecycle.native.cjs).Path
+          $test = Start-Process -FilePath $electron -ArgumentList "`"$script`"" -Wait -PassThru -NoNewWindow -RedirectStandardOutput lifecycle-test.log -RedirectStandardError lifecycle-test-error.log
+          Get-Content lifecycle-test.log
+          Get-Content lifecycle-test-error.log
+          if ($test.ExitCode -ne 0) { throw "Lifecycle test failed: $($test.ExitCode)" }
       - name: Save native transition inspection frames
         if: always()
         uses: actions/upload-artifact@v4
@@ -92,6 +100,25 @@ jobs:
           path: desktop/test-artifacts/*icon*.png
           if-no-files-found: warn
           retention-days: 7
+      - name: Verify delivered branded installer EXE
+        if: ${{ !inputs.check_only }}
+        run: |
+          $electron = (Resolve-Path ./node_modules/electron/dist/electron.exe).Path
+          $script = (Resolve-Path ./tests/branded-installer.native.cjs).Path
+          $test = Start-Process -FilePath $electron -ArgumentList "`"$script`"" -Wait -PassThru -NoNewWindow -RedirectStandardOutput installer-test.log -RedirectStandardError installer-test-error.log
+          Get-Content installer-test.log
+          Get-Content installer-test-error.log
+          if ($test.ExitCode -ne 0) { throw "Actual installer EXE test failed: $($test.ExitCode)" }
+      - name: Save branded installer and update previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SYTER-lifecycle-inspection
+          path: |
+            desktop/test-artifacts/lifecycle-*.png
+            desktop/test-artifacts/branded-exe-*.png
+          if-no-files-found: warn
+          retention-days: 14
       - name: Save verified installer
         if: ${{ !inputs.check_only }}
         uses: actions/upload-artifact@v4
@@ -101,7 +128,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Publish all updater assets
-        if: ${{ inputs.publish && !inputs.check_only }}
+        if: ${{ inputs.publish && !inputs.check_only && github.ref == 'refs/heads/main' }}
         env:
           GH_TOKEN: ${{ secrets.SYTER_RELEASE_TOKEN }}
         run: |
@@ -131,7 +158,7 @@ jobs:
           - Clean SYTER title and tray menu; no diagnostic controls.
           - Existing journal data, mini journal and automatic updates preserved.
           "@ | Set-Content release-notes.md
-          $expected = @("latest.yml", "SYTER-Setup-$version.exe", "SYTER-Setup-$version.exe.blockmap")
+          $expected = @("latest.yml", "SYTER-Setup-$version.exe", "SYTER-Setup-$version.exe.blockmap", "SYTER-Install-$version.exe", "installer-manifest.json")
           $assets = @($expected | ForEach-Object {
             $file = Join-Path release $_
             if (!(Test-Path $file -PathType Leaf)) { throw "Missing updater asset: $_" }

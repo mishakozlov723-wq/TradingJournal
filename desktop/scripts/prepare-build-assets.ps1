@@ -91,3 +91,10 @@ try {
   $titlebarBitmap.Save((Join-Path $build 'titlebar-icon.png'), [System.Drawing.Imaging.ImageFormat]::Png)
 } finally { $titlebarGraphics.Dispose(); $titlebarBitmap.Dispose(); $titlebarImage.Dispose() }
 Write-Host 'Generated white transparent Windows icons; original dark title bar preserved.'
+
+# Embed the same tracked Poppins fonts. No network dependency in installer UI.
+$uiFonts = Join-Path $build 'ui/fonts'
+New-Item -ItemType Directory -Force $uiFonts | Out-Null
+foreach ($weight in @(400, 500, 600, 700)) {
+  Copy-Item (Join-Path $root "public/fonts/poppins-latin-$weight-normal.woff2") $uiFonts -Force
+}
