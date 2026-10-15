@@ -10,6 +10,8 @@ const { createUpdateController } = require('../lifecycle/controller');
 const wait = ms => new Promise(r=>setTimeout(r,ms));
 const output = path.resolve(__dirname,'../test-artifacts');fs.mkdirSync(output,{recursive:true});
 let win;
+// Keep the isolated test host alive while replacing its windows.
+app.on('window-all-closed', () => {});
 async function shot(name){await wait(200);assert.equal(await win.webContents.executeJavaScript('document.documentElement.scrollHeight > innerHeight || document.documentElement.scrollWidth > innerWidth'),false,'No overflow: '+name);fs.writeFileSync(path.join(output,`lifecycle-${name}.png`),(await win.webContents.capturePage()).toPNG());}
 app.whenReady().then(async()=>{
   const updater=new EventEmitter();let installed,downloads=0,quits=0;

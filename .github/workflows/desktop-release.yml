@@ -70,6 +70,7 @@ jobs:
           Get-Content lifecycle-test.log
           Get-Content lifecycle-test-error.log
           if ($test.ExitCode -ne 0) { throw "Lifecycle test failed: $($test.ExitCode)" }
+          if (!(Select-String -Path lifecycle-test.log -Pattern "PASS: isolated native lifecycle windows" -Quiet)) { throw "Lifecycle test did not reach completion" }
       - name: Save native transition inspection frames
         if: always()
         uses: actions/upload-artifact@v4
@@ -109,6 +110,7 @@ jobs:
           Get-Content installer-test.log
           Get-Content installer-test-error.log
           if ($test.ExitCode -ne 0) { throw "Actual installer EXE test failed: $($test.ExitCode)" }
+          if (!(Select-String -Path installer-test.log -Pattern "PASS: actual branded EXE launches" -Quiet)) { throw "Installer test did not reach completion" }
       - name: Save branded installer and update previews
         if: always()
         uses: actions/upload-artifact@v4
