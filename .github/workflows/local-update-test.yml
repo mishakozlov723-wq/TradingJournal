@@ -1,0 +1,92 @@
+name: Build private local SYTER update test
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: syter-local-update-test
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: desktop
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Prepare locked build
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'npm ci failed' }
+          node -e "console.log(require('electron'))"
+          ./scripts/prepare-build-assets.ps1
+          npm test
+          if ($LASTEXITCODE -ne 0) { throw 'Regression tests failed' }
+      - name: Build unpublished update payload 1.3.7
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          # Version changes only in this disposable checkout, not in stable source.
+          npm version 1.3.7 --no-git-tag-version
+          if ($LASTEXITCODE -ne 0) { throw 'Test version failed' }
+          npm run build
+          if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
+          node update-test/package-test.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Packaging failed' }
+      - name: Fetch exact previous verified test build
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            const r = await github.rest.actions.downloadArtifact({owner:context.repo.owner,repo:context.repo.repo,artifact_id:11974956463,archive_format:'zip'});
+            fs.writeFileSync('desktop/baseline.zip',Buffer.from(r.data));
+      - name: Verify real installed update end to end
+        run: |
+          if ((Get-FileHash baseline.zip -Algorithm SHA256).Hash.ToLower() -ne '97d536615a6dd3a8654b2d4d6d14b4bda8b2c5eca7b4917854b94215913f09f7') { throw 'Baseline digest mismatch' }
+          Expand-Archive baseline.zip baseline
+          $p=Start-Process (Resolve-Path baseline/SYTER-Setup-1.3.6.exe).Path -ArgumentList '/S' -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw 'Baseline install failed' }
+          Get-Process SYTER -ErrorAction SilentlyContinue|Stop-Process -Force
+          New-Item "$env:APPDATA/syter-desktop" -ItemType Directory -Force|Out-Null
+          'preserve-local-update-test'|Set-Content "$env:APPDATA/syter-desktop/local-update-sentinel.txt"
+          # Run under Windows PowerShell 5.1, the same runtime supplied with the user launcher.
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./update-test-pack/Test-Update.ps1 -Automation
+          if ($LASTEXITCODE -ne 0) { throw 'Installed updater test failed' }
+          if ((Get-Content "$env:APPDATA/syter-desktop/local-update-sentinel.txt" -Raw).Trim() -ne 'preserve-local-update-test') { throw 'Profile sentinel lost' }
+          if (Test-Path update-test-pack/test-session.json) { throw 'Test source was not cleaned up' }
+          'PASS: installed app restarted on 1.3.7, updater restored, profile sentinel preserved'|Set-Content test-artifacts/local-update-result.txt
+          # The automation file is CI-only; do not ship it in the user's pack.
+          Remove-Item update-test-pack/verify-update.cjs
+      - name: Save actual update frames and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SYTER-local-update-inspection
+          path: |
+            desktop/test-artifacts/local-update-*
+            desktop/update-test-pack/requests.log
+          retention-days: 14
+          if-no-files-found: warn
+      - name: Save private user test pack
+        uses: actions/upload-artifact@v4
+        with:
+          name: SYTER-local-update-test-1.3.6-to-1.3.7
+          path: |
+            desktop/update-test-pack/START-TEST.cmd
+            desktop/update-test-pack/RESTORE-NORMAL-UPDATES.cmd
+            desktop/update-test-pack/Test-Update.ps1
+            desktop/update-test-pack/README.txt
+            desktop/update-test-pack/test-manifest.json
+            desktop/update-test-pack/latest.yml
+            desktop/update-test-pack/SYTER-Setup-1.3.7.exe
+            desktop/update-test-pack/SYTER-Setup-1.3.7.exe.blockmap
+          retention-days: 14
+          if-no-files-found: error
