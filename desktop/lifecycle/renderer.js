@@ -34,4 +34,4 @@ el('primary').addEventListener('click', () => { if (primaryAction) bridge?.actio
 el('secondary').addEventListener('click', () => bridge?.action('later'));
 el('close').addEventListener('click', () => bridge?.action('close'));
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !el('close').disabled) bridge?.action('close'); });
-if (bridge) { bridge.subscribe(render); render(bridge.snapshot()); } else { render({mode:'install',phase:'welcome',version:'1.3.2'}); }
+if (bridge) { bridge.subscribe(render); render(bridge.snapshot()); } else { render({mode:'install',phase:'welcome',version:'1.3.3'}); }

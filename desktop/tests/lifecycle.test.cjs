@@ -80,3 +80,9 @@ test('compact lifecycle has no footer, card or resizing during launch',()=>{
   const win=fs.readFileSync(path.join(__dirname,'../lifecycle/window.js'),'utf8');
   assert.doesNotMatch(win,/setContentSize|setSize|setBounds/);
 });
+
+test('initial reveal only fades, without overflowing translated content',()=>{
+  const css=fs.readFileSync(path.join(__dirname,'../lifecycle/window.css'),'utf8');
+  assert.match(css,/@keyframes enter\{from\{opacity:0\}to\{opacity:1\}\}/);
+  assert.doesNotMatch(css,/translateY\(6px\)/);
+});
