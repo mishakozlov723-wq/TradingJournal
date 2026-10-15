@@ -10,7 +10,7 @@ const { createUpdateController } = require('../lifecycle/controller');
 const wait = ms => new Promise(r=>setTimeout(r,ms));
 const output = path.resolve(__dirname,'../test-artifacts');fs.mkdirSync(output,{recursive:true});
 let win;
-async function shot(name){await wait(200);fs.writeFileSync(path.join(output,`lifecycle-${name}.png`),(await win.webContents.capturePage()).toPNG());}
+async function shot(name){await wait(200);assert.equal(await win.webContents.executeJavaScript('document.documentElement.scrollHeight > innerHeight || document.documentElement.scrollWidth > innerWidth'),false,'No overflow: '+name);fs.writeFileSync(path.join(output,`lifecycle-${name}.png`),(await win.webContents.capturePage()).toPNG());}
 app.whenReady().then(async()=>{
   const updater=new EventEmitter();let installed,downloads=0,quits=0;
   updater.checkForUpdates=async()=>{};updater.downloadUpdate=async()=>{downloads++;};updater.quitAndInstall=(...args)=>{installed=args;};

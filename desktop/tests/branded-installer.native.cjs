@@ -1,7 +1,8 @@
 'use strict';
 // Windows-only end-to-end test of the DELIVERED EXE, no production testing hooks.
 const { app } = require('electron');
-const { spawn } = require('node:child_process');
+const { spawn, execFile } = require('node:child_process');
+const { promisify } = require('node:util');
 const path = require('node:path');
 const fs = require('node:fs');
 const assert = require('node:assert/strict');
@@ -23,22 +24,48 @@ app.whenReady().then(async()=>{
   // Runner profile only. A sentinel must survive initial install and reinstall.
   const sentinel=path.join(app.getPath('appData'),'syter-desktop','syter-preservation-test.txt');fs.mkdirSync(path.dirname(sentinel),{recursive:true});fs.writeFileSync(sentinel,'preserve-settings');
   const exe=path.resolve(__dirname,`../release/SYTER-Install-${version}.exe`);
-  const child=spawn(exe,['--remote-debugging-port=9227'],{stdio:'ignore',windowsHide:false});
-  child.on('error',error=>{throw error;});
-  const c=await connect(9227);
-  const evaluate=async expression=>{const r=await c.call('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
-  const screenshot=async name=>{const r=await c.call('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(artifacts,`branded-exe-${name}.png`),Buffer.from(r.data,'base64'));};
-  assert.equal(await evaluate('window.syterLifecycle.snapshot().phase'),'welcome');await screenshot('welcome');
-  await evaluate('document.getElementById("primary").click()');
-  let phase;
-  for(let n=0;n<360;n++){
-    phase=await evaluate('window.syterLifecycle.snapshot().phase');if(phase==='ready')break;
-    if(phase==='error')throw Error(await evaluate('window.syterLifecycle.snapshot().error'));
-    if(n===3)await screenshot('progress');await wait(500);
+  let installedPath;
+  for (let pass = 0; pass < 2; pass++) {
+    const port = 9227 + pass;
+    const child=spawn(exe,[`--remote-debugging-port=${port}`],{stdio:'ignore',windowsHide:false});
+    const spawnError=new Promise((_r,reject)=>child.once('error',reject));
+    const c=await Promise.race([connect(port),spawnError]);
+    const evaluate=async expression=>{const r=await c.call('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
+    const screenshot=async name=>{const r=await c.call('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(artifacts,`branded-exe-${name}.png`),Buffer.from(r.data,'base64'));};
+    assert.equal(await evaluate('window.syterLifecycle.snapshot().phase'),'welcome');if(!pass)await screenshot('welcome');
+    await evaluate('document.getElementById("primary").click()');
+    let phase;
+    for(let n=0;n<360;n++){
+      phase=await evaluate('window.syterLifecycle.snapshot().phase');if(phase==='ready')break;
+      if(phase==='error')throw Error(await evaluate('window.syterLifecycle.snapshot().error'));
+      if(n===3 && !pass)await screenshot('progress');await wait(500);
+    }
+    assert.equal(phase,'ready','actual silent installation must succeed');if(!pass)await screenshot('installed');
+    installedPath=await installedExecutable(version);
+    assert.ok(fs.existsSync(installedPath));assert.equal(fs.readFileSync(sentinel,'utf8'),'preserve-settings');
+    // Exercise the actual Launch button after reinstall, not a mocked spawn.
+    if (pass) await evaluate('document.getElementById("primary").click()');
+    else await evaluate('window.syterLifecycle.action("close")');
+    c.close();
+    await new Promise((resolve,reject)=>{if(child.exitCode!==null)return resolve();child.once('exit',code=>code===0?resolve():reject(Error(`Installer exit ${code}`)));setTimeout(()=>reject(Error('Installer did not exit')),20000).unref();});
+    await wait(500);
   }
-  assert.equal(phase,'ready','actual silent installation must succeed');await screenshot('installed');
-  assert.ok(fs.existsSync(await installedExecutable(version)));assert.equal(fs.readFileSync(sentinel,'utf8'),'preserve-settings');
-  await evaluate('window.syterLifecycle.action("close")');c.close();
-  await new Promise((resolve,reject)=>{if(child.exitCode!==null)return resolve();child.once('exit',code=>code===0?resolve():reject(Error(`Installer exit ${code}`)));setTimeout(()=>reject(Error('Installer did not exit')),20000).unref();});
-  console.log('PASS: actual branded EXE launches, hashes payload, installs silently, verifies installed version, preserves existing data and exits');app.exit(0);
+  const ps=path.join(process.env.SystemRoot,'System32','WindowsPowerShell','v1.0','powershell.exe');
+  const script=path.join(artifacts,'verify-installed-launch.ps1');
+  fs.writeFileSync(script,`param([string]$AppPath)
+$ErrorActionPreference='Stop'
+$found=$null
+for($i=0;$i -lt 40;$i++){
+  $found=@(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -eq $AppPath })
+  if($found.Count -gt 0){break}
+  Start-Sleep -Milliseconds 250
+}
+if($found.Count -eq 0){throw 'Installed SYTER did not launch'}
+$found | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Write-Host 'PASS: Launch SYTER starts the installed executable'
+`);
+  const launched=await promisify(execFile)(ps,['-NoProfile','-NonInteractive','-File',script,'-AppPath',installedPath],{windowsHide:true});
+  console.log(launched.stdout.trim());
+  assert.equal(fs.readFileSync(sentinel,'utf8'),'preserve-settings');
+  console.log('PASS: actual branded EXE launches, hashes payload, installs silently, verifies installed version, preserves existing data on reinstall, launches installed app and exits');app.exit(0);
 }).catch(error=>{console.error(error);app.exit(1);});
