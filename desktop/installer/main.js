@@ -16,12 +16,13 @@ let state = { mode: 'install', phase: 'welcome', version: manifest.version, perc
 function send(patch) { state = {...state, ...patch}; publishLifecycleState(win, state); }
 function fail(error) { busy = false; send({phase:'error',percent:null,error:'Installation could not finish. Close SYTER if it is running, then try again.'}); console.error(error); }
 async function action(name) {
+  if (name === 'retry' && state.phase === 'error' && state.retry === 'launch' && exe) { send({phase:'ready',error:''}); name = 'launch'; }
   if (name === 'close' && !busy) return app.quit();
   if ((name === 'install' || name === 'retry') && !busy && ['welcome','error'].includes(state.phase)) {
     busy = true;
     try {
       const payload = path.join(process.resourcesPath, 'payload', 'setup.exe');
-      send({phase:'verifying',percent:0,error:''});
+      send({phase:'verifying',percent:0,error:'',retry:''});
       await verifyPayload(payload, manifest.sha256, percent => send({percent}));
       send({phase:'installing',percent:null});
       await runSilent(payload);
@@ -31,7 +32,7 @@ async function action(name) {
   } else if (name === 'launch' && exe && !busy && state.phase === 'ready') {
     busy = true; send({phase:'launching',percent:null});
     const child = spawn(exe, [], {detached:true,stdio:'ignore',shell:false,cwd:path.dirname(exe)});
-    child.once('error', error => { fail(error); send({retry:'launch'}); });
+    child.once('error', error => { fail(error); send({retry:'launch',error:'SYTER was installed but could not open. Try launching it again.'}); });
     child.once('spawn', () => { child.unref(); app.quit(); });
   }
 }

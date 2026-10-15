@@ -7,8 +7,12 @@ const { promisify } = require('node:util');
 async function verifyPayload(file, expected, progress = () => {}) {
   if (!/^[a-f0-9]{64}$/.test(expected)) throw Error('Invalid installer manifest');
   const size = (await fs.promises.stat(file)).size;
-  const hash = crypto.createHash('sha256'); let read = 0;
-  for await (const data of fs.createReadStream(file)) { hash.update(data); read += data.length; progress(size ? read / size * 100 : 0); }
+  const hash = crypto.createHash('sha256'); let read = 0, last = -1;
+  for await (const data of fs.createReadStream(file)) {
+    hash.update(data); read += data.length;
+    const percent = size ? Math.floor(read / size * 100) : 0;
+    if (percent !== last) { last = percent; progress(percent); }
+  }
   if (hash.digest('hex') !== expected) throw Error('Installer verification failed');
 }
 function runSilent(file, spawnImpl = spawn) {
