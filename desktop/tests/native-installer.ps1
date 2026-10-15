@@ -75,7 +75,19 @@ try{
   if(!(Test-Path $installedPath)){throw 'Installed executable missing'}
   foreach($file in $sentinels){if([IO.File]::ReadAllText($file) -ne 'preserve-settings'){throw 'Existing user data changed'}}
   if($pass -eq 0){Screenshot $handle 'installed';Click (Element $window 'CloseAction')}
-  else{Click $button}
+  else{
+   # Real launch failure and retry, without special production hooks.
+   $held="$installedPath.native-test"
+   Move-Item $installedPath $held
+   try{
+    Click $button
+    $failed=$false
+    for($n=0;$n -lt 50;$n++){$button=Element $window 'PrimaryAction';if($button.Current.Name -eq 'Try again'){$failed=$true;break};Start-Sleep -Milliseconds 100}
+    if(!$failed){throw 'Missing executable did not produce retry state'}
+    Screenshot $handle 'launch-error'
+   }finally{Move-Item $held $installedPath}
+   Click (Element $window 'PrimaryAction')
+  }
   if(!$p.WaitForExit(30000)){throw 'Native installer did not exit'}
   if($pass -eq 1){
    $found=@();for($n=0;$n -lt 50;$n++){$found=@(Get-CimInstance Win32_Process|Where-Object{$_.ExecutablePath -eq $installedPath});if($found.Count){break};Start-Sleep -Milliseconds 100}

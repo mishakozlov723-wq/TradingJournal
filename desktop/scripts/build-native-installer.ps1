@@ -10,7 +10,9 @@ foreach($name in @('regular','semibold')){
  [IO.File]::WriteAllBytes((Join-Path $build "poppins-$name.ttf"),[Convert]::FromBase64String((Get-Content (Join-Path $native "poppins-$name.base64") -Raw)))
 }
 $payload=Join-Path $root "dist/SYTER-Setup-$version.exe"
-$hash=(Get-FileHash $payload -Algorithm SHA256).Hash.ToLowerInvariant()
+$stream=[IO.File]::OpenRead($payload)
+$algorithm=[Security.Cryptography.SHA256]::Create()
+try{$hash=[BitConverter]::ToString($algorithm.ComputeHash($stream)).Replace('-','').ToLowerInvariant()}finally{$stream.Dispose();$algorithm.Dispose()}
 $size=(Get-Item $payload).Length
 $info=Join-Path $build 'BuildInfo.cs'
 "namespace SyterInstaller { static class BuildInfo { public const string Version=`"$version`"; public const string Sha256=`"$hash`"; public const long PayloadSize=$size; } }" | Set-Content $info -Encoding utf8
