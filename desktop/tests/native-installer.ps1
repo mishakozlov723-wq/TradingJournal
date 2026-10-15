@@ -9,6 +9,7 @@ public static class InstallerWindows {
  [DllImport("user32.dll")]static extern bool IsWindowVisible(IntPtr h);
  [DllImport("user32.dll",CharSet=CharSet.Unicode)]static extern int GetWindowText(IntPtr h,StringBuilder b,int n);
  [DllImport("user32.dll")]public static extern bool GetWindowRect(IntPtr h,out Rect r);
+ [DllImport("user32.dll")]public static extern IntPtr SendMessage(IntPtr h,uint m,IntPtr w,IntPtr l);
  [DllImport("user32.dll")]public static extern bool PostMessage(IntPtr h,uint m,IntPtr w,IntPtr l);
  [DllImport("user32.dll")]public static extern bool PrintWindow(IntPtr h,IntPtr dc,uint flags);
  [DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);
@@ -30,14 +31,21 @@ function Element($Window,[string]$Id){
  $all=$Window.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Condition]::TrueCondition)
  foreach($item in $all){
   $current=$item.Current
-  if($Id -eq 'PrimaryAction' -and $current.ControlType -eq [Windows.Automation.ControlType]::Button -and $current.Name -in @('Install SYTER','Please wait','Launch SYTER','Try again')){return $item}
+  if($Id -eq 'PrimaryAction' -and $current.Name -in @('Install SYTER','Install SYTER →','Please wait','Please wait…','Launch SYTER','Launch SYTER →','Try again','Try again →')){return $item}
   if($Id -eq 'CloseAction' -and $current.Name -eq 'Close'){return $item}
   if($Id -eq 'Percent' -and $current.Name -match '^\d+%$'){return $item}
   if($Id -eq 'Stage' -and $current.Name -in @('Unpacking files','Installing files','Registering SYTER and shortcuts','Preparing installation')){return $item}
  }
  return $null
 }
-function Click($Element){if(!$Element){throw 'Missing action button'};$pattern=$Element.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern);$pattern.Invoke()}
+function Click($Element){
+ if(!$Element){throw 'Missing action button'}
+ $pattern=$null
+ if($Element.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern,[ref]$pattern)){$pattern.Invoke();return}
+ $handle=[IntPtr]$Element.Current.NativeWindowHandle
+ if($handle -eq [IntPtr]::Zero){throw 'Native button handle unavailable'}
+ [InstallerWindows]::SendMessage($handle,0xF5,[IntPtr]::Zero,[IntPtr]::Zero)|Out-Null
+}
 function Screenshot([IntPtr]$Handle,[string]$Name){
  $rect=[InstallerWindows+Rect]::new();[InstallerWindows]::GetWindowRect($Handle,[ref]$rect)|Out-Null
  $bitmap=[Drawing.Bitmap]::new($rect.Right-$rect.Left,$rect.Bottom-$rect.Top)
@@ -66,21 +74,21 @@ try{
    $tree=$window.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Condition]::TrueCondition)
    @($tree|ForEach-Object{@{name=$_.Current.Name;id=$_.Current.AutomationId;type=$_.Current.ControlType.ProgrammaticName}})|ConvertTo-Json|Set-Content (Join-Path $artifacts 'native-installer-accessibility.json')
   }
-  $button=Element $window 'PrimaryAction';if(!$button -or $button.Current.Name -ne 'Install SYTER'){throw 'Install consent button missing from UI Automation'}
+  $button=Element $window 'PrimaryAction';if(!$button -or $button.Current.Name -notmatch '^Install SYTER(?: →)?$'){throw 'Install consent button missing from UI Automation'}
   $bounds=$window.Current.BoundingRectangle
   Click $button
   $ready=$false;$sawIntermediate=$false;$sawProgressShot=$false;$wait=[Diagnostics.Stopwatch]::StartNew()
   while($wait.ElapsedMilliseconds -lt 180000){
    if($p.HasExited){throw 'Installer unexpectedly exited'}
    $button=Element $window 'PrimaryAction';$name=$button.Current.Name
-   if($name -eq 'Try again'){throw 'Native installer reported installation failure'}
+   if($name -match '^Try again(?: →)?$'){throw 'Native installer reported installation failure'}
    if($window.Current.BoundingRectangle.Width -ne $bounds.Width -or $window.Current.BoundingRectangle.Height -ne $bounds.Height){throw 'Installer resized during installation'}
    $percent=Element $window 'Percent';$stage=Element $window 'Stage'
    if($percent -and !$percent.Current.IsOffscreen -and $percent.Current.Name -match '^(\d+)%$'){
     $value=[int]$Matches[1];$trace+=@{pass=$pass;percent=$value;stage=$stage.Current.Name}
     if($value -gt 0 -and $value -lt 100){$sawIntermediate=$true;if(!$sawProgressShot -and $pass -eq 0){Screenshot $handle 'progress';$sawProgressShot=$true}}
    }
-   if($name -eq 'Launch SYTER'){$ready=$true;break}
+   if($name -match '^Launch SYTER(?: →)?$'){$ready=$true;break}
    Start-Sleep -Milliseconds 100
   }
   if(!$ready){throw 'Installation did not finish'}
@@ -99,7 +107,7 @@ try{
    try{
     Click $button
     $failed=$false
-    for($n=0;$n -lt 50;$n++){$button=Element $window 'PrimaryAction';if($button.Current.Name -eq 'Try again'){$failed=$true;break};Start-Sleep -Milliseconds 100}
+    for($n=0;$n -lt 50;$n++){$button=Element $window 'PrimaryAction';if($button.Current.Name -match '^Try again(?: →)?$'){$failed=$true;break};Start-Sleep -Milliseconds 100}
     if(!$failed){throw 'Missing executable did not produce retry state'}
     Screenshot $handle 'launch-error'
    }finally{Move-Item $held $installedPath}

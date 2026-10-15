@@ -15,7 +15,7 @@ $algorithm=[Security.Cryptography.SHA256]::Create()
 try{$hash=[BitConverter]::ToString($algorithm.ComputeHash($stream)).Replace('-','').ToLowerInvariant()}finally{$stream.Dispose();$algorithm.Dispose()}
 $size=(Get-Item $payload).Length
 $info=Join-Path $build 'BuildInfo.cs'
-"namespace SyterInstaller { static class BuildInfo { public const string Version=`"$version`"; public const string Sha256=`"$hash`"; public const long PayloadSize=$size; } }" | Set-Content $info -Encoding utf8
+"[assembly:System.Reflection.AssemblyFileVersion(`"$version.0`")] [assembly:System.Reflection.AssemblyInformationalVersion(`"$version`")] namespace SyterInstaller { static class BuildInfo { public const string Version=`"$version`"; public const string Sha256=`"$hash`"; public const long PayloadSize=$size; } }" | Set-Content $info -Encoding utf8
 $csc=Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
 if(!(Test-Path $csc)){throw '.NET Framework C# compiler missing'}
 $out=Join-Path $root "release/SYTER-Install-$version.exe"

@@ -16,6 +16,7 @@ using Microsoft.Win32;
 [assembly: AssemblyTitle("SYTER Installer")]
 [assembly: AssemblyProduct("SYTER")]
 [assembly: AssemblyVersion("1.0.0.0")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETFramework,Version=v4.8")]
 namespace SyterInstaller {
  static class Program {
   [STAThread] static void Main() {
@@ -49,9 +50,9 @@ namespace SyterInstaller {
  }
  sealed class BrandButton:Button {
   public bool CloseButton;
-  public BrandButton(){SetStyle(ControlStyles.UserPaint|ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer,true);FlatStyle=FlatStyle.Flat;FlatAppearance.BorderSize=0;Cursor=Cursors.Hand;TabStop=true;}
+  public BrandButton(){SetStyle(ControlStyles.UserPaint|ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer,true);AccessibleRole=AccessibleRole.PushButton;FlatStyle=FlatStyle.Flat;FlatAppearance.BorderSize=0;Cursor=Cursors.Hand;TabStop=true;}
   protected override void OnPaint(PaintEventArgs e){
-   var g=e.Graphics;g.SmoothingMode=SmoothingMode.AntiAlias;g.TextRenderingHint=TextRenderingHint.ClearTypeGridFit;
+   var g=e.Graphics;g.Clear(BackColor);g.SmoothingMode=SmoothingMode.AntiAlias;g.TextRenderingHint=TextRenderingHint.ClearTypeGridFit;
    if(CloseButton){using(var pen=new Pen(Enabled?Color.FromArgb(160,168,180):Color.FromArgb(80,84,90),1.5f)){float c=Width/2f,d=Width*5f/44f;g.DrawLine(pen,c-d,c-d,c+d,c+d);g.DrawLine(pen,c+d,c-d,c-d,c+d);}return;}
    using(var shape=Shapes.Round(new RectangleF(0,0,Width-1,Height-1),12))
    using(var brush=new LinearGradientBrush(ClientRectangle,Enabled?Color.FromArgb(78,230,171):Color.FromArgb(38,114,85),Enabled?Color.FromArgb(52,211,153):Color.FromArgb(27,100,76),45f))g.FillPath(brush,shape);
@@ -110,7 +111,7 @@ namespace SyterInstaller {
    timer.Interval=200;timer.Tick+=(s,e)=>{if(busy&&!String.IsNullOrEmpty(session))ReadProgress();progress.Pulse();};
    Shown+=(s,e)=>{primary.Focus();};
   }
-  Label Label(string text,float size,bool bold,int x,int y,int width,int height){var l=new Label(){Text=text,Left=x,Top=y,Width=width,Height=height,BackColor=Bg,ForeColor=TextColor,Font=fonts.Get(size,bold),UseCompatibleTextRendering=true,AutoSize=false};Controls.Add(l);return l;}
+  Label Label(string text,float size,bool bold,int x,int y,int width,int height){var l=new Label(){Text=text,Left=x,Top=y,Width=width,Height=height,BackColor=Bg,ForeColor=TextColor,Font=fonts.Get(size,bold),UseCompatibleTextRendering=true,AutoSize=false,AccessibleRole=AccessibleRole.StaticText};Controls.Add(l);return l;}
   
   protected override void OnLoad(EventArgs e){
    MinimumSize=MaximumSize=Size.Empty;
