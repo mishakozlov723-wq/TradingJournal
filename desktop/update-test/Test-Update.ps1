@@ -66,7 +66,7 @@ try{
      $method=$parts[0];$request=$parts[1];$headers=@{};$length=$line.Length
      while(($line=$reader.ReadLine()) -ne ''){
       if($null -eq $line){throw 'Truncated request'};$length+=$line.Length;if($length -gt 8192){throw 'Headers too large'}
-      $pair=$line.Split(@(':'),2);if($pair.Length -eq 2){$headers[$pair[0].ToLowerInvariant()]=$pair[1].Trim()}
+      $colon=$line.IndexOf(':');if($colon -gt 0){$headers[$line.Substring(0,$colon).ToLowerInvariant()]=$line.Substring($colon+1).Trim()}
      }
      $requestPath=$request.Split('?')[0];$name=$requestPath.TrimStart('/')
      if($method -notin @('GET','HEAD') -or $requestPath -ne ('/'+$name) -or $name -notin $allowed){
@@ -102,6 +102,12 @@ try{
  $deadline=[DateTime]::UtcNow.AddSeconds(10)
  while(!(Test-Path $ready) -and [DateTime]::UtcNow -lt $deadline -and $server.State -ne 'Failed'){Start-Sleep -Milliseconds 100}
  if(!(Test-Path $ready)){Receive-Job $server;throw "Cannot start test server on local port $port. Updater configuration was not changed."}
+ # Verify actual HTTP responses before touching the installed app configuration.
+ $probe=Invoke-WebRequest -Uri "http://127.0.0.1:$port/latest.yml?test=1" -UseBasicParsing -TimeoutSec 10
+ if($probe.StatusCode -ne 200 -or $probe.Content -notmatch '(?m)^version: 1\.3\.7\s*$'){throw 'Local update metadata preflight failed.'}
+ $rangeRequest=[Net.HttpWebRequest]::Create("http://127.0.0.1:$port/SYTER-Setup-1.3.7.exe");$rangeRequest.Method='HEAD';$rangeRequest.Timeout=10000;$rangeRequest.AddRange(0,0)
+ $rangeProbe=$rangeRequest.GetResponse()
+ try {if([int]$rangeProbe.StatusCode -ne 206 -or $rangeProbe.ContentLength -ne 1){throw 'Local byte-range preflight failed.'}} finally {$rangeProbe.Dispose()}
  [IO.File]::WriteAllBytes($backup,$original)
  $originalHash=(Get-FileHash $backup -Algorithm SHA256).Hash
  $bytes=[Text.UTF8Encoding]::new($false).GetBytes($patched)
