@@ -105,7 +105,7 @@ test('native waiting uses the same bar without fabricated percentages',()=>{
  assert.match(source,/progress.Waiting\(waiting\)/);
  assert.match(source,/progress.Waiting\(false\)/);
  assert.match(source,/Math.Floor\(value\)/);
- assert.match(source,/timer.Interval=40/);
+ assert.match(source,/timer.Interval=20/);
  assert.match(source,/SystemParametersInfo\(0x1042/);
 });
 test('native UI scales real fonts, uses grayscale antialias and keyboard-only focus cues',()=>{
@@ -117,4 +117,16 @@ test('native UI scales real fonts, uses grayscale antialias and keyboard-only fo
  assert.match(source,/Shown\+=.*SetKeyboardFocus\(false\)/);
  assert.match(source,/Keys.Tab\)SetKeyboardFocus\(true\)/);
  assert.match(source,/Focused&&Enabled&&KeyboardFocusVisible/);
+});
+
+
+test('installer transitions reveal gently and launch never relocates finished-screen labels',()=>{
+ const source=fs.readFileSync(path.join(__dirname,'../installer/native/Installer.cs'),'utf8');
+ assert.match(source,/reveal.ElapsedMilliseconds\/180f/);
+ assert.match(source,/textReveal.ElapsedMilliseconds\/160f/);
+ assert.match(source,/Preparing installation…/);
+ const launch=source.slice(source.indexOf('void Launching()'),source.indexOf('void Ready()'));
+ assert.doesNotMatch(launch,/version.Top|platform.Top|location.Top|Busy\(/);
+ assert.match(launch,/RefreshState\(\)/);
+ assert.match(source,/Launching\(\);await Task.Run/);
 });

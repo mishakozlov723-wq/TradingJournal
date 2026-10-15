@@ -7,6 +7,10 @@ on:
         description: Publish the verified installer to syter-releases
         type: boolean
         default: false
+      installer_only:
+        description: Build installer and test its transitions, installation and launch only
+        type: boolean
+        default: false
       check_only:
         description: Run regression and native transition checks without building an installer
         type: boolean
@@ -48,6 +52,7 @@ jobs:
       - name: Run regression tests
         run: npm test
       - name: Verify resize animation continuity and draft preservation
+        if: ${{ !inputs.installer_only }}
         run: |
           $electron = (Resolve-Path ./node_modules/electron/dist/electron.exe).Path
           $script = (Resolve-Path ./tests/resize-performance.native.cjs).Path
@@ -56,6 +61,7 @@ jobs:
           Get-Content resize-test-error.log
           if ($test.ExitCode -ne 0) { throw "Live resize test failed: $($test.ExitCode)" }
       - name: Verify actual Windows app and global shortcut
+        if: ${{ !inputs.installer_only }}
         run: |
           $electron = (Resolve-Path ./node_modules/electron/dist/electron.exe).Path
           $script = (Resolve-Path ./tests/user-release.native.cjs).Path
@@ -64,6 +70,7 @@ jobs:
           Get-Content native-test-error.log
           if ($test.ExitCode -ne 0) { throw "Native Electron test failed: $($test.ExitCode)" }
       - name: Verify branded updater windows and consent
+        if: ${{ !inputs.installer_only }}
         run: |
           $electron = (Resolve-Path ./node_modules/electron/dist/electron.exe).Path
           $script = (Resolve-Path ./tests/lifecycle.native.cjs).Path
@@ -86,7 +93,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npm run build
       - name: Verify visible generated and packaged icons
-        if: ${{ !inputs.check_only }}
+        if: ${{ !inputs.check_only && !inputs.installer_only }}
         run: |
           $electron = (Resolve-Path ./node_modules/electron/dist/electron.exe).Path
           $script = (Resolve-Path ./tests/icons.native.cjs).Path
@@ -103,7 +110,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
       - name: Download previous test installer for same-runner startup comparison
-        if: ${{ !inputs.check_only }}
+        if: ${{ !inputs.check_only && !inputs.installer_only }}
         uses: actions/download-artifact@v4
         with:
           name: SYTER-windows-release
@@ -114,7 +121,7 @@ jobs:
         if: ${{ !inputs.check_only }}
         run: |
           $ErrorActionPreference = 'Stop'
-          ./tests/native-installer.ps1
+          ./tests/native-installer.ps1 -SkipBenchmark:('${{ inputs.installer_only }}' -eq 'true')
           if (!(Test-Path test-artifacts/native-installer-success.txt)) { throw 'Native installer verification did not complete' }
       - name: Verify native installer typography, keyboard focus and waiting animation
         if: ${{ !inputs.check_only }}

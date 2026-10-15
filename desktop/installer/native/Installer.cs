@@ -67,8 +67,11 @@ namespace SyterInstaller {
   }
  }
  sealed class BrandLabel:Label {
+  public bool SoftChanges;readonly Stopwatch textReveal=Stopwatch.StartNew();
+  protected override void OnTextChanged(EventArgs e){base.OnTextChanged(e);textReveal.Restart();Invalidate();}
+  public void Pulse(){if(Visible&&SoftChanges&&textReveal.ElapsedMilliseconds<160)Invalidate();}
   public BrandLabel(){SetStyle(ControlStyles.UserPaint|ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer,true);}
-  protected override void OnPaint(PaintEventArgs e){e.Graphics.Clear(BackColor);TextPaint.Draw(e.Graphics,Text,Font,ForeColor,ClientRectangle,false,TextAlign==ContentAlignment.TopRight);}
+  protected override void OnPaint(PaintEventArgs e){e.Graphics.Clear(BackColor);float opacity=SoftChanges?Math.Min(1f,textReveal.ElapsedMilliseconds/160f):1f;opacity=opacity*opacity*(3-2*opacity);TextPaint.Draw(e.Graphics,Text,Font,Color.FromArgb((int)(ForeColor.A*opacity),ForeColor),ClientRectangle,false,TextAlign==ContentAlignment.TopRight);}
  }
  sealed class BrandButton:Button {
   public bool CloseButton,KeyboardFocusVisible;
@@ -85,14 +88,24 @@ namespace SyterInstaller {
  }
  sealed class FileProgress:Control {
   public double Percent;public bool Finishing,Indeterminate;
-  readonly Stopwatch clock=Stopwatch.StartNew();readonly bool animate;
+  readonly Stopwatch clock=Stopwatch.StartNew(),reveal=Stopwatch.StartNew();readonly bool animate;
+  public bool MotionEnabled {get{return animate;}}
   [DllImport("user32.dll")]static extern bool SystemParametersInfo(uint action,uint param,out bool value,uint flags);
   public FileProgress(){SetStyle(ControlStyles.UserPaint|ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer,true);AccessibleRole=AccessibleRole.ProgressBar;AccessibleName="Installation file progress";bool enabled;animate=!SystemParametersInfo(0x1042,0,out enabled,0)||enabled;}
   public void Waiting(bool value){if(Indeterminate==value)return;Indeterminate=value;AccessibleName=value?"Preparing installation":"Installation file progress";AccessibilityNotifyClients(AccessibleEvents.NameChange,-1);}
-  protected override void OnVisibleChanged(EventArgs e){base.OnVisibleChanged(e);if(Visible)AccessibilityNotifyClients(AccessibleEvents.Show,-1);}
-  public void Pulse(){if(Visible&&animate&&(Indeterminate||Finishing))Invalidate();}
+  protected override void OnVisibleChanged(EventArgs e){base.OnVisibleChanged(e);if(Visible){reveal.Restart();AccessibilityNotifyClients(AccessibleEvents.Show,-1);}}
+  public void Pulse(){if(Visible&&animate&&(Indeterminate||Finishing||reveal.ElapsedMilliseconds<180))Invalidate();}
   protected override void OnPaint(PaintEventArgs e){
-   var g=e.Graphics;g.Clear(BackColor);g.SmoothingMode=SmoothingMode.AntiAlias;
+   e.Graphics.Clear(BackColor);
+   float opacity=animate?Math.Min(1f,reveal.ElapsedMilliseconds/180f):1f;opacity=opacity*opacity*(3-2*opacity);
+   if(opacity>=1f){DrawBar(e.Graphics);return;}
+   using(var image=new Bitmap(Width,Height))using(var layer=Graphics.FromImage(image))using(var attributes=new System.Drawing.Imaging.ImageAttributes()){
+    DrawBar(layer);var matrix=new System.Drawing.Imaging.ColorMatrix();matrix.Matrix33=opacity;attributes.SetColorMatrix(matrix);
+    e.Graphics.DrawImage(image,ClientRectangle,0,0,Width,Height,GraphicsUnit.Pixel,attributes);
+   }
+  }
+  void DrawBar(Graphics g){
+   g.SmoothingMode=SmoothingMode.AntiAlias;
    float radius=Height/2f;
    using(var background=new SolidBrush(Color.FromArgb(34,39,51)))using(var shape=Shapes.Round(new RectangleF(0,0,Width,Height),radius))g.FillPath(background,shape);
    // Unknown duration is a moving highlight, never a pretend percentage.
@@ -135,7 +148,7 @@ namespace SyterInstaller {
    platform=Label("Windows",14,false,320,193,171,27);platform.ForeColor=Dim;platform.TextAlign=ContentAlignment.TopRight;
    stage=Label("",14,false,29,196,380,27);stage.Visible=false;
    percent=Label("",14,false,418,196,73,27);percent.TextAlign=ContentAlignment.TopRight;percent.Visible=false;
-   progress=new FileProgress(){Left=29,Top=230,Width=462,Height=5,Visible=false};Controls.Add(progress);
+   progress=new FileProgress(){Left=29,Top=230,Width=462,Height=5,Visible=false};Controls.Add(progress);((BrandLabel)stage).SoftChanges=progress.MotionEnabled;
    transfer=Label("",14,false,29,243,462,26);transfer.ForeColor=Dim;transfer.Visible=false;
    location=Label("",14,false,29,279,462,72);location.ForeColor=Dim;location.Visible=false;
    error=Label("",14,false,29,233,462,105);error.ForeColor=Color.FromArgb(252,165,165);error.Visible=false;
@@ -147,7 +160,7 @@ namespace SyterInstaller {
    MouseDown+=Drag;
    FormClosing+=(s,e)=>{if(busy)e.Cancel=true;};
    KeyDown+=(s,e)=>{if(e.KeyCode==Keys.Escape&&!busy)Close();};
-   timer.Interval=40;timer.Tick+=(s,e)=>{if(++pollTick%5==0&&busy&&!String.IsNullOrEmpty(session))ReadProgress();progress.Pulse();};
+   timer.Interval=20;timer.Tick+=(s,e)=>{if(++pollTick%10==0&&busy&&!String.IsNullOrEmpty(session))ReadProgress();progress.Pulse();((BrandLabel)stage).Pulse();};
    Shown+=(s,e)=>{SetKeyboardFocus(false);primary.Focus();};
   }
   Label Label(string text,float size,bool bold,int x,int y,int width,int height){var l=new BrandLabel(){Text=text,Left=x,Top=y,Width=width,Height=height,BackColor=Bg,ForeColor=TextColor,Font=fonts.Get(size,bold),UseCompatibleTextRendering=true,AutoSize=false,AccessibleRole=AccessibleRole.StaticText};Controls.Add(l);typeSizes.Add(l,Tuple.Create(size,bold));return l;}
@@ -170,12 +183,21 @@ namespace SyterInstaller {
 
   void Drag(object sender,MouseEventArgs e){if(e.Button!=MouseButtons.Left||e.Y>58&&sender==this)return;ReleaseCapture();SendMessage(Handle,0xA1,(IntPtr)2,IntPtr.Zero);}
   protected override void OnPaint(PaintEventArgs e){base.OnPaint(e);using(var pen=new Pen(Color.FromArgb(35,38,40),1))e.Graphics.DrawRectangle(pen,0,0,ClientSize.Width-1,ClientSize.Height-1);}
-  void Busy(string heading,string status,bool waiting=false){busy=true;close.Enabled=false;primary.Enabled=false;primary.Text="Please wait…";primary.AccessibleName="Please wait";title.Text=heading;subtitle.Visible=false;version.Top=(int)Math.Round(151*dpiScale);platform.Top=version.Top;stage.Text=status;stage.Visible=!waiting;percent.Text="";percent.Visible=false;progress.Waiting(waiting);progress.Finishing=false;progress.Percent=0;progress.AccessibleName=waiting?"Preparing installation":"Installation file progress";progress.Visible=waiting;if(waiting){timer.Start();progress.Invalidate();}transfer.Visible=false;location.Visible=false;error.Visible=false;}
-  void Ready(){busy=false;installed=true;timer.Stop();title.Text="SYTER is installed.";subtitle.Text="Everything is ready. Open your journal.";subtitle.Visible=true;version.Top=(int)Math.Round(193*dpiScale);platform.Top=version.Top;stage.Visible=percent.Visible=progress.Visible=transfer.Visible=false;location.Top=(int)Math.Round(233*dpiScale);location.Text=Path.GetDirectoryName(installedExe);location.Visible=true;close.Enabled=true;primary.Enabled=true;primary.Text="Launch SYTER →";primary.AccessibleName="Launch SYTER";}
-  void Failure(Exception ex){busy=false;timer.Stop();title.Text="Let’s try that again.";subtitle.Text="The same SYTER. A dedicated desktop app.";subtitle.Visible=true;version.Top=platform.Top=(int)Math.Round(193*dpiScale);stage.Visible=percent.Visible=progress.Visible=transfer.Visible=location.Visible=false;error.Text=retryLaunch?"SYTER was installed but could not open. Try launching it again.":"Installation could not finish. Close SYTER if it is running, then try again.";error.Visible=true;close.Enabled=primary.Enabled=true;primary.Text="Try again →";primary.AccessibleName="Try again";Debug.WriteLine(ex);}
+  void Busy(string heading,string status,bool waiting=false){SuspendLayout();busy=true;close.Enabled=false;primary.Enabled=false;primary.Text="Please wait…";primary.AccessibleName="Please wait";title.Text=heading;subtitle.Visible=false;version.Top=(int)Math.Round(151*dpiScale);platform.Top=version.Top;stage.Text=waiting?"Preparing installation…":status;stage.Visible=true;percent.Text="";percent.Visible=false;progress.Waiting(waiting);progress.Finishing=false;progress.Percent=0;progress.AccessibleName=waiting?"Preparing installation":"Installation file progress";progress.Visible=waiting;if(waiting){timer.Start();progress.Invalidate();}transfer.Visible=false;location.Visible=false;error.Visible=false;ResumeLayout(false);RefreshState();}
+  void RefreshState(){Invalidate(true);Update();}
+  void Launching(){
+   SuspendLayout();busy=true;timer.Stop();close.Enabled=primary.Enabled=false;
+   title.Text="Opening SYTER…";subtitle.Text="Your journal is opening.";subtitle.Visible=true;
+   primary.Text="Please wait…";primary.AccessibleName="Please wait";
+   stage.Visible=percent.Visible=progress.Visible=transfer.Visible=error.Visible=false;
+   // Keep version, platform and path at their finished-screen positions: no moving child windows or stale copies.
+   ResumeLayout(false);RefreshState();
+  }
+  void Ready(){busy=false;installed=true;timer.Stop();title.Text="SYTER is installed.";subtitle.Text="Everything is ready. Open your journal.";subtitle.Visible=true;version.Top=(int)Math.Round(193*dpiScale);platform.Top=version.Top;stage.Visible=percent.Visible=progress.Visible=transfer.Visible=false;location.Top=(int)Math.Round(233*dpiScale);location.Text=Path.GetDirectoryName(installedExe);location.Visible=true;close.Enabled=true;primary.Enabled=true;primary.Text="Launch SYTER →";primary.AccessibleName="Launch SYTER";RefreshState();}
+  void Failure(Exception ex){busy=false;timer.Stop();title.Text="Let’s try that again.";subtitle.Text="The same SYTER. A dedicated desktop app.";subtitle.Visible=true;version.Top=platform.Top=(int)Math.Round(193*dpiScale);stage.Visible=percent.Visible=progress.Visible=transfer.Visible=location.Visible=false;error.Text=retryLaunch?"SYTER was installed but could not open. Try launching it again.":"Installation could not finish. Close SYTER if it is running, then try again.";error.Visible=true;close.Enabled=primary.Enabled=true;primary.Text="Try again →";primary.AccessibleName="Try again";Debug.WriteLine(ex);RefreshState();}
   async void Primary(object sender,EventArgs e){
    if(busy)return;
-   if(installed||retryLaunch){try{Busy("Opening SYTER…","Launch");Process.Start(new ProcessStartInfo(installedExe){UseShellExecute=false,WorkingDirectory=Path.GetDirectoryName(installedExe)});busy=false;Close();}catch(Exception ex){retryLaunch=true;Failure(ex);}return;}
+   if(installed||retryLaunch){try{Launching();await Task.Run((Action)(()=>{Process.Start(new ProcessStartInfo(installedExe){UseShellExecute=false,WorkingDirectory=Path.GetDirectoryName(installedExe)});}));busy=false;Close();}catch(Exception ex){retryLaunch=true;Failure(ex);}return;}
    try{
     session=null;Busy("Installing SYTER…","",true);
     temporary=Path.Combine(Path.GetTempPath(),"syter-setup-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(temporary);payload=Path.Combine(temporary,"setup.exe");

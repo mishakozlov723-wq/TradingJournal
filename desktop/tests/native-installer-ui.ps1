@@ -23,6 +23,11 @@ function Capture($form,$name){
  $b.Save((Join-Path $artifacts "native-installer-ui-$name.png"),[Drawing.Imaging.ImageFormat]::Png);return $b
 }
 function CropBytes($bitmap,$rectangle){$crop=$bitmap.Clone($rectangle,[Drawing.Imaging.PixelFormat]::Format32bppArgb);$stream=[IO.MemoryStream]::new();$crop.Save($stream,[Drawing.Imaging.ImageFormat]::Png);$bytes=$stream.ToArray();$crop.Dispose();$stream.Dispose();return [Convert]::ToBase64String($bytes)}
+function BarGreen($bitmap,$bar){
+ $sum=0;$count=0;$y=$bar.Top+[int]($bar.Height/2)
+ for($x=$bar.Left+2;$x -lt $bar.Right-2;$x+=4){$sum+=$bitmap.GetPixel($x,$y).G;$count++}
+ return $sum/$count
+}
 function CheckLayout($form){
  foreach($c in $form.Controls){if($c.Visible -and ($c.Left -lt 0 -or $c.Top -lt 0 -or $c.Right -gt $form.ClientSize.Width -or $c.Bottom -gt $form.ClientSize.Height)){throw "Control outside window: $($c.Name)"}}
 }
@@ -50,14 +55,21 @@ try{
  if(!$primary.KeyboardFocusVisible -or !$primary.Focused){throw 'Tab navigation did not enable keyboard focus cue'}
  $keyboard=Capture $form 'keyboard-focus';$keyboard.Dispose()
  Invoke $form 'SetKeyboardFocus' @($false)|Out-Null
- Write-Host "UI: waiting animation"
+ Write-Host "UI: waiting fade and preparation caption"
+ # Test animation even on the CI server with system animations disabled; restore its preference afterwards.
+ $animationField=$bar.GetType().GetField('animate',$flags);$systemAnimation=$animationField.GetValue($bar)
+ $animationField.SetValue($bar,$true);(Field $form 'stage').SoftChanges=$true
  $bounds=$bar.Bounds
- Invoke $form 'Busy' @('Installing SYTER…','',$true)|Out-Null;Pump 40
- if(!$bar.Visible -or !$bar.Indeterminate -or (Field $form 'percent').Visible -or (Field $form 'stage').Visible){throw 'Waiting bar must be visible without stage copy or fake percentage'}
- $a=Capture $form 'waiting-a';$first=CropBytes $a $bar.Bounds;$a.Dispose();Pump 240
- $b=Capture $form 'waiting-b';$second=CropBytes $b $bar.Bounds;$b.Dispose()
- $animate=$bar.GetType().GetField('animate',$flags).GetValue($bar)
- if($animate -and $first -eq $second){throw 'Waiting highlight did not animate'}
+ Invoke $form 'Busy' @('Installing SYTER…','',$true)|Out-Null;Pump 20
+ if(!$bar.Visible -or !$bar.Indeterminate -or (Field $form 'percent').Visible -or !(Field $form 'stage').Visible -or (Field $form 'stage').Text -ne 'Preparing installation…'){throw 'Waiting needs preparation caption and bar without fake percentage'}
+ $a=Capture $form 'fade-start';$early=BarGreen $a $bar;$a.Dispose();Pump 65
+ $b=Capture $form 'fade-middle';$middle=BarGreen $b $bar;$b.Dispose();Pump 140
+ $c=Capture $form 'waiting-a';$full=BarGreen $c $bar;$first=CropBytes $c $bar.Bounds;$c.Dispose();Pump 240
+ $d=Capture $form 'waiting-b';$second=CropBytes $d $bar.Bounds;$d.Dispose()
+ if($early -ge $full-5 -or $middle -lt $early-5){throw "Fade did not reveal gradually: $early / $middle / $full"}
+ if($first -eq $second){throw 'Waiting highlight did not animate'}
+ Write-Host "PASS: soft bar reveal and live gradient ($early / $middle / $full); preparation caption present"
+ $animationField.SetValue($bar,$systemAnimation);(Field $form 'stage').SoftChanges=$systemAnimation
  # Same actual control and bounds when switching into measurable file progress.
  $bar.Indeterminate=$false;$bar.Percent=42;$bar.Invalidate();Pump 40
  if($bar.Bounds -ne $bounds){throw 'Waiting and percentage bars changed position'}
@@ -70,6 +82,20 @@ try{
   if([Math]::Abs($title.Font.Size-28*600/520*$scale) -gt 0.05){throw 'DPI font scaling wrong'}
   $picture=Capture $form "waiting-$([int]($scale*100))";$picture.Dispose()
  }
+ # Inspect the actual finished -> launching transition, without starting another app in this layout test.
+ Invoke $form 'ApplyLayout' @([single]1.0)|Out-Null
+ $type.GetField('installedExe',$flags).SetValue($form,'C:\Users\test\AppData\Local\Programs\syter-desktop\SYTER.exe')
+ Invoke $form 'Ready' @()|Out-Null;Pump 30
+ $versionBounds=(Field $form 'version').Bounds;$platformBounds=(Field $form 'platform').Bounds;$locationBounds=(Field $form 'location').Bounds
+ Invoke $form 'Launching' @()|Out-Null
+ foreach($item in @(@('version',$versionBounds),@('platform',$platformBounds),@('location',$locationBounds))){if((Field $form $item[0]).Bounds -ne $item[1]){throw "Launch moved $($item[0])"}}
+ if($title.Text -ne 'Opening SYTER…' -or $primary.Text -ne 'Please wait…'){throw 'Launch state was not updated together'}
+ if(@($form.Controls|Where-Object{$_.Visible -and $_.Text -like 'Version*'}).Count -ne 1){throw 'Launch contains duplicate version controls'}
+ if(@($form.Controls|Where-Object{$_.Visible -and $_.Text -eq 'Windows'}).Count -ne 1){throw 'Launch contains duplicate platform controls'}
+ $launch=Capture $form 'launching';$launch.Dispose();Pump 40
+ $launchAfter=Capture $form 'launching-after';$launchAfter.Dispose()
+ CheckLayout $form
+ Write-Host 'PASS: launch keeps version, Windows and path fixed, paints clean full state and has no duplicate controls'
  Write-Host 'PASS: native UI proportional 600x508, scaled fonts, no default focus ring, Tab cues retained, animated waiting bar without fake percentage and unchanged bar position; 100/125/150% layout checks'
  'verified'|Set-Content (Join-Path $artifacts 'native-installer-ui-success.txt')
 }finally{

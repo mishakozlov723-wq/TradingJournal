@@ -1,4 +1,5 @@
 # Windows UI Automation drives the production EXE; no app test IPC or debug port.
+param([switch]$SkipBenchmark)
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,System.Drawing
 Add-Type @'
@@ -54,13 +55,14 @@ function Screenshot([IntPtr]$Handle,[string]$Name){
  $bitmap.Save((Join-Path $artifacts "native-installer-$Name.png"),[Drawing.Imaging.ImageFormat]::Png);$g.Dispose();$bitmap.Dispose()
 }
 try{
- if(!(Test-Path $old)){throw 'Baseline 1.3.3 EXE required for comparative startup measurement'}
+ if(!$SkipBenchmark -and !(Test-Path $old)){throw 'Baseline 1.3.3 EXE required for comparative startup measurement'}
  # Same runner, same user, same detection method; no installation in baseline.
- foreach($pass in 0..1){
+ if(!$SkipBenchmark){foreach($pass in 0..1){
   $watch=[Diagnostics.Stopwatch]::StartNew();$p=Start-Process $old -PassThru;$processes+=$p
   $handle=Wait-Window 'SYTER';$baseline+=$watch.ElapsedMilliseconds
   [InstallerWindows]::PostMessage($handle,0x10,[IntPtr]::Zero,[IntPtr]::Zero)|Out-Null
   if(!$p.WaitForExit(30000)){throw 'Baseline installer did not close'};Start-Sleep -Milliseconds 500
+ }
  }
  $sentinels=@('SYTER','syter-desktop')|ForEach-Object{Join-Path $env:APPDATA "$_/syter-preservation-test.txt"}
  foreach($file in $sentinels){New-Item -ItemType Directory (Split-Path $file) -Force|Out-Null;[IO.File]::WriteAllText($file,'preserve-settings')}
@@ -78,6 +80,7 @@ try{
   $bounds=$window.Current.BoundingRectangle
   Click $button
   if($pass -eq 0){
+   Start-Sleep -Milliseconds 200
    Screenshot $handle 'waiting'
    $picture=[Drawing.Bitmap]::new((Join-Path $artifacts 'native-installer-waiting.png'))
    try{
@@ -135,6 +138,7 @@ try{
   }
   Start-Sleep -Milliseconds 500
  }
+ if(!$SkipBenchmark){
  $before=($baseline|Measure-Object -Average).Average;$after=($optimized|Measure-Object -Average).Average
  $oldSize=(Get-Item $old).Length;$newSize=(Get-Item $exe).Length
  $report=@{baselineVersion='1.3.3';optimizedVersion=$version;baselineVisibleMs=$baseline;optimizedVisibleMs=$optimized;baselineBytes=$oldSize;optimizedBytes=$newSize;method='Process start to first visible Win32 window on the same Windows runner; no antivirus attribution';trace=$trace}
@@ -142,6 +146,7 @@ try{
  if($newSize -ge $oldSize*0.7){throw 'Native EXE did not materially reduce size'}
  if($after -ge $before*0.85){throw "Startup improvement not established: before=$before after=$after"}
  Write-Host "PASS: native startup: baseline $($baseline -join ', ') ms; optimized $($optimized -join ', ') ms; size $oldSize -> $newSize bytes"
+ }
  Write-Host 'PASS: actual branded EXE launches, waits for consent, verifies payload, shows real intermediate progress, installs and reinstalls preserving data, launches installed app and exits'
  'verified'|Set-Content (Join-Path $artifacts 'native-installer-success.txt') -Encoding utf8
 }finally{
