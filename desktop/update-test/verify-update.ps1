@@ -48,7 +48,7 @@ function Wait-Phase([string]$name,[int]$seconds=90){
   if($h -ne [IntPtr]::Zero){
    $names=Names $h
    if($name -in $names){return $h}
-   if('Let’s try that again.' -in $names){throw ('Update error: '+($names -join ' | '))}
+   if("Let’s try that again." -in $names){throw ('Update error: '+($names -join ' | '))}
   };Start-Sleep -Milliseconds 200
  }
  throw "Missing update phase: $name. Last window names: $($names -join ' | ')"
