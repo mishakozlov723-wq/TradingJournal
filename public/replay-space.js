@@ -373,7 +373,6 @@
     curtainTimer=setTimeout(startLoading,420);
   }
   function curtainQuick(done){
-    if(document.documentElement.getAttribute('data-syter-interface')==='mono'){done();return;}
     var ov=$('rpCurtain'); if(!ov){ done(); return; }
     var run=++curtainRun; clearTimeout(curtainTimer);
     ov.className='rp-curtain'; void ov.offsetWidth; ov.classList.add('open'); ov.setAttribute('aria-hidden','false');
@@ -1103,8 +1102,8 @@
     var priceView={
       coordinate:function(){ return S.sess&&S.series?S.series.priceToCoordinate(curPrice())||0:0; },
       text:function(){ return S.sess?fp(curPrice()):''; },
-      textColor:function(){ return document.documentElement.getAttribute('data-syter-interface')==='mono'&&S.style.currentPrice.label.text===STYLE_DEFAULT.currentPrice.label.text?'#191919':S.style.currentPrice.label.text; },
-      backColor:function(){ return document.documentElement.getAttribute('data-syter-interface')==='mono'&&S.style.currentPrice.label.color===STYLE_DEFAULT.currentPrice.label.color?'#efeee9':S.style.currentPrice.label.color; },
+      textColor:function(){ return S.style.currentPrice.label.text; },
+      backColor:function(){ return S.style.currentPrice.label.color; },
       visible:function(){ return !!(S.sess&&S.series&&S.style.currentPrice.label.on&&S.series.priceToCoordinate(curPrice())!=null); },
       tickVisible:function(){ return false; }
     };
@@ -1485,30 +1484,12 @@
       });
     });
   }
-  // Monochrome is a presentation overlay, never a rewrite of stored chart preferences.
-  var monoExplicitColors = {};
-  function monoChartStyle(st){
-    if(document.documentElement.getAttribute('data-syter-interface')!=='mono') return st;
-    var out=cloneStyle(st);
-    ['body','border','wick'].forEach(function(k){
-      if(!monoExplicitColors[k+'.up']&&out[k].up===STYLE_DEFAULT[k].up)out[k].up='#efeee9';
-      if(!monoExplicitColors[k+'.down']&&out[k].down===STYLE_DEFAULT[k].down)out[k].down='#777773';
-    });
-    if(out.currentPrice.label.color===STYLE_DEFAULT.currentPrice.label.color)out.currentPrice.label.color='#efeee9';
-    if(out.currentPrice.label.text===STYLE_DEFAULT.currentPrice.label.text)out.currentPrice.label.text='#191919';
-    if(out.bg===STYLE_DEFAULT.bg)out.bg='#191919';
-    if(out.scale.text===STYLE_DEFAULT.scale.text)out.scale.text='#aaa9a3';
-    return out;
-  }
-  window.addEventListener('syter:interface-changed',function(){applyStyle();});
   function seriesStyleOpts(st){
-    st=monoChartStyle(st);
     return { priceLineVisible:false, lastValueVisible:false, upColor:st.body.on?st.body.up:TRANSPARENT, downColor:st.body.on?st.body.down:TRANSPARENT,
       borderVisible:!!st.border.on, borderUpColor:st.border.up, borderDownColor:st.border.down,
       wickVisible:!!st.wick.on, wickUpColor:st.wick.up, wickDownColor:st.wick.down };
   }
   function chartStyleOpts(st){
-    st=monoChartStyle(st);
     var ch={ width:st.cross.width, style:CROSS_CODE[st.cross.style], color:st.cross.color };
     return {
       layout:{ background:{ color:st.bg }, textColor:st.scale.text, fontSize:st.scale.size },
@@ -1666,7 +1647,7 @@
 
   /* ---- settings window ---- */
   function swatchHtml(key,o){
-    o=o||{}; var c=getPath(monoChartStyle(S.style),key);
+    o=o||{}; var c=getPath(S.style,key);
     return '<button type="button" class="rps-sw'+(o.line?' is-line':'')+'" data-color="'+key+'"'+(o.line?' data-line="'+o.line+'"':'')+(o.width?' data-width="'+o.width+'"':'')+(o.noAlpha?' data-noalpha="1"':'')+' title="Color"><i class="rps-ck"><b style="background:'+esc(c)+'"></b></i>'+(o.line?lineSvg(c,o.line,o.width):'')+'</button>';
   }
   function lineSvg(color,styleKey,widthKey){
@@ -1737,7 +1718,7 @@
   /* repaint swatches / checkboxes after a value change without rebuilding the pane (keeps open popups alive) */
   function refreshPane(){
     document.querySelectorAll('#rpsPane [data-color]').forEach(function(b){
-      var k=b.getAttribute('data-color'), c=getPath(monoChartStyle(S.style),k), i=b.querySelector('b'); if(i) i.style.background=c;
+      var k=b.getAttribute('data-color'), c=getPath(S.style,k), i=b.querySelector('b'); if(i) i.style.background=c;
       var ls=b.getAttribute('data-line'); if(ls){ var old=b.querySelector('.rps-ln'); if(old) old.outerHTML=lineSvg(c,ls,b.getAttribute('data-width')); }
     });
     document.querySelectorAll('#rpsPane [data-chk]').forEach(function(c){ c.checked=!!getPath(S.style,c.getAttribute('data-chk')); });
@@ -1748,7 +1729,7 @@
   function openSettings(tab,posDir){
     if(S.set||!S.sess) return;
     buildSettingsDom(); sessCfg(); closeCtx(); stopPlay(); closeMenu(); if(S.rewind) setRewind(false); drCancel(); drClosePop();
-    S.set={ tab:tab||'tool', posDir:posDir||'long', snap:cloneStyle(S.style), monoColors:Object.assign({},monoExplicitColors), pop:null };
+    S.set={ tab:tab||'tool', posDir:posDir||'long', snap:cloneStyle(S.style), pop:null };
     var ov=$('rpSet'), dlg=$('rpsDialog'); ov.setAttribute('aria-hidden','false'); ov.classList.add('is-open');
     dlg.style.left='0px'; dlg.style.top='0px'; renderSettings();
     var w=dlg.offsetWidth, h=dlg.offsetHeight;
@@ -1759,7 +1740,7 @@
     if(!S.set) return;
     closePop(); closeSave();
     if(keep){ saveStyle(); if(JSON.stringify(S.style.pos)!==JSON.stringify(S.set.snap.pos)) savePosStyle(); if(JSON.stringify(S.style.sess)!==JSON.stringify(S.set.snap.sess)) setPref({ ind:S.style.sess }); if(JSON.stringify(S.style.fvg)!==JSON.stringify(S.set.snap.fvg)) setPref({ fvg:cloneStyle(S.style.fvg) }); }
-    else { S.style=S.set.snap; monoExplicitColors=S.set.monoColors||{}; applyStyle(); }
+    else { S.style=S.set.snap; applyStyle(); }
     S.set=null; var ov=$('rpSet'); ov.classList.remove('is-open'); ov.setAttribute('aria-hidden','true');
   }
 
@@ -1778,7 +1759,7 @@
     var key=btn.getAttribute('data-color'), line=btn.getAttribute('data-line'), width=btn.getAttribute('data-width'), noAlpha=!!btn.getAttribute('data-noalpha');
     if(S.set.pop&&S.set.pop.kind==='color'&&S.set.pop.key===key){ closePop(); return; }
     closePop();
-    var cur=parseColor(getPath(monoChartStyle(S.style),key))||{ r:255, g:255, b:255, a:1 };
+    var cur=parseColor(getPath(S.style,key))||{ r:255, g:255, b:255, a:1 };
     var cells=PALETTE.map(function(row,ri){
       return '<div class="rps-prow'+(ri===2?' is-gap':'')+'">'+row.map(function(h){ return '<button type="button" class="rps-cell" data-hex="'+h+'" style="background:'+h+'" aria-label="'+h+'"></button>'; }).join('')+'</div>';
     }).join('');
@@ -1791,14 +1772,13 @@
   }
   function syncColorPop(){
     var p=S.set&&S.set.pop; if(!p||p.kind!=='color') return;
-    var c=parseColor(getPath(monoChartStyle(S.style),p.key))||{ r:255, g:255, b:255, a:1 }, hex='#'+hex2(c.r)+hex2(c.g)+hex2(c.b), pop=$('rpsPop');
+    var c=parseColor(getPath(S.style,p.key))||{ r:255, g:255, b:255, a:1 }, hex='#'+hex2(c.r)+hex2(c.g)+hex2(c.b), pop=$('rpsPop');
     pop.querySelectorAll('.rps-cell').forEach(function(b){ b.classList.toggle('is-sel',b.getAttribute('data-hex')===hex); });
     var rg=pop.querySelector('[data-alpha]'); if(rg){ var v=Math.round(c.a*100); if(+rg.value!==v) rg.value=v; rg.style.setProperty('--rgb',Math.round(c.r)+','+Math.round(c.g)+','+Math.round(c.b)); pop.querySelector('[data-pct]').textContent=v+'%'; }
     if(p.width){ var w=getPath(S.style,p.width); pop.querySelectorAll('[data-w]').forEach(function(b){ b.classList.toggle('is-on',+b.getAttribute('data-w')===w); }); }
     if(p.line){ var s=getPath(S.style,p.line); pop.querySelectorAll('[data-ls]').forEach(function(b){ b.classList.toggle('is-on',b.getAttribute('data-ls')===s); }); }
   }
   function setColorValue(key,col){
-    if(document.documentElement.getAttribute('data-syter-interface')==='mono')monoExplicitColors[key]=true;
     setPath(S.style,key,colorCss(col)); applyStyle(); refreshPane(); syncColorPop();
   }
   function openChoice(btn,isTime){
@@ -1864,7 +1844,7 @@
   function onPopInput(e){
     var p=S.set&&S.set.pop; if(!p||p.kind!=='color') return;
     var a=e.target.closest('[data-alpha]'); if(!a) return;
-    var cur=parseColor(getPath(monoChartStyle(S.style),p.key))||{ r:255, g:255, b:255, a:1 }; cur.a=(+a.value)/100; setColorValue(p.key,cur);
+    var cur=parseColor(getPath(S.style,p.key))||{ r:255, g:255, b:255, a:1 }; cur.a=(+a.value)/100; setColorValue(p.key,cur);
   }
 
   /* ---- templates (profiles) ---- */
