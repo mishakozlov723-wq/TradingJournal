@@ -87,8 +87,8 @@ Start-Sleep -Milliseconds 70
 [SyterKeys]::keybd_event(0x11,0,2,[UIntPtr]::Zero)
 `], { timeout: 10000, stdio: 'pipe' });
 }
-async function recordDesktop(){
- const out=path.resolve(__dirname,'../test-artifacts/mini-expand-screen');fs.mkdirSync(out,{recursive:true});
+async function recordDesktop(label){
+ const out=path.resolve(__dirname,'../test-artifacts/mode-cycle-'+label);fs.mkdirSync(out,{recursive:true});
  const ready=path.join(out,'ready');
  const script=`
 Add-Type -AssemblyName System.Drawing
@@ -116,6 +116,12 @@ $times|ConvertTo-Json|Set-Content '${out.replaceAll("'","''")}\\timestamps.json'
  // Wrap the promise: returning it directly would await the whole recording.
  return {done:completed};
 }
+function assertAnimated(start,label){
+ const cycle=stages.slice(start);
+ for(const stage of ['source-frame-verified','cover-presented','playback-completed','destination-presented','live-presented'])assert.ok(cycle.includes(stage),label+' reached '+stage);
+ assert.ok(cycle.indexOf('source-frame-verified')<cycle.indexOf('live-concealed'),label+' never hides live source before verified cover');
+ return cycle;
+}
 async function main(){
  assert.equal(process.platform,'win32');
  await until(()=>api.testState().miniReady,'journal native bridge ready');
@@ -141,18 +147,28 @@ async function main(){
  const expected={rr:'2.25',risk:'0.5',notes:'native draft',image:'draft-image'};
  let resizeCalls=0;const setBounds=w.setBounds.bind(w);w.setBounds=(...args)=>{resizeCalls++;return setBounds(...args);};
  for(let i=0;i<12;i++){
-  const before=resizeCalls;api.requestMode(true);await settled(true);
+  const before=resizeCalls,inStart=stages.length;
+  const inRecording=i===0?await recordDesktop('normal-to-mini'):null;
+  api.requestMode(true);await settled(true);assertAnimated(inStart,'normal to mini cycle '+i);
+  if(inRecording)await inRecording.done;
   assert.equal(w.getBounds().width,420);assert.equal(w.getMinimumSize()[0],380);
   assert.equal(w.getOpacity(),1);assert.equal(resizeCalls-before,1);
   assert.equal(journalWindowCount(),1);
-  api.requestMode(false);await settled(false);assert.deepEqual(w.getBounds(),original);
+  const outStart=stages.length;
+  const outRecording=i===0?await recordDesktop('mini-to-normal'):null;
+  api.requestMode(false);await settled(false);assertAnimated(outStart,'mini to normal cycle '+i);
+  if(outRecording)await outRecording.done;
+  assert.deepEqual(w.getBounds(),original);
   assert.equal(w.getOpacity(),1);assert.equal(wc.id,originalId);assert.deepEqual(await draft(),expected);
  }
  // Inspect the SOURCE of native maximize, not just the final rectangle.
  const results=[];
  for(const [label,fx,fy] of [['right-top',1,0],['left-bottom',0,1],['middle',.5,.4]]){
   w.maximize();await until(()=>w.isMaximized(),'maximized');await wait(200);
-  api.requestMode(true);await settled(true);
+  const inStart=stages.length;
+  const incomingRecording=label==='right-top'?await recordDesktop('maximized-to-mini'):null;
+  api.requestMode(true);await settled(true);const inboundStages=assertAnimated(inStart,'maximized to mini '+label);
+  if(incomingRecording)await incomingRecording.done;
   assert.equal(w.isMaximizable(),false);assert.equal(w.isFullScreenable(),false);
   const small=w.getBounds();small.height=Math.max(480,Math.min(small.height,area.height-160));
   w.setBounds({x:area.x+Math.round((area.width-small.width)*fx),y:area.y+Math.round((area.height-small.height)*fy),width:small.width,height:small.height});
@@ -162,7 +178,7 @@ async function main(){
   w.setBounds=(...args)=>{operations.push({kind:'setBounds',source:w.getBounds(),args});return nativeBounds(...args);};
   w.setMinimumSize=(...args)=>{operations.push({kind:'minimum',source:w.getBounds(),args});return nativeMinimum(...args);};
   let recorder=null;
-  if(label==='right-top')recorder=await recordDesktop();
+  if(label==='right-top')recorder=await recordDesktop('moved-mini-to-maximized');
   const stageStart=stages.length;
   api.requestMode(false);await settled(false);await until(()=>w.isMaximized(),'maximized from mini');
   const cycleStages=stages.slice(stageStart);
@@ -177,13 +193,13 @@ async function main(){
   assert.equal(operations.filter(o=>o.kind==='setBounds').length,0,'no intermediate relocation');
   const maxIndex=operations.indexOf(expansion);
   assert.equal(operations.slice(0,maxIndex).filter(o=>o.kind==='minimum').length,0,'no minimum-size growth before expansion');
-  results.push({label,source,operations,cycleStages});
+  results.push({label,source,operations,inboundStages,cycleStages});
   assert.deepEqual(await draft(),expected);
   w.unmaximize();await wait(150);assert.deepEqual(w.getBounds(),original,'manual normal restore must not return a mini-sized full journal');
  }
  fs.mkdirSync(path.join(__dirname,'../test-artifacts'),{recursive:true});
  fs.writeFileSync(path.join(__dirname,'../test-artifacts/mini-expand-origin.json'),JSON.stringify(results,null,2));
- console.log('PASS: native expansion from three moved mini positions; no preposition/width change; original normal rectangle and draft restored.');
+ console.log('PASS: both directions use verified source and completed animation; native expansion from three moved mini positions; no preposition/width change; original normal rectangle and draft restored.');
  for(const layout of ['00000419','00000409']){
   w.hide();await wait(450);const before=shortcutCalls;pressShortcut(layout);
   await until(()=>shortcutCalls===before+1,'actual global OEM_3 '+layout);await settled(true);assert.equal(w.isVisible(),true);
@@ -213,6 +229,6 @@ async function main(){
  w.close();assert.equal(w.isVisible(),false);assert.equal(wc.id,originalId);
  api.requestMode(false);await until(()=>w.isVisible(),'restore from tray');
  assert.equal(journalWindowCount(),1);
- console.log('PASS: production title/tray, Windows minimum width, 12 inbound-unchanged / verified-return mini cycles, drafts, maximized restore, actual global shortcuts, private UI hook vs Ctrl+0, optimized leaves, links and tray restore.');
+ console.log('PASS: production title/tray, Windows minimum width, 12 verified-animated bidirectional mini cycles, drafts, maximized restore, actual global shortcuts, private UI hook vs Ctrl+0, optimized leaves, links and tray restore.');
 }
 app.whenReady().then(main).then(()=>app.exit(0)).catch(error=>{console.error(error.stack||error);app.exit(1);});

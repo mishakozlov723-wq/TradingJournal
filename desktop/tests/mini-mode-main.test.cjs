@@ -12,7 +12,7 @@ function setup({ maximized = false, fullscreen = false } = {}) {
   let bounds = { ...(maximized || fullscreen ? area : normal) }, pinned = false, visible = true, focused=true;
   const presentationCalls=[], listeners={};
   let restoreBounds={...normal};
-  const motionCalls = [], nativeCalls = [];
+  const motionCalls = [], nativeCalls = [], prepareCalls = [];
   let maximizable = true, fullscreenable = true;
   const window = {
     isDestroyed: () => false, getBounds: () => ({ ...bounds }),
@@ -34,7 +34,7 @@ function setup({ maximized = false, fullscreen = false } = {}) {
   const contents = { mainFrame: frame, focus() {}, send: (...args) => sent.push(args) };
   const view = { webContents: { ...contents, isDestroyed: () => false }, setBounds() {} };
   const motion = {
-    async prepare(target, animate) { return animate; },
+    async prepare(target, animate) { prepareCalls.push({target,animate});return animate; },
     async move(target, animate, apply) { motionCalls.push({ target, animate }); if (apply) apply(); else window.setBounds(target); return true; },
     cancel() {},
   };
@@ -62,9 +62,9 @@ function setup({ maximized = false, fullscreen = false } = {}) {
   };
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../main.js'), 'utf8') +
-    '\nglobalThis.testApi = { setMiniMode, requestMode, showWindow, configure(w,v){win=w;view=v;miniReady=true;if(typeof installNormalBoundsRestore==="function")installNormalBoundsRestore(w);}, state(){return {miniMode,miniPinned};} };', context);
+    '\nglobalThis.testApi = { setMiniMode, prepareMiniMode, requestMode, showWindow, configure(w,v){win=w;view=v;miniReady=true;if(typeof installNormalBoundsRestore==="function")installNormalBoundsRestore(w);}, state(){return {miniMode,miniPinned};} };', context);
   context.testApi.configure(window, view);
-  return { api: context.testApi, window, view, handlers, sent, motionCalls,presentationCalls,
+  return { api: context.testApi, window, view, handlers, sent, motionCalls,presentationCalls,prepareCalls,
     blur:()=>{focused=false;},
     bounds: () => bounds, pinned: () => pinned, nativeCalls,
     maximizable:()=>maximizable, fullscreenable:()=>fullscreenable,
@@ -182,4 +182,20 @@ test('fullscreen expansion starts at the mini rectangle without preposition',asy
  assert.deepEqual(s.nativeCalls.find(c=>c.kind==='fullscreen'&&c.on).bounds,source);
  assert.equal(s.nativeCalls.filter(c=>c.kind==='bounds').length,0);
  s.window.setFullScreen(false);assert.deepEqual(s.bounds(),{x:100,y:80,width:1200,height:800});
+});
+
+test('both directions prepare and play the SAME verified animation',async()=>{
+ const s=setup({maximized:true});
+ for(let i=0;i<3;i++){
+  await s.api.prepareMiniMode(true);await s.api.setMiniMode(true);
+  await s.api.prepareMiniMode(false);await s.api.setMiniMode(false);
+ }
+ assert.equal(s.prepareCalls.length,6);assert.equal(s.motionCalls.length,6);
+ assert.ok(s.prepareCalls.every(c=>c.animate===true),'source snapshot animation must not be disabled inbound');
+ assert.ok(s.motionCalls.every(c=>c.animate===true),'neither direction may silently fall back to instant bounds');
+});
+test('reduced-motion flag disables animation equally in both directions',async()=>{
+ const s=setup();await s.api.prepareMiniMode(true,false);await s.api.setMiniMode(true,false);
+ await s.api.prepareMiniMode(false,false);await s.api.setMiniMode(false,false);
+ assert.ok(s.prepareCalls.every(c=>c.animate===false));assert.ok(s.motionCalls.every(c=>c.animate===false));
 });

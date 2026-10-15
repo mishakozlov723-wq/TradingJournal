@@ -7,8 +7,8 @@ const root = path.resolve(__dirname, '..');
 const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
 const pkg = require('../package.json');
 const lock = require('../package-lock.json');
-test('1.3.9 has consistent package version and no packaged diagnostic UI', () => {
-  assert.equal(pkg.version, '1.3.9');
+test('1.3.10 has consistent package version and no packaged diagnostic UI', () => {
+  assert.equal(pkg.version, '1.3.10');
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages[''].version, pkg.version);
   for (const file of ['resize-diagnostics.js', 'autumn-motion-probe.js']) {
@@ -22,7 +22,7 @@ test('1.3.9 has consistent package version and no packaged diagnostic UI', () =>
 });
 test('production keeps acceleration, live view, width floor and updater', () => {
   assert.doesNotMatch(main, /disableHardwareAcceleration|windowMotion\.warm/);
-  assert.match(main, /windowMotion\.move\(target, !enabled && animate/);
+  assert.match(main, /windowMotion\.move\(target, animate/);
   assert.match(main, /setupUpdates\(\);/);
   assert.match(main, /createUpdateController/);
   assert.ok(pkg.build.files.includes('lifecycle/**/*')); 
@@ -36,7 +36,7 @@ test('private hook precedes regular Ctrl+0 and has no user-facing hints', () => 
   const tray = main.slice(main.indexOf('function createTray'), main.indexOf('// ── "remember me"'));
   assert.doesNotMatch(tray, /preview|Ctrl.*0|Листья|Диагност|график/i);
 });
-test('only mini -> full uses the verified return compositor',()=>{
- assert.match(main,/windowMotion\.prepare\(modeTarget\(enabled\), !enabled && animate, true\)/);
+test('both directions use the same verified compositor',()=>{
+ assert.match(main,/windowMotion\.prepare\(modeTarget\(enabled\), animate, true\)/);
  for(const file of ['return-compositor.js','cover-presentation.js','mode-transition.html','mode-transition.css','mode-transition.js'])assert.ok(pkg.build.files.includes(file),file);
 });

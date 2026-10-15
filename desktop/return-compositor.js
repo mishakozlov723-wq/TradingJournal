@@ -1,7 +1,7 @@
 'use strict';
 const path = require('node:path');
 const {opaqueSnapshotMatcher,armPresentation} = require('./cover-presentation');
-// Used ONLY for mini -> full. This surface is empty/click-through at rest.
+// Shared by BOTH directions. This surface is empty/click-through at rest.
 function createReturnCompositor({BrowserWindow,nativeImage},bounds) {
   const cover = new BrowserWindow({...bounds,show:false,frame:false,transparent:true,
     backgroundColor:'#00000000',hasShadow:false,thickFrame:false,focusable:false,

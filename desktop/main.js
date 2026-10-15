@@ -127,7 +127,7 @@ function modeTarget(enabled) {
 }
 async function prepareMiniMode(enabled, animate = true) {
   if (!win || enabled === miniMode) return false;
-  return windowMotion.prepare(modeTarget(enabled), !enabled && animate, true);
+  return windowMotion.prepare(modeTarget(enabled), animate, true);
 }
 async function setMiniMode(enabled, animate = true) {
   enabled = !!enabled;
@@ -142,7 +142,7 @@ async function setMiniMode(enabled, animate = true) {
     miniBounds = win.getNormalBounds();
     miniMode = false;
   }
-  await windowMotion.move(target, !enabled && animate, () => {
+  await windowMotion.move(target, animate, () => {
     if (enabled) {
       if (win.isFullScreen()) win.setFullScreen(false);
       if (win.isMaximized()) win.unmaximize();
