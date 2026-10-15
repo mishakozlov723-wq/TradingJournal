@@ -8,7 +8,9 @@ const { createLifecycleWindow, publishLifecycleState } = require('../lifecycle/w
 const { verifyPayload, runSilent, installedExecutable } = require('./engine');
 const manifest = require('./manifest.json');
 // Independent installer profile, never the user's journal profile.
-app.setPath('userData', path.join(os.tmpdir(), 'syter-installer-profile'));
+const profile = path.join(os.tmpdir(), 'syter-installer-profile');
+fs.mkdirSync(profile, { recursive: true });
+app.setPath('userData', profile);
 let win, busy = false, exe = null;
 let state = { mode: 'install', phase: 'welcome', version: manifest.version, percent: null };
 function send(patch) { state = {...state, ...patch}; publishLifecycleState(win, state); }
