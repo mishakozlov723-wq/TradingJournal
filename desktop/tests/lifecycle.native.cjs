@@ -20,7 +20,7 @@ async function checkStartupOverflow(){
     const main=document.querySelector('main');
     const rule=[...document.styleSheets].flatMap(s=>[...s.cssRules]).find(r=>r.name==='enter');
     if(!rule)throw Error('Missing initial reveal keyframes');
-    const frames=[...rule.cssRules].map(r=>({offset:r.keyText==='from'?0:1,opacity:r.style.opacity,transform:r.style.transform||'none'}));
+    const frames=[...rule.cssRules].map(r=>({offset:r.keyText==='from'?0:r.keyText==='to'?1:parseFloat(r.keyText)/100,opacity:r.style.opacity,transform:r.style.transform||'none'}));
     main.getAnimations().forEach(a=>a.cancel());
     const animation=main.animate(frames,{duration:400,fill:'both'});animation.pause();
     const result=[0,50,100,200,399,400].map(t=>{
