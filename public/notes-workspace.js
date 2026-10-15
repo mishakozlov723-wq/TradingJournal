@@ -2746,13 +2746,11 @@
 
   var notesLoadingRun = 0;
   function notesTransition(done) {
-    if(document.documentElement.getAttribute('data-syter-interface')==='mono'){done();return;}
     notesLoadingRun++;
     var overlay=document.getElementById('notesTransitionOverlay');if(!overlay){done();return;}clearTimeout(notesTransitionTimer);overlay.classList.add('open');overlay.setAttribute('aria-hidden','false');notesTransitionTimer=setTimeout(function(){done();requestAnimationFrame(function(){overlay.classList.remove('open');overlay.setAttribute('aria-hidden','true');});},310);
   }
 
   function notesLoadingTransition(begin) {
-    if(document.documentElement.getAttribute('data-syter-interface')==='mono'){begin(function(){});return;}
     var overlay=document.getElementById('notesTransitionOverlay');
     if(!overlay){begin(function(){});return;}
     /* Keep the transition outside #appRoot. The app shell is width-limited
