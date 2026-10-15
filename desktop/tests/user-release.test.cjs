@@ -7,8 +7,8 @@ const root = path.resolve(__dirname, '..');
 const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
 const pkg = require('../package.json');
 const lock = require('../package-lock.json');
-test('1.3.0 has consistent package version and no packaged diagnostic UI', () => {
-  assert.equal(pkg.version, '1.3.0');
+test('1.3.7 has consistent package version and no packaged diagnostic UI', () => {
+  assert.equal(pkg.version, '1.3.7');
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages[''].version, pkg.version);
   for (const file of ['resize-diagnostics.js', 'autumn-motion-probe.js', 'cover-presentation.js',
@@ -25,8 +25,8 @@ test('production keeps acceleration, live view, width floor and updater', () => 
   assert.doesNotMatch(main, /disableHardwareAcceleration|createOverlay:|windowMotion\.warm/);
   assert.match(main, /windowMotion\.move\(target, false/);
   assert.match(main, /setupUpdates\(\);/);
-  assert.match(main, /autoUpdater\.autoDownload = true/);
-  assert.match(main, /autoUpdater\.autoInstallOnAppQuit = true/);
+  assert.match(main, /createUpdateController/);
+  assert.ok(pkg.build.files.includes('lifecycle/**/*')); 
   assert.match(main, /installWidthPolicy\(\)/);
   assert.match(main, /miniShortcut\.register\(\)/);
   assert.equal(pkg.build.appId, 'com.retocker.syter');

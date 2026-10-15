@@ -46,7 +46,7 @@ let win = null;      // frame + title bar
 let view = null;     // the site
 let tray = null;
 let isQuitting = false;
-let updatePrompted = false;
+
 const crypto = require('crypto');
 let captureTimer=null, captureHash='';
 function stopCapture(){if(captureTimer)clearInterval(captureTimer);captureTimer=null;captureHash='';}
@@ -443,30 +443,27 @@ function start() {
 }
 
 // ── app self-update ──
+let updateController = null, updateWindow = null;
 function setupUpdates() {
-  if (!app.isPackaged) return; // `npm start` (dev) never updates itself
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true; // installs quietly on next quit if you click "Later"
-  autoUpdater.on('error', (err) => {
-    try { fs.appendFileSync(path.join(app.getPath('userData'), 'update.log'), new Date().toISOString() + ' ' + (err && err.stack || err) + '\n'); } catch (e) {}
+  if (!app.isPackaged || updateController) return;
+  const { createUpdateController } = require('./lifecycle/controller');
+  const { createLifecycleWindow, publishLifecycleState } = require('./lifecycle/window');
+  const reveal = () => {
+    if (updateWindow && !updateWindow.isDestroyed()) { updateWindow.show(); updateWindow.focus(); return; }
+    updateWindow = createLifecycleWindow({ BrowserWindow, ipcMain, icon: ICON_PATH,
+      getState: () => updateController.snapshot(), onAction: name => updateController.action(name),
+      onClose: () => { updateController.action('later'); return true; } });
+    updateWindow.once('closed', () => { updateWindow = null; });
+  };
+  updateController = createUpdateController({ updater: autoUpdater, currentVersion: app.getVersion(),
+    publish: state => publishLifecycleState(updateWindow, state),
+    reveal, dismiss: () => { if (updateWindow && !updateWindow.isDestroyed()) updateWindow.hide(); },
+    prepareQuit: () => { isQuitting = true; }, restoreQuit: () => { isQuitting = false; },
+    log: err => { try { fs.appendFileSync(path.join(app.getPath('userData'), 'update.log'), new Date().toISOString() + ' ' + (err && err.stack || err) + '\n'); } catch (_) {} }
   });
-  autoUpdater.on('update-downloaded', (info) => {
-    if (updatePrompted || !win || win.isDestroyed()) return;
-    updatePrompted = true;
-    showWindow(); // the app may be sitting in the tray
-    dialog.showMessageBox(win, {
-      type: 'info',
-      buttons: ['Restart now', 'Later'],
-      defaultId: 0,
-      cancelId: 1,
-      title: 'SYTER update',
-      message: 'SYTER ' + info.version + ' is ready',
-      detail: 'Restart now to finish the update, or it will be installed the next time you close SYTER.',
-    }).then((r) => { if (r.response === 0) setImmediate(() => { isQuitting = true; autoUpdater.quitAndInstall(); }); });
-  });
-  const check = () => autoUpdater.checkForUpdates().catch(() => {});
-  setTimeout(check, 5000);
-  setInterval(check, UPDATE_EVERY_MS);
+  const timer = setTimeout(() => updateController.check(), 5000);
+  const interval = setInterval(() => updateController.check(), UPDATE_EVERY_MS);
+  app.once('will-quit', () => { clearTimeout(timer); clearInterval(interval); updateController.stop(); });
 }
 
 // the window only hides into the tray, so the app quits via the tray menu (or an update restart)
