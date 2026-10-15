@@ -56,6 +56,7 @@ try{
   try{
    $listener.Start();[IO.File]::WriteAllText($ready,'ready')
    while($true){
+    if(!$listener.Pending()){Start-Sleep -Milliseconds 100;continue}
     $client=$listener.AcceptTcpClient()
     try{
      $stream=$client.GetStream();$stream.ReadTimeout=5000;$stream.WriteTimeout=10000
@@ -112,10 +113,9 @@ try{
  Write-Host 'After about 5 seconds: Update now -> download -> Restart and install.'
  Write-Host 'The local download is capped at 8 MiB/s so you can see real progress.'
  Write-Host 'No profile files, passwords, browser settings or trades are modified by this script.'
- if($Automation){Start-Process $exe -ArgumentList '--remote-debugging-port=9229'}else{Start-Process $exe}
+ if($Automation){Start-Process $exe -ArgumentList '--force-renderer-accessibility'}else{Start-Process $exe}
  if($Automation){
-  & node (Join-Path $root 'verify-update.cjs') $root
-  if($LASTEXITCODE -ne 0){throw 'End-to-end updater UI test failed.'}
+  & (Join-Path $root 'verify-update.ps1') -Root $root
  }
  $deadline=[DateTime]::UtcNow.AddMinutes(15)
  while([DateTime]::UtcNow -lt $deadline){
