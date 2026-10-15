@@ -59,3 +59,9 @@ test('renderer privilege boundary is isolated, allowlisted and origin-bound',()=
   const src=fs.readFileSync(path.join(__dirname,'../lifecycle/window.js'),'utf8');assert.match(src,/sandbox: true/);assert.match(src,/contextIsolation: true/);assert.match(src,/nodeIntegration: false/);assert.match(src,/event\.senderFrame === win\.webContents\.mainFrame/);assert.match(src,/will-navigate/);
   const main=fs.readFileSync(path.join(__dirname,'../main.js'),'utf8');const section=main.slice(main.indexOf('function setupUpdates()'),main.indexOf('// the window only hides'));assert.doesNotMatch(section,/showMessageBox/);
 });
+
+test('successful launch releases the installer close guard before quitting',()=>{
+  const src=fs.readFileSync(path.join(__dirname,'../installer/main.js'),'utf8');
+  assert.match(src,/child\.once\('spawn', \(\) => \{ child\.unref\(\); busy = false; app\.quit\(\); \}\)/);
+  assert.match(src,/onClose:\(\)=>!busy/);
+});

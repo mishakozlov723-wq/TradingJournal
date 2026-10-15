@@ -33,7 +33,7 @@ async function action(name) {
     busy = true; send({phase:'launching',percent:null});
     const child = spawn(exe, [], {detached:true,stdio:'ignore',shell:false,cwd:path.dirname(exe)});
     child.once('error', error => { fail(error); send({retry:'launch',error:'SYTER was installed but could not open. Try launching it again.'}); });
-    child.once('spawn', () => { child.unref(); app.quit(); });
+    child.once('spawn', () => { child.unref(); busy = false; app.quit(); });
   }
 }
 if (!app.requestSingleInstanceLock()) app.quit();
