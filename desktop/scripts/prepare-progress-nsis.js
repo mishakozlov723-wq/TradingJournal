@@ -16,6 +16,6 @@ if(!original || !main.includes('!include "installSection.nsh"') || !section.star
 fs.writeFileSync(path.join(build,'progress-original.nsh'),original[0].replace('!macro extractUsing7za FILE','!macro syterOriginalExtract FILE')+'\n');
 section=section.replace('!include installer.nsh','!include installer.nsh\n!include "${PROJECT_DIR}\\installer\\progress-extract.nsh"');
 fs.writeFileSync(path.join(build,'progress-section.nsh'),section);
-main=main.replace('!include "installSection.nsh"','!include "${PROJECT_DIR}\\build\\progress-section.nsh"');
-fs.writeFileSync(path.join(build,'progress-installer.nsi'),main);
+// Final installer substitution is performed in memory after upstream creates
+// its uninstaller, by build-progress-nsis.js.
 console.log('Prepared locked NSIS byte-progress adapter; normal updater extraction unchanged.');

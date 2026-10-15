@@ -13,6 +13,7 @@ function render(s) {
   el('version').textContent = install ? s.version : `${s.currentVersion} → ${s.version || '…'}`;
   el('notes').hidden = s.phase !== 'available' || !s.notes; el('notes-text').textContent = s.notes || '';
   const busy = ['verifying','installing','finalizing','downloading','restarting','launching','checking'].includes(s.phase);
+  el('subtitle').hidden = install && busy;
   el('progress-area').hidden = !busy;
   el('stage').textContent = s.phase === 'installing' ? ({preparing:'Preparing installation',extracting:'Unpacking files',copying:'Installing files'})[s.stage] || 'Preparing installation' : ({verifying:'Verifying installer',finalizing:'Registering SYTER and shortcuts',downloading:'Download',restarting:'Restart and install',launching:'Launch',checking:'Checking'})[s.phase] || '';
   if (Number.isFinite(s.percent)) el('progress').value = s.percent; else el('progress').removeAttribute('value');

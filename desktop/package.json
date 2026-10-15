@@ -9,7 +9,7 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test tests/mini-shortcut.test.cjs tests/window-motion.test.cjs tests/cover-presentation.test.cjs tests/mini-mode-main.test.cjs tests/link-routing.test.cjs tests/view-layout.test.cjs tests/window-width-policy.test.cjs tests/interface-preview-shortcut.test.cjs tests/user-release.test.cjs tests/lifecycle.test.cjs",
-    "build": "node scripts/prepare-progress-nsis.js && electron-builder --win nsis --x64 --publish never && node scripts/publish-update.js && node scripts/build-branded-installer.js",
+    "build": "node scripts/prepare-progress-nsis.js && node scripts/build-progress-nsis.js && node scripts/publish-update.js && node scripts/build-branded-installer.js",
     "release": "npm version patch --no-git-tag-version && npm run build"
   },
   "dependencies": {
@@ -65,8 +65,7 @@
       "shortcutName": "SYTER",
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false,
-      "include": "installer/custom-install.nsh",
-      "script": "build/progress-installer.nsi"
+      "include": "installer/custom-install.nsh"
     },
     "publish": [
       {

@@ -8,6 +8,7 @@ const fs = require('node:fs');
 const assert = require('node:assert/strict');
 const { installedExecutable } = require('../installer/engine');
 const version = require('../package.json').version;
+const children=[];let installedTarget=null;
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 const artifacts=path.resolve(__dirname,'../test-artifacts');fs.mkdirSync(artifacts,{recursive:true});
 async function connect(port){
@@ -29,6 +30,7 @@ app.whenReady().then(async()=>{
   for (let pass = 0; pass < 2; pass++) {
     const port = 9227 + pass;
     const child=spawn(exe,[`--remote-debugging-port=${port}`],{stdio:'ignore',windowsHide:false});
+    children.push(child);
     const spawnError=new Promise((_r,reject)=>child.once('error',reject));
     const c=await Promise.race([connect(port),spawnError]);
     const evaluate=async expression=>{const r=await c.call('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
@@ -42,7 +44,7 @@ app.whenReady().then(async()=>{
       if(n===3 && !pass)await screenshot('progress');await wait(500);
     }
     assert.equal(phase,'ready','actual silent installation must succeed');if(!pass)await screenshot('installed');
-    installedPath=await installedExecutable(version);
+    installedPath=await installedExecutable(version);installedTarget=installedPath;
     assert.ok(fs.existsSync(installedPath));for(const file of sentinels)assert.equal(fs.readFileSync(file,'utf8'),'preserve-settings');
     // Exercise the actual Launch button after reinstall, not a mocked spawn.
     if (pass) await evaluate('document.getElementById("primary").click()');
@@ -74,4 +76,11 @@ Write-Host 'PASS: Launch SYTER starts the installed executable'
   console.log(launched.stdout.trim());
   for(const file of sentinels)assert.equal(fs.readFileSync(file,'utf8'),'preserve-settings');
   console.log('PASS: actual branded EXE launches, hashes payload, installs silently, verifies installed version, preserves existing data on reinstall, launches installed app and exits');app.exit(0);
-}).catch(error=>{console.error(error);app.exit(1);});
+}).catch(async error=>{
+  console.error(error);
+  // Start-Process -Wait also waits for descendants: never leave a failed
+  // bootstrapper or launched test app blocking the disposable runner.
+  for(const child of children)if(child.exitCode===null){try{await promisify(execFile)('taskkill.exe',['/PID',String(child.pid),'/T','/F'],{windowsHide:true});}catch(_){} }
+  if(installedTarget){try{await promisify(execFile)('powershell.exe',['-NoProfile','-NonInteractive','-Command',"Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -eq $env:SYTER_TEST_EXE } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"],{windowsHide:true,env:{...process.env,SYTER_TEST_EXE:installedTarget}});}catch(_){} }
+  app.exit(1);
+});
