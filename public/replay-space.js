@@ -274,7 +274,7 @@
               '<div class="rp-draft-title" id="rpDraftTitle"></div>'+
               '<div class="rp-draft-grid"><label>Entry<input class="rp-input" id="rpInEntry" type="text" inputmode="decimal" autocomplete="off"></label><label>SL<input class="rp-input" id="rpInSL" type="text" inputmode="decimal" autocomplete="off"></label><label>TP<input class="rp-input" id="rpInTP" type="text" inputmode="decimal" autocomplete="off"></label></div>'+
               '<div class="rp-muted rp-draft-info" id="rpDraftInfo"></div>'+
-              '<div class="rp-draft-hint">Drag the entry / SL / TP lines on the chart</div>'+
+              '<div class="rp-draft-hint">Drag the entry / SL / TP lines on the chart</div><div class="rp-draft-hint" title="OHLC candles do not reveal the intrabar price sequence. A pending entry and its exit may use the same candle range.">OHLC simulation · SL wins if SL and TP touch in one candle · entry candle uses its full range</div>'+
               '<div class="rp-draft-actions"><button class="rp-primary" id="rpDraftOk" type="button">Open</button><button class="rp-btn" id="rpDraftCancel" type="button">Cancel</button></div>'+
             '</div></div></div>'+
             '<div class="rp-trade-row"><label for="rpRisk">Risk, %</label><input class="rp-input" id="rpRisk" type="text" inputmode="decimal" autocomplete="off" value="1"></div>'+

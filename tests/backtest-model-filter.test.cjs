@@ -54,6 +54,7 @@ test('Replay bridge persists model ID/name on a closed trade and retains risk an
  const html=fs.readFileSync(path.join(__dirname,'../public/index.html'),'utf8');const block=html.match(/<script id="replay-bridge">([\s\S]*?)<\/script>/)[1];
  const c=fixture(),saved=[];c.window={};c.currentUser={login:'tester'};c.backtests=[{id:'bt1',startDate:'2026-01-01',endDate:'2026-01-10'}];c.allBacktestTrades=[];c.saveBacktestLocal=()=>{};
  c.db={collection:name=>({doc:id=>({set:obj=>{saved.push({name,id,obj:JSON.parse(JSON.stringify(obj))});return Promise.resolve();}})})};
+ c.tjDataGeneration=0;c.tjBacktestWrite=(name,id,data,options)=>Object.assign(c.db.collection(name).doc(id).set(data,options),{queued:true});
  vm.runInContext(fn('findTradingModel')+fn('applyTradeModel')+block,c);
  const rec=c.window.TJReplayBridge.addTrade('bt1',{modelId:'a',r:2,riskPercent:.5,openDT:'2026-01-02T12:00',closeDT:'2026-01-02T13:00'});
  assert.equal(rec.modelId,'a');assert.equal(rec.modelName,'H4FVG');assert.equal(saved[0].obj.modelId,'a');assert.equal(saved[0].obj.riskPercent,.5);assert.equal(c.backtests[0].rrText,'+2');

@@ -28,20 +28,24 @@ function installFirestoreDouble() {
     batch() {
       const updates = [];
       return {
-        update(ref, value) { updates.push([ref.key, value]); },
+        update(ref, value) { updates.push([ref.key, value, 'update']); },
+        set(ref, value, options) { updates.push([ref.key, value, options && options.merge ? 'merge' : 'set']); },
+        delete(ref) { updates.push([ref.key, null, 'delete']); },
         commit() {
           testBatchSizes.push(updates.length);
           if (testFailWrite) return Promise.reject(Error('test batch failure'));
           const data = saved();
-          for (const [key, value] of updates) {
-            if (!data[key]) return Promise.reject(Error('missing document'));
-            data[key] = merge(data[key], value);
+          for (const [key, value, kind] of updates) {
+            if(kind === 'delete'){delete data[key];continue;}
+            if (kind === 'update' && !data[key]) return Promise.reject(Error('missing document'));
+            data[key] = kind === 'set' ? value : merge(data[key] || {}, value);
           }
           localStorage.setItem('model-test-db', JSON.stringify(data));
           return Promise.resolve();
         }
       };
     },
+    async runTransaction(fn) {const batch=this.batch();await fn({get:r=>r.get({source:'server'}),set:batch.set,delete:batch.delete});return batch.commit();},
     collection(name) {
       const query = (field, value) => ({
         get() {
@@ -194,7 +198,7 @@ test('trading models browser regression', { timeout: 90000 }, async t => {
       const shot=await cmd('Page.captureScreenshot',{format:'png'});
       fs.writeFileSync(path.join(dir,name+'.png'),Buffer.from(shot.data,'base64'));
     }
-    const login = `USERS=[{login:'admin-test',email:'admin-test@journal.local',role:'admin',uid:'test-admin-uid'},{login:'user-test',email:'user-test@journal.local',role:'user',uid:'test-user-uid'}];tjAdminUid='test-admin-uid';currentUser=USERS[0];viewingUser=currentUser.login;el('loginScreen').style.display='none';el('appRoot').style.display='block';await loadData();render();hideOverviewSkeleton();`;
+    const login = `USERS=[{login:'admin-test',email:'admin-test@journal.local',role:'admin',uid:'test-admin-uid'},{login:'user-test',email:'user-test@journal.local',role:'user',uid:'test-user-uid'}];tjAdminUid='test-admin-uid';currentUser=USERS[0];firebase.auth().currentUser={uid:currentUser.uid,email:currentUser.email};viewingUser=currentUser.login;el('loginScreen').style.display='none';el('appRoot').style.display='block';await loadData();render();hideOverviewSkeleton();`;
     await cmd('Page.navigate', { url: 'http://127.0.0.1:' + server.address().port + '/' });
     await ready();
     await check('empty CTA and compact panel', login + `
@@ -310,7 +314,7 @@ test('trading models browser regression', { timeout: 90000 }, async t => {
       openLightbox(linked);assert(el('lightboxModel').querySelector('a'));closeLightbox();
       openNotePanel(linked);assert(el('notePanelModel').querySelector('a'));closeNotePanel();
       const marker=document.createElementNS('http://www.w3.org/2000/svg','circle');
-      openChartTradeCard({trade:linked,idx:1,equity:1,unit:'%'},marker,100,100,[]);assert(el('chartTradeCardGrid').querySelector('a'));closeChartTradeCard();
+      openChartTradeCard({trade:linked,idx:1,equity:1,unit:'%'},marker,100,100,[]);assert(el('btGrid').querySelector('a'));closeBestTrade();
     `);
     await check('inline editing keeps other properties intact', `
       const old=trades.find(t=>t.id==='old-trade'),before=JSON.stringify(old);
@@ -426,7 +430,7 @@ test('trading models browser regression', { timeout: 90000 }, async t => {
       setDateTimeInput(el('openInput'),'2020-01-03T09:00');setDateTimeInput(el('closeInput'),'2020-01-03T10:00');el('tradeForm').requestSubmit();await tick();
       assert(allBacktestTrades.length===1);const trade=allBacktestTrades[0];await loadBacktestTrades(bt);assert(trade.modelId===tradingModels[0].id);
       openBacktestTradeEditor(trade.id);assert(selectedTradeModelId===trade.modelId);el('magnitudeInput').value='4';el('tradeForm').requestSubmit();await tick();
-      assert(allBacktestTrades.length===1);assert(trade.r===4);assert(trade.modelId===tradingModels[0].id);
+      assert(allBacktestTrades.length===1,'edited length '+allBacktestTrades.length+' / '+el('saveError').textContent);assert(trade.r===4,'edited R '+trade.r+' stored '+JSON.stringify(allBacktestTrades)+' / '+el('saveError').textContent);assert(trade.modelId===tradingModels[0].id,'edited model');
       const local=readBacktestLocal('backtest_trades');assert(local[0].modelId===trade.modelId);
       const remote=await db.collection('backtestTrades').doc(trade.id).get();assert(remote.data().modelId===trade.modelId);
       bt.rrText='2,-1,3';const synthetic=buildBacktestTradesFromRR(bt);assert(synthetic.length===3);assert(computeStats(synthetic).totalPercent===4);assert(synthetic.every(t=>!t.modelId));

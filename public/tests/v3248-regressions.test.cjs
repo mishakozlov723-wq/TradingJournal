@@ -17,7 +17,8 @@ test('manual journal statistics are booked by close date and period detail table
 });
 
 test('manual journal rejects an impossible close-before-open trade', () => {
-  assert.match(html, /if \(closeDT < openDT\)/);
+  assert.match(html, /function validateTradeDateOrder\(/);
+  assert.match(html, /validateTradeDateOrder\(openDT, closeDT\)/);
   assert.match(html, /Close date cannot be earlier than open date\./);
 });
 

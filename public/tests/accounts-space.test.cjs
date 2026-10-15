@@ -13,7 +13,21 @@ function jsonResponse(obj, status = 200) {
   return { ok: status >= 200 && status < 300, status, async json(){ return obj; }, async text(){ return JSON.stringify(obj); } };
 }
 
+const testPrivateKey=require('node:crypto').generateKeyPairSync('rsa',{modulusLength:2048}).privateKey.export({type:'pkcs8',format:'pem'});
+let revocations=new Map();
+function serverStateMock(upstream){return async (url,options={})=>{
+  const u=String(url);
+  if(u==='https://oauth2.googleapis.com/token')return jsonResponse({access_token:'mock-server-access',expires_in:3600});
+  if(u.startsWith('https://firestore.googleapis.com/')){
+    const uid=decodeURIComponent(u.split('/').at(-1));
+    if(options.method==='PATCH')revocations.set(uid,JSON.parse(options.body).fields.generation.stringValue);
+    return revocations.has(uid)?jsonResponse({fields:{generation:{stringValue:revocations.get(uid)}}}):jsonResponse({},404);
+  }
+  return upstream(url,options);
+};}
 function installEnv() {
+  revocations=new Map();process.env.FIREBASE_SERVICE_ACCOUNT=JSON.stringify({type:'service_account',project_id:'retocker',client_email:'fixture@example.test',private_key:testPrivateKey});
+
   process.env.MYFXBOOK_EMAIL = 'legacy-owner@example.test';
   process.env.MYFXBOOK_PASSWORD = 'server-encryption-root';
   process.env.FIREBASE_WEB_API_KEY = 'firebase-public-key';
@@ -24,6 +38,7 @@ function installEnv() {
 }
 
 function freshProxy() {
+  global.fetch=serverStateMock(global.fetch);
   delete require.cache[require.resolve(proxyPath)];
   return require(proxyPath);
 }
@@ -86,7 +101,7 @@ test('Connect creates an encrypted UID-bound token and returns sanitized account
   assert.equal(body.ok,true);
   assert.equal(body.accounts[0].name,'FundedNext 1');
   assert.equal(body.accounts[0].invitationUrl,undefined);
-  assert.match(body.connectionToken,/^v1\./);
+  assert.match(body.connectionToken,/^v2\./);
   assert.doesNotMatch(body.connectionToken,/user1@example\.test|user-one-password/);
   assert.ok(calls.some(u=>u.includes('/logout.json')));
 });
@@ -178,4 +193,43 @@ test('Switching accounts never renders stale detail data from the previous accou
   assert.match(front, /accPrepareDetailSwitch/);
   assert.match(front, /is-account-switch/);
   assert.match(css, /\.accounts-detail-content\.is-account-switch\s*\{\s*display:none;/);
+});
+
+for(const provider of ['netlify','vercel']){
+  function loadHandler(){
+    if(provider==='netlify')return freshProxy().handler;
+    const p=path.join(root,'accounts-proxy-vercel/api/myfxbook.js');delete require.cache[require.resolve(p)];global.fetch=serverStateMock(global.fetch);const handle=require(p);
+    return async e=>{let code,result;await handle({method:e.httpMethod,headers:e.headers,query:e.queryStringParameters,body:e.body},{setHeader(){},status(n){code=n;return this;},json(v){result=v;return this;},end(){}});return {statusCode:code,body:JSON.stringify(result)};};
+  }
+  test(provider+': disconnect revokes a copied connection token for the same Firebase UID',async()=>{
+    installEnv();let logins=0;
+    global.fetch=async url=>{const u=String(url);if(u.includes('identitytoolkit'))return jsonResponse({users:[{localId:'user-1'}]});if(u.includes('/login.json')){logins++;return jsonResponse({session:'s'});}if(u.includes('/get-my-accounts.json'))return jsonResponse({accounts:[]});if(u.includes('/logout.json'))return jsonResponse({});throw Error('Unexpected URL');};
+    const handler=loadHandler(),body=JSON.parse((await handler(event('POST','connect','id-token',{body:{email:'x@y.test',password:'pw'}}))).body);
+    assert.ok(body.connectionToken);const disconnected=await handler(event('POST','disconnect'));assert.equal(disconnected.statusCode,200);assert.equal(JSON.parse(disconnected.body).revoked,true);
+    const before=logins,res=await handler(event('GET','accounts','id-token',{headers:{'x-tj-accounts-connection':body.connectionToken}}));assert.equal(res.statusCode,401);assert.equal(logins,before,'revoked token must not reach Myfxbook');
+  });
+  test(provider+': missing revocation configuration fails closed and never confirms disconnect',async()=>{
+    installEnv();delete process.env.FIREBASE_SERVICE_ACCOUNT;global.fetch=async()=>jsonResponse({users:[{localId:'user-1'}]});const handler=loadHandler(),res=await handler(event('POST','disconnect'));assert.equal(res.statusCode,503);assert.equal(JSON.parse(res.body).code,'REVOCATION_NOT_CONFIGURED');
+  });
+  test(provider+': report requests run concurrently and report failures remain partial',async()=>{
+    installEnv();let waiting=[],stage=false,seen=0;
+    global.fetch=async url=>{const u=String(url);if(u.includes('identitytoolkit'))return jsonResponse({users:[{localId:'user-1'}]});if(u.includes('/login.json'))return jsonResponse({session:'s'});if(u.includes('/get-my-accounts.json'))return jsonResponse({accounts:[{id:123}]});if(u.includes('/logout.json'))return jsonResponse({});
+      if(/get-history|get-open-trades|get-data-daily/.test(u)){seen++;return new Promise(resolve=>{waiting.push(()=>resolve(u.includes('get-history')?jsonResponse({history:[{id:'h'}]}):u.includes('get-open-trades')?jsonResponse({error:true,message:'unavailable'}):jsonResponse({dataDaily:[]})));if(waiting.length===3)waiting.forEach(fn=>fn());});}throw Error('Unexpected URL');};
+    const handler=loadHandler(),ct=JSON.parse((await handler(event('POST','connect','id-token',{body:{email:'x@y.test',password:'pw'}}))).body).connectionToken;
+    const result=await Promise.race([handler(event('GET','details','id-token',{query:{id:'123'},headers:{'x-tj-accounts-connection':ct}})),new Promise((_,reject)=>{const timer=setTimeout(()=>reject(Error('Reports were serialized')),1500);timer.unref();})]);
+    assert.equal(result.statusCode,200);assert.equal(seen,3);assert.equal(JSON.parse(result.body).history.length,1);assert.equal(JSON.parse(result.body).partialErrors.length,1);
+  });
+  test(provider+': expired and future-issued tokens are rejected before Myfxbook login',async()=>{
+    installEnv();global.fetch=async url=>String(url).includes('identitytoolkit')?jsonResponse({users:[{localId:'user-1'}]}):Promise.reject(Error('must not reach Myfxbook'));
+    const handler=loadHandler(),crypto=require('node:crypto');
+    function token(iat){const iv=crypto.randomBytes(12),key=crypto.createHash('sha256').update('tj-accounts-v1|'+process.env.MYFXBOOK_PASSWORD).digest(),cipher=crypto.createCipheriv('aes-256-gcm',key,iv),data=Buffer.concat([cipher.update(JSON.stringify({uid:'user-1',email:'x@y.test',password:'pw',iat,generation:'0'})),cipher.final()]);return ['v2',iv.toString('base64url'),data.toString('base64url'),cipher.getAuthTag().toString('base64url')].join('.');}
+    for(const iat of [Date.now()-31*86400000,Date.now()+120000])assert.equal((await handler(event('GET','accounts','id-token',{headers:{'x-tj-accounts-connection':token(iat)}}))).statusCode,401);
+  });
+}
+test('provider copies of trusted revocation and deadline modules stay identical',()=>{for(const name of ['connection-state','request-budget'])assert.equal(fs.readFileSync(path.join(root,'accounts-proxy/netlify/functions/lib/'+name+'.js'),'utf8'),fs.readFileSync(path.join(root,'accounts-proxy-vercel/lib/'+name+'.js'),'utf8'));});
+test('a request deadline is shared across awaits, never reset for each upstream call',async()=>{
+ const vm=require('node:vm'),code=fs.readFileSync(path.join(root,'accounts-proxy-vercel/lib/request-budget.js'),'utf8');let now=1000,calls=0;
+ const c={require,module:{exports:{}},Date:{now:()=>now},AbortSignal,Math,Error,fetch:async(_url,options)=>{calls++;assert.ok(options.signal);return jsonResponse({});}};
+ vm.createContext(c);vm.runInContext(code,c);
+ await c.module.exports.run(async()=>{await c.module.exports.request('https://fixture.test');now+=25001;await assert.rejects(c.module.exports.request('https://fixture.test'),e=>e.code==='ACCOUNTS_TIMEOUT');});assert.equal(calls,1);
 });

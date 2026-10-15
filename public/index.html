@@ -13,13 +13,13 @@
 <link rel="manifest" href="site.webmanifest">
 <meta name="theme-color" content="#000000">
 <link rel="stylesheet" href="accounts-space.css?v=a8eac3b11e">
-<link rel="stylesheet" href="replay-space.css?v=fef9e59b75">
+<link rel="stylesheet" href="replay-space.css?v=67388d5743">
 <script>
 /* v3.43: Accounts and Replay are not needed to show the journal, so their code
    (~450 KB) loads right after the page is ready instead of before it. Their menu
    entries stay hidden until the code has loaded, exactly as before. */
 (function(){
-  var files=['accounts-config.js?v=1053adb163','accounts-space.js?v=23eb807462','vendor/lightweight-charts.js?v=37e5f4fe8b','replay-data-config.js?v=a87b6ba84a','replay-space.js?v=f377453769'];
+  var files=['accounts-config.js?v=1053adb163','accounts-space.js?v=7a208a9ec5','vendor/lightweight-charts.js?v=37e5f4fe8b','replay-data-config.js?v=a87b6ba84a','replay-space.js?v=5c5341fe56'];
   var started=false;
   function next(i){
     if(i>=files.length)return;
@@ -1472,7 +1472,7 @@ separated by commas or new lines"></textarea>
   firebase.initializeApp(firebaseConfig);
   var db = firebase.firestore();
 </script>
-<script src="app.js?v=be9614f025"></script>
+<script src="app.js?v=5c9599df29"></script>
 <script src="trade-media.js?v=703d21b514"></script>
 <script src="desktop-autologin.js?v=8c2de5be35"></script>
 
@@ -1484,6 +1484,17 @@ separated by commas or new lines"></textarea>
      never to the account being viewed - the same rule the on-device copies already follow. */
   function replayMe(){ try { var u = firebase.auth().currentUser; return u ? { uid: u.uid, login: (currentUser && currentUser.login) || '' } : null; } catch(_) { return null; } }
   function pad(n){ return n < 10 ? '0' + n : '' + n; }
+  function persist(collection,id,data,options){
+    var owner=viewingUser,generation=tjDataGeneration;
+    var pending=tjBacktestWrite(collection,id,data,options,owner);
+    pending.catch(function(err){
+      console.error('Replay sync pending:',err);
+      if(viewingUser===owner&&tjDataGeneration===generation)showBacktestSyncError(pending.queued?'Saved on this device. Sync will retry when online.':'Not saved: '+err.message);
+    });
+    if(!pending.queued){showBacktestSyncError('Not saved: local storage is unavailable. Free space and retry.');return false;}
+    return true;
+  }
+
   window.TJReplayBridge = {
     ready: function(){ return !!(typeof db !== 'undefined' && currentUser && viewingUser); },
     isOwnAccount: function(){ return !!(currentUser && viewingUser && currentUser.login === viewingUser); },
@@ -1503,8 +1514,8 @@ separated by commas or new lines"></textarea>
       var bt = { id: Date.now().toString() + Math.random().toString(36).slice(2, 6), name: o.name || 'Replay', uid: ow.uid, ownerLogin: viewingUser,
         startDate: o.startYMD + 'T00:00:00', endDate: o.endYMD + 'T23:59:59.999', createdAt: new Date().toISOString(),
         source: 'replay', asset: o.asset || null, rrText: '', daysTested: o.daysTested || 0 };
+      if(!persist('backtests',bt.id,bt))return null;
       backtests.unshift(bt); saveBacktestLocal();
-      db.collection('backtests').doc(bt.id).set(bt).catch(function(err){ console.error('replay backtest save failed:', err); });
       return bt;
     },
     getBacktest: function(id){ return backtests.filter(function(b){ return b.id === id; })[0] || null; },
@@ -1521,13 +1532,10 @@ separated by commas or new lines"></textarea>
       var rec = Object.assign({ id: Date.now().toString() + Math.random().toString(36).slice(2, 6), uid: ow.uid, backtestId: btId }, t);
       var modelId = rec.modelId; delete rec.modelId;
       applyTradeModel(rec, modelId);
+      if(!persist('backtestTrades',rec.id,rec))return null;
       allBacktestTrades.push(rec);
       this.syncRR(bt);
       saveBacktestLocal();
-      db.collection('backtestTrades').doc(rec.id).set(rec).catch(function(err){
-        console.error('replay trade save failed:', err);
-        if (typeof showBacktestSyncError === 'function') showBacktestSyncError('The trade was saved on this device, but could not be synced. Check your connection.');
-      });
       return rec;
     },
     /* keep rrText mirrored so exports / old views still show the R values */
@@ -1537,24 +1545,28 @@ separated by commas or new lines"></textarea>
     },
     updateBacktest: function(btId, patch){
       var bt = backtests.filter(function(b){ return b.id === btId; })[0]; if (!bt) return;
-      Object.assign(bt, patch); if (patch.rrText === undefined) this.syncRR(bt);
-      saveBacktestLocal();
-      var payload = Object.assign({}, patch); payload.rrText = bt.rrText;
-      db.collection('backtests').doc(btId).set(payload, { merge: true }).catch(function(err){ console.error('replay backtest update failed:', err); });
+      var candidate=Object.assign({},bt,patch);if(patch.rrText===undefined)this.syncRR(candidate);
+      var payload=Object.assign({},patch,{rrText:candidate.rrText});
+      if(!persist('backtests',btId,payload,{merge:true}))return false;
+      Object.assign(bt,candidate);saveBacktestLocal();return true;
     },
     /* partial update of a saved trade (e.g. hiddenOnChart) — stats and Backtest Space keep counting it */
     patchTrade: function(id, patch){
       var tr = allBacktestTrades.filter(function(t){ return t.id === id; })[0]; if (!tr) return;
-      Object.assign(tr, patch); saveBacktestLocal();
-      db.collection('backtestTrades').doc(id).set(patch, { merge: true }).catch(function(err){ console.error('replay trade patch failed:', err); });
+      if(!persist('backtestTrades',id,patch,{merge:true}))return false;
+      Object.assign(tr, patch); saveBacktestLocal();return true;
     },
     deleteTrade: function(id){
       var tr = allBacktestTrades.filter(function(t){ return t.id === id; })[0]; if (!tr) return;
+      var deleteOwner=viewingUser,deleteGeneration=tjDataGeneration;
+      var pending=tjDeleteBacktestRecords([tr],null,deleteOwner);
+      var queued=false;try{queued=tjBacktestOutbox(deleteOwner).some(function(op){return op.parts.some(function(part){return part.some(function(w){return w.collection==='backtestTrades'&&w.id===id&&w.remove;});});});}catch(_){}
+      pending.catch(function(err){if(viewingUser===deleteOwner&&tjDataGeneration===deleteGeneration)showBacktestSyncError(queued?'Deletion is queued and will retry when online.':'Deletion was not saved: '+err.message);});
+      if(!queued)return;
       allBacktestTrades = allBacktestTrades.filter(function(t){ return t.id !== id; });
       var bt = backtests.filter(function(b){ return b.id === tr.backtestId; })[0]; if (bt) this.syncRR(bt);
       saveBacktestLocal();
-      db.collection('backtestTrades').doc(id).delete().catch(function(err){ console.error(err); });
-      if (bt) db.collection('backtests').doc(bt.id).set({ rrText: bt.rrText }, { merge: true }).catch(function(){});
+      if (bt) persist('backtests',bt.id,{rrText:bt.rrText},{merge:true});
     },
     /* Replay chart-style templates (collection replayProfiles, one doc per template, owned by uid). */
     profilesLoad: function(){
@@ -1583,7 +1595,7 @@ separated by commas or new lines"></textarea>
 </script>
 
 <!-- Notes v3.20.3: database runtime and styles are embedded; no additional asset request. -->
-<script src="notes-workspace.js?v=144b04f1b3"></script>
+<script src="notes-workspace.js?v=06d8d5dae6"></script>
 
 
 
