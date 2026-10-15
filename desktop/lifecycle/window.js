@@ -7,7 +7,8 @@ function lifecycleHeight(state) {
 }
 function publishLifecycleState(win, state) {
   if (!win || win.isDestroyed()) return;
-  win.setContentSize(620, lifecycleHeight(state));
+  const height = lifecycleHeight(state);
+  if (win.getContentSize()[1] !== height) win.setContentSize(620, height);
   win.webContents.send('syter-lifecycle:changed', state);
 }
 function createLifecycleWindow({ BrowserWindow, ipcMain, icon, getState, onAction, onClose, parent }) {

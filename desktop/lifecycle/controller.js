@@ -4,7 +4,7 @@ function notesText(notes) {
   const text = Array.isArray(notes) ? notes.map(n => n.note || '').join('\n') : String(notes || '');
   return text.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').slice(0, 6000).trim();
 }
-function createUpdateController({ updater, currentVersion, publish, reveal, dismiss, prepareQuit, log = () => {} }) {
+function createUpdateController({ updater, currentVersion, publish, reveal, dismiss, prepareQuit, restoreQuit = () => {}, log = () => {} }) {
   let state = { mode: 'update', phase: 'checking', currentVersion, version: '', notes: '', percent: null };
   let stopped = false, downloadPromise = null, reminder = null;
   const handlers = [];
@@ -12,6 +12,7 @@ function createUpdateController({ updater, currentVersion, publish, reveal, dism
   const on = (name, fn) => { updater.on(name, fn); handlers.push([name, fn]); };
   const fail = error => {
     log(error);
+    if (state.phase === 'restarting') restoreQuit();
     if (stopped) return;
     const retry = state.phase === 'downloading' ? 'download' : state.phase === 'restarting' ? 'restart' : 'check';
     send({ phase: 'error', retry, error: 'Could not complete the update. Check your connection and try again.' });

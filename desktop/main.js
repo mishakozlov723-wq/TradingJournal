@@ -458,7 +458,7 @@ function setupUpdates() {
   updateController = createUpdateController({ updater: autoUpdater, currentVersion: app.getVersion(),
     publish: state => publishLifecycleState(updateWindow, state),
     reveal, dismiss: () => { if (updateWindow && !updateWindow.isDestroyed()) updateWindow.hide(); },
-    prepareQuit: () => { isQuitting = true; },
+    prepareQuit: () => { isQuitting = true; }, restoreQuit: () => { isQuitting = false; },
     log: err => { try { fs.appendFileSync(path.join(app.getPath('userData'), 'update.log'), new Date().toISOString() + ' ' + (err && err.stack || err) + '\n'); } catch (_) {} }
   });
   const timer = setTimeout(() => updateController.check(), 5000);

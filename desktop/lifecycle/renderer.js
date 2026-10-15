@@ -11,7 +11,7 @@ function render(s) {
   el('subtitle').textContent = install ? (s.phase === 'ready' ? 'Everything is ready. Open your journal.' : 'The same SYTER. A dedicated desktop app.') : (s.phase === 'ready' ? 'Restart to finish installing the update.' : 'Your journal and settings stay with you.');
   el('version-label').textContent = install ? 'Version' : 'Version update';
   el('version').textContent = install ? s.version : `${s.currentVersion} → ${s.version || '…'}`;
-  el('notes').hidden = !s.notes; el('notes-text').textContent = s.notes || '';
+  el('notes').hidden = s.phase !== 'available' || !s.notes; el('notes-text').textContent = s.notes || '';
   const busy = ['verifying','installing','downloading','restarting','launching','checking'].includes(s.phase);
   el('progress-area').hidden = !busy;
   el('stage').textContent = ({verifying:'Verifying installer',installing:'Installing files',downloading:'Download',restarting:'Restart and install',launching:'Launch',checking:'Checking'})[s.phase] || '';
