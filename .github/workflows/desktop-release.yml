@@ -126,6 +126,7 @@ jobs:
             desktop/test-artifacts/installer-progress.json
             desktop/test-artifacts/native-installer-*.png
             desktop/test-artifacts/native-installer-performance.json
+            desktop/test-artifacts/native-installer-accessibility.json
           if-no-files-found: warn
           retention-days: 14
       - name: Save verified installer

@@ -23,7 +23,20 @@ $exe=Join-Path $root "release/SYTER-Install-$version.exe"
 $old=Join-Path $root 'baseline/SYTER-Install-1.3.3.exe'
 $baseline=@();$optimized=@();$trace=@();$processes=@();$installedPath=$null
 function Wait-Window([string]$Title,[int]$Timeout=60000){$watch=[Diagnostics.Stopwatch]::StartNew();while($watch.ElapsedMilliseconds -lt $Timeout){$h=[InstallerWindows]::Find($Title);if($h -ne [IntPtr]::Zero){return $h};Start-Sleep -Milliseconds 15};throw "Window did not appear: $Title"}
-function Element($Window,[string]$Id){$condition=[Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty,$Id);return $Window.FindFirst([Windows.Automation.TreeScope]::Descendants,$condition)}
+function Element($Window,[string]$Id){
+ $condition=[Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty,$Id)
+ $found=$Window.FindFirst([Windows.Automation.TreeScope]::Descendants,$condition);if($found){return $found}
+ # .NET Framework's legacy MSAA bridge may expose Win32 IDs, not Control.Name.
+ $all=$Window.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Condition]::TrueCondition)
+ foreach($item in $all){
+  $current=$item.Current
+  if($Id -eq 'PrimaryAction' -and $current.ControlType -eq [Windows.Automation.ControlType]::Button -and $current.Name -in @('Install SYTER','Please wait','Launch SYTER','Try again')){return $item}
+  if($Id -eq 'CloseAction' -and $current.Name -eq 'Close'){return $item}
+  if($Id -eq 'Percent' -and $current.Name -match '^\d+%$'){return $item}
+  if($Id -eq 'Stage' -and $current.Name -in @('Unpacking files','Installing files','Registering SYTER and shortcuts','Preparing installation')){return $item}
+ }
+ return $null
+}
 function Click($Element){if(!$Element){throw 'Missing action button'};$pattern=$Element.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern);$pattern.Invoke()}
 function Screenshot([IntPtr]$Handle,[string]$Name){
  $rect=[InstallerWindows+Rect]::new();[InstallerWindows]::GetWindowRect($Handle,[ref]$rect)|Out-Null
@@ -48,8 +61,12 @@ try{
   $handle=Wait-Window 'SYTER Installer';$optimized+=$watch.ElapsedMilliseconds
   $window=[Windows.Automation.AutomationElement]::FromHandle($handle)
   [InstallerWindows]::SetForegroundWindow($handle)|Out-Null;Start-Sleep -Milliseconds 200
-  $button=Element $window 'PrimaryAction';if($button.Current.Name -ne 'Install SYTER'){throw 'Installer must wait for user consent'}
-  if($pass -eq 0){Screenshot $handle 'welcome'}
+  if($pass -eq 0){
+   Screenshot $handle 'welcome'
+   $tree=$window.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Condition]::TrueCondition)
+   @($tree|ForEach-Object{@{name=$_.Current.Name;id=$_.Current.AutomationId;type=$_.Current.ControlType.ProgrammaticName}})|ConvertTo-Json|Set-Content (Join-Path $artifacts 'native-installer-accessibility.json')
+  }
+  $button=Element $window 'PrimaryAction';if(!$button -or $button.Current.Name -ne 'Install SYTER'){throw 'Install consent button missing from UI Automation'}
   $bounds=$window.Current.BoundingRectangle
   Click $button
   $ready=$false;$sawIntermediate=$false;$sawProgressShot=$false;$wait=[Diagnostics.Stopwatch]::StartNew()
