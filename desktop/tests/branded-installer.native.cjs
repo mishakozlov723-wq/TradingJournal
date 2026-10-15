@@ -22,7 +22,8 @@ async function connect(port){
 app.whenReady().then(async()=>{
   assert.equal(process.platform,'win32');
   // Runner profile only. A sentinel must survive initial install and reinstall.
-  const sentinel=path.join(app.getPath('appData'),'syter-desktop','syter-preservation-test.txt');fs.mkdirSync(path.dirname(sentinel),{recursive:true});fs.writeFileSync(sentinel,'preserve-settings');
+  const sentinels=['SYTER','syter-desktop'].map(name=>path.join(app.getPath('appData'),name,'syter-preservation-test.txt'));
+  for(const file of sentinels){fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,'preserve-settings');}
   const exe=path.resolve(__dirname,`../release/SYTER-Install-${version}.exe`);
   let installedPath;
   for (let pass = 0; pass < 2; pass++) {
@@ -42,7 +43,7 @@ app.whenReady().then(async()=>{
     }
     assert.equal(phase,'ready','actual silent installation must succeed');if(!pass)await screenshot('installed');
     installedPath=await installedExecutable(version);
-    assert.ok(fs.existsSync(installedPath));assert.equal(fs.readFileSync(sentinel,'utf8'),'preserve-settings');
+    assert.ok(fs.existsSync(installedPath));for(const file of sentinels)assert.equal(fs.readFileSync(file,'utf8'),'preserve-settings');
     // Exercise the actual Launch button after reinstall, not a mocked spawn.
     if (pass) await evaluate('document.getElementById("primary").click()');
     else await evaluate('window.syterLifecycle.action("close")');
@@ -66,6 +67,6 @@ Write-Host 'PASS: Launch SYTER starts the installed executable'
 `);
   const launched=await promisify(execFile)(ps,['-NoProfile','-NonInteractive','-File',script,'-AppPath',installedPath],{windowsHide:true});
   console.log(launched.stdout.trim());
-  assert.equal(fs.readFileSync(sentinel,'utf8'),'preserve-settings');
+  for(const file of sentinels)assert.equal(fs.readFileSync(file,'utf8'),'preserve-settings');
   console.log('PASS: actual branded EXE launches, hashes payload, installs silently, verifies installed version, preserves existing data on reinstall, launches installed app and exits');app.exit(0);
 }).catch(error=>{console.error(error);app.exit(1);});
