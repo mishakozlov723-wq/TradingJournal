@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: syter-desktop-release
@@ -101,16 +102,19 @@ jobs:
           path: desktop/test-artifacts/*icon*.png
           if-no-files-found: warn
           retention-days: 7
+      - name: Download previous test installer for same-runner startup comparison
+        if: ${{ !inputs.check_only }}
+        uses: actions/download-artifact@v4
+        with:
+          name: SYTER-windows-release
+          run-id: 38718005829
+          github-token: ${{ github.token }}
+          path: desktop/baseline
       - name: Verify delivered branded installer EXE
         if: ${{ !inputs.check_only }}
         run: |
-          $electron = (Resolve-Path ./node_modules/electron/dist/electron.exe).Path
-          $script = (Resolve-Path ./tests/branded-installer.native.cjs).Path
-          $test = Start-Process -FilePath $electron -ArgumentList "`"$script`"" -Wait -PassThru -NoNewWindow -RedirectStandardOutput installer-test.log -RedirectStandardError installer-test-error.log
-          Get-Content installer-test.log
-          Get-Content installer-test-error.log
-          if ($test.ExitCode -ne 0) { throw "Actual installer EXE test failed: $($test.ExitCode)" }
-          if (!(Select-String -Path installer-test.log -Pattern "PASS: actual branded EXE launches" -Quiet)) { throw "Installer test did not reach completion" }
+          ./tests/native-installer.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Native installer verification failed" }
       - name: Save branded installer and update previews
         if: always()
         uses: actions/upload-artifact@v4
@@ -120,6 +124,8 @@ jobs:
             desktop/test-artifacts/lifecycle-*.png
             desktop/test-artifacts/branded-exe-*.png
             desktop/test-artifacts/installer-progress.json
+            desktop/test-artifacts/native-installer-*.png
+            desktop/test-artifacts/native-installer-performance.json
           if-no-files-found: warn
           retention-days: 14
       - name: Save verified installer

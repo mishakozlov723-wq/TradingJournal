@@ -86,3 +86,14 @@ test('initial reveal only fades, without overflowing translated content',()=>{
   assert.match(css,/@keyframes enter\{from\{opacity:0\}to\{opacity:1\}\}/);
   assert.doesNotMatch(css,/translateY\(6px\)/);
 });
+
+test('optimized native installer does not unpack a second Electron before showing UI',()=>{
+ const build=fs.readFileSync(path.join(__dirname,'../scripts/build-branded-installer.js'),'utf8');
+ assert.doesNotMatch(build,/require\('electron-builder'\)|createTarget\('portable'/);
+ const native=fs.readFileSync(path.join(__dirname,'../installer/native/Installer.cs'),'utf8');
+ const ctor=native.slice(native.indexOf('public InstallerWindow()'),native.indexOf('Label Label('));
+ assert.doesNotMatch(ctor,/PreparePayload|GetManifestResourceStream\("Payload"\)/);
+ assert.match(native,/await Task.Run\(\(Action\)PreparePayload\)/);
+ assert.match(native,/digest!=BuildInfo.Sha256/);
+ assert.match(native,/totalWork=total\*2/);
+});
