@@ -1712,7 +1712,7 @@
         chkRow('currentPrice.label.on','Price label on scale',swatchHtml('currentPrice.label.color'))+
         plainRow('Label text',swatchHtml('currentPrice.label.text',{ noAlpha:true }));
     }
-    var pane=$('rpsPane'), keepTop=pane.scrollTop; pane.innerHTML=html; pane.classList.toggle('rps-no-scrollbar',tab==='sess'); pane.scrollTop=keepScroll?keepTop:0;
+    var pane=$('rpsPane'), keepTop=pane.scrollTop; pane.innerHTML=html; pane.classList.toggle('rps-no-scrollbar',tab==='sess'||tab==='look'); pane.scrollTop=keepScroll?keepTop:0;
     var tp=$('rpsTpl'); if(tp) tp.style.display=(tab==='pos'||tab==='sess'||tab==='fvg')?'none':'';
   }
   /* repaint swatches / checkboxes after a value change without rebuilding the pane (keeps open popups alive) */
