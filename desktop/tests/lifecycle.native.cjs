@@ -39,12 +39,31 @@ app.whenReady().then(async()=>{
   const updater=new EventEmitter();let installed,downloads=0,quits=0;
   updater.checkForUpdates=async()=>{};updater.downloadUpdate=async()=>{downloads++;};updater.quitAndInstall=(...args)=>{installed=args;};
   const flow=createUpdateController({updater,currentVersion:'1.3.0',publish:s=>publishLifecycleState(win,s),reveal:()=>{},dismiss:()=>win.hide(),prepareQuit:()=>quits++});
-  updater.emit('update-available',{version:'1.3.1',releaseNotes:'Branded desktop installation.\nA new in-app update flow.\nYour journal stays unchanged.'});
+  updater.emit('update-available',{version:'1.3.1',releaseNotes:require('../release-notes.json').map(note=>'- '+note).join('\n')});
   win=createLifecycleWindow({BrowserWindow,ipcMain,getState:()=>flow.snapshot(),onAction:name=>flow.action(name)});
   await new Promise(r=>win.webContents.once('did-finish-load',r));expectedBounds=win.getBounds();
   assert.equal(await win.webContents.executeJavaScript('typeof require'),'undefined');
   assert.equal(await win.webContents.executeJavaScript('window.syterLifecycle.snapshot().phase'),'available');
   await shot('available');
+  const notesStyle=await win.webContents.executeJavaScript(`(()=>{
+    const notes=document.getElementById('notes-text');return {text:notes.textContent,
+      heading:document.querySelector('#notes h2').textContent,
+      fits:notes.scrollHeight<=notes.clientHeight,
+      scrollbar:getComputedStyle(notes).scrollbarWidth,
+      chrome:getComputedStyle(notes,'::-webkit-scrollbar').display};
+  })()`);
+  assert.equal(notesStyle.heading,'Что нового');assert.equal(notesStyle.fits,true,'short Russian summary fits without scrolling');
+  assert.match(notesStyle.text,/[А-Яа-яЁё]/);assert.equal(notesStyle.scrollbar,'none');assert.equal(notesStyle.chrome,'none');
+  updater.emit('update-available',{version:'1.3.1',releaseNotes:Array(20).fill('Дополнительная строка для проверки скрытого ползунка.').join('\n')});
+  await wait(100);
+  const overflow=await win.webContents.executeJavaScript(`(()=>{const n=document.getElementById('notes-text');n.scrollTop=40;
+    return {scrollable:n.scrollHeight>n.clientHeight,scrolled:n.scrollTop>0,
+      gutter:n.offsetWidth-n.clientWidth,chrome:getComputedStyle(n,'::-webkit-scrollbar').display};})()`);
+  assert.deepEqual(overflow,{scrollable:true,scrolled:true,gutter:0,chrome:'none'});
+  await shot('notes-no-scrollbar');
+  updater.emit('update-available',{version:'1.3.1',releaseNotes:require('../release-notes.json').map(note=>'- '+note).join('\n')});
+  await wait(100);
+
   await win.webContents.executeJavaScript('document.getElementById("primary").click()');await wait(100);assert.equal(downloads,1);
   updater.emit('download-progress',{percent:37.5,total:104857600,transferred:39321600});await shot('download');
   updater.emit('error',Error('offline'));await shot('error');

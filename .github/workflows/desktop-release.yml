@@ -3,6 +3,10 @@ name: Verify and build SYTER desktop
 on:
   workflow_dispatch:
     inputs:
+      notes_only:
+        description: Focus checks on update notes and scrollbar styling; no mini animation or installer redesign checks
+        type: boolean
+        default: false
       reuse_verified_update:
         description: Reuse the verified 1.3.7 update payload; only build the native wrapper
         type: boolean
@@ -61,10 +65,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Electron runtime installation failed' }
       - name: Prepare native icon resources
         run: ./scripts/prepare-build-assets.ps1
-      - name: Run regression tests
-        run: npm test
+      - name: Run relevant regression tests
+        run: |
+          if ('${{ inputs.notes_only }}' -eq 'true') { node --test tests/update-notes.test.cjs }
+          else { npm test }
+          if ($LASTEXITCODE -ne 0) { throw 'Regression tests failed' }
       - name: Verify resize animation continuity and draft preservation
-        if: ${{ !inputs.installer_only }}
+        if: ${{ !inputs.installer_only && !inputs.notes_only }}
         run: |
           $electron = (Resolve-Path ./node_modules/electron/dist/electron.exe).Path
           $script = (Resolve-Path ./tests/resize-performance.native.cjs).Path
@@ -73,7 +80,7 @@ jobs:
           Get-Content resize-test-error.log
           if ($test.ExitCode -ne 0) { throw "Live resize test failed: $($test.ExitCode)" }
       - name: Measure 1.3.10 preparation on this same Windows runner
-        if: ${{ !inputs.installer_only }}
+        if: ${{ !inputs.installer_only && !inputs.notes_only }}
         run: |
           git fetch --no-tags --depth=1 origin d4b69b90a881f6e1c92899c9bf42743c9a98bf78
           if ($LASTEXITCODE -ne 0) { throw 'Cannot fetch exact 1.3.10 timing baseline' }
@@ -97,7 +104,7 @@ jobs:
             foreach ($file in $files) { if (Test-Path "$file.optimized") { Move-Item -Force "$file.optimized" $file } }
           }
       - name: Verify actual Windows app and global shortcut
-        if: ${{ !inputs.installer_only }}
+        if: ${{ !inputs.installer_only && !inputs.notes_only }}
         run: |
           $electron = (Resolve-Path ./node_modules/electron/dist/electron.exe).Path
           $script = (Resolve-Path ./tests/user-release.native.cjs).Path
@@ -155,7 +162,7 @@ jobs:
           node scripts/build-branded-installer.js
           if ($LASTEXITCODE -ne 0) { throw 'Native wrapper build failed' }
       - name: Verify visible generated and packaged icons
-        if: ${{ !inputs.check_only && !inputs.installer_only }}
+        if: ${{ !inputs.check_only && !inputs.installer_only && !inputs.notes_only }}
         run: |
           $electron = (Resolve-Path ./node_modules/electron/dist/electron.exe).Path
           $script = (Resolve-Path ./tests/icons.native.cjs).Path
@@ -164,7 +171,7 @@ jobs:
           Get-Content icon-test-error.log
           if ($test.ExitCode -ne 0) { throw "Packaged icon test failed: $($test.ExitCode)" }
       - name: Save verified icon previews
-        if: ${{ always() && !inputs.check_only }}
+        if: ${{ always() && !inputs.check_only && !inputs.notes_only }}
         uses: actions/upload-artifact@v4
         with:
           name: SYTER-icon-inspection
@@ -172,7 +179,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
       - name: Download previous test installer for same-runner startup comparison
-        if: ${{ !inputs.check_only && !inputs.installer_only }}
+        if: ${{ !inputs.check_only && !inputs.installer_only && !inputs.notes_only }}
         uses: actions/download-artifact@v4
         with:
           name: SYTER-windows-release
@@ -180,13 +187,13 @@ jobs:
           github-token: ${{ github.token }}
           path: desktop/baseline
       - name: Verify delivered branded installer EXE
-        if: ${{ !inputs.check_only }}
+        if: ${{ !inputs.check_only && !inputs.notes_only }}
         run: |
           $ErrorActionPreference = 'Stop'
           ./tests/native-installer.ps1 -SkipBenchmark:('${{ inputs.installer_only }}' -eq 'true')
           if (!(Test-Path test-artifacts/native-installer-success.txt)) { throw 'Native installer verification did not complete' }
       - name: Verify native installer typography, keyboard focus and waiting animation
-        if: ${{ !inputs.check_only }}
+        if: ${{ !inputs.check_only && !inputs.notes_only }}
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $arguments = '-NoProfile -Sta -ExecutionPolicy Bypass -File ./tests/native-installer-ui.ps1 -InstallerPath "release/SYTER-Install-' + $version + '.exe"'
@@ -232,6 +239,12 @@ jobs:
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $repo = 'mishakozlov723-wq/syter-releases'
           $tag = "v$version"
+          $points = @(Get-Content release-notes.json -Raw -Encoding utf8 | ConvertFrom-Json)
+          if ($points.Count -lt 1 -or $points.Count -gt 3) { throw 'Use 1–3 short Russian release-note points' }
+          foreach ($point in $points) {
+            if ($point -isnot [string] -or $point.Length -gt 110 -or $point -match '[\r\n]' -or $point -notmatch '[А-Яа-яЁё]') { throw 'Each release-note point must be short and in Russian' }
+          }
+          $notes = ($points | ForEach-Object { '- ' + $_ }) -join "`n"
           # Never overwrite a PUBLIC version. An interrupted upload may have
           # left our own unpublished draft; only that known draft may resume.
           $existingText = gh release view $tag --repo $repo --json isDraft,name,body 2>$null
@@ -240,23 +253,12 @@ jobs:
             $existing = ($existingText -join "`n") | ConvertFrom-Json
             if (!$existing.isDraft) { throw "Public release $tag already exists" }
             if ($existing.name -ne "SYTER $version" -or
-                $existing.body -notlike "*SYTER $version production desktop release.*" -or
-                $existing.body -notlike '*Branded Windows installation and in-app updates.*') {
+                $existing.body.Trim().Replace("`r`n", "`n") -ne $notes.Trim()) {
               throw "Unrecognized draft $tag; do not overwrite"
             }
             $resumeDraft = $true
           }
-          @"
-          - SYTER $version production desktop release.
-          - Branded Windows installation and in-app updates.
-          - Mini journal: faster preparation without changing the verified smooth animation in either direction; measured against 1.3.10 on the same runner.
-          - Present the verified original frame before any layout/geometry change; animate only between ready source and destination frames.
-          - Preserve the original normal-window restore rectangle across repeated mini/maximized cycles.
-          - Mini journal: disable maximize and fullscreen; keep minimize and close available.
-          - Updates download only after confirmation; restart and install when you choose.
-          - Existing journal profile and settings are preserved.
-          - Update directly from earlier versions; website unchanged.
-          "@ | Set-Content release-notes.md
+          $notes | Set-Content release-notes.md -Encoding utf8
           $expected = @("latest.yml", "SYTER-Setup-$version.exe", "SYTER-Setup-$version.exe.blockmap", "SYTER-Install-$version.exe", "installer-manifest.json")
           $assets = @($expected | ForEach-Object {
             $file = Join-Path release $_
