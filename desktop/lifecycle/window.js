@@ -1,18 +1,13 @@
 'use strict';
 const path = require('node:path');
-function lifecycleHeight(state) {
-  if (state.phase === 'available' && state.notes) return 680;
-  if (['verifying','installing','downloading','restarting','launching','checking'].includes(state.phase)) return 660;
-  return state.phase === 'error' ? 610 : 540;
-}
+function lifecycleHeight(state) { return state.mode === 'install' ? 440 : 540; }
 function publishLifecycleState(win, state) {
   if (!win || win.isDestroyed()) return;
-  const height = lifecycleHeight(state);
-  if (win.getContentSize()[1] !== height) win.setContentSize(620, height);
+  // The installer never resizes during a phase transition or Launch handoff.
   win.webContents.send('syter-lifecycle:changed', state);
 }
 function createLifecycleWindow({ BrowserWindow, ipcMain, icon, getState, onAction, onClose, parent }) {
-  const win = new BrowserWindow({ width: 620, height: lifecycleHeight(getState()), minWidth: 390, minHeight: 540, resizable: false,
+  const win = new BrowserWindow({ width: 520, height: lifecycleHeight(getState()), minWidth: 390, minHeight: 440, resizable: false,
     show: false, frame: false, backgroundColor: '#050608', title: 'SYTER', icon, parent,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
   const valid = event => !win.isDestroyed() && event.sender === win.webContents && event.senderFrame === win.webContents.mainFrame;

@@ -15,11 +15,45 @@ async function verifyPayload(file, expected, progress = () => {}) {
   }
   if (hash.digest('hex') !== expected) throw Error('Installer verification failed');
 }
-function runSilent(file, spawnImpl = spawn) {
+function parseInstallProgress(stdout, sessionId) {
+  const data = {};
+  for (const line of stdout.split(/\r?\n/)) {
+    const m = line.match(/^\s+(Session|Stage|Total|Extracted|Copied|Location)\s+REG_SZ\s+(.*?)\s*$/);
+    if (m) data[m[1]] = m[2];
+  }
+  if (data.Session !== sessionId) return null; // never reuse stale/reinstall status
+  const total = Number(data.Total), extracted = Number(data.Extracted), copied = Number(data.Copied);
+  if (![total,extracted,copied].every(Number.isSafeInteger) || total < 0 || total > 1073741823 || extracted < 0 || copied < 0 || extracted > total || copied > total) return null;
+  const phase = ['finalizing','installed'].includes(data.Stage) ? 'finalizing' : 'installing';
+  const complete = extracted + copied;
+  return { phase, stage:data.Stage, percent:total ? complete / (2 * total) * 100 : null,
+    processed:complete, workTotal:2 * total, location:data.Location || '' };
+}
+async function readInstallProgress(sessionId) {
+  const reg = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'reg.exe');
+  const { stdout } = await promisify(execFile)(reg, ['query','HKCU\\Software\\SYTER\\Installer','/reg:64'], {windowsHide:true,timeout:3000});
+  return parseInstallProgress(stdout,sessionId);
+}
+function runSilent(file, spawnImpl = spawn, { sessionId = '', onProgress = () => {}, readProgress = readInstallProgress } = {}) {
+  if (sessionId && !/^[a-f0-9-]{36}$/.test(sessionId)) return Promise.reject(Error('Invalid install session'));
   return new Promise((resolve, reject) => {
-    const child = spawnImpl(file, ['/S'], { shell: false, windowsHide: true, stdio: 'ignore' });
-    child.once('error', reject);
-    child.once('exit', (code, signal) => code === 0 ? resolve() : reject(Error(`Installation did not finish (${signal || code}).`)));
+    let timer, polling = false, stopped = false;
+    async function poll() {
+      if (polling || stopped) return;
+      polling = true;
+      try { const progress = await readProgress(sessionId); if (progress && !stopped) onProgress(progress); } catch (_) {} finally { polling = false; }
+    }
+    const child = spawnImpl(file, ['/S', ...(sessionId ? ['--syter-session=' + sessionId] : [])], { shell: false, windowsHide: true, stdio: 'ignore' });
+    if (sessionId) { timer = setInterval(poll, 200); poll(); }
+    child.once('error', error => { stopped = true; clearInterval(timer); reject(error); });
+    child.once('exit', async (code, signal) => {
+      clearInterval(timer);
+      if (code === 0 && sessionId) {
+        try { const progress = await readProgress(sessionId); if (progress) onProgress(progress); } catch (_) {}
+      }
+      stopped = true;
+      code === 0 ? resolve() : reject(Error(`Installation did not finish (${signal || code}).`));
+    });
   });
 }
 async function installedExecutable(version) {
@@ -36,4 +70,4 @@ async function installedExecutable(version) {
   if (!(await fs.promises.stat(exe)).isFile()) throw Error('Installed app not found');
   return exe;
 }
-module.exports = { verifyPayload, runSilent, installedExecutable };
+module.exports = { verifyPayload, runSilent, installedExecutable, parseInstallProgress };

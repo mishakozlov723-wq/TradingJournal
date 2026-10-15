@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { spawn } = require('node:child_process');
+const { randomUUID } = require('node:crypto');
 const { createLifecycleWindow, publishLifecycleState } = require('../lifecycle/window');
 const { verifyPayload, runSilent, installedExecutable } = require('./engine');
 const manifest = require('./manifest.json');
@@ -22,12 +23,12 @@ async function action(name) {
     busy = true;
     try {
       const payload = path.join(process.resourcesPath, 'payload', 'setup.exe');
-      send({phase:'verifying',percent:0,error:'',retry:''});
-      await verifyPayload(payload, manifest.sha256, percent => send({percent}));
+      send({phase:'verifying',percent:null,error:'',retry:'',stage:'verifying'});
+      await verifyPayload(payload, manifest.sha256);
       send({phase:'installing',percent:null});
-      await runSilent(payload);
+      await runSilent(payload, undefined, {sessionId:randomUUID(),onProgress:progress=>send(progress)});
       exe = await installedExecutable(manifest.version);
-      busy = false; send({phase:'ready',percent:null});
+      busy = false; send({phase:'ready',percent:null,location:path.dirname(exe)});
     } catch (error) { fail(error); }
   } else if (name === 'launch' && exe && !busy && state.phase === 'ready') {
     busy = true; send({phase:'launching',percent:null});

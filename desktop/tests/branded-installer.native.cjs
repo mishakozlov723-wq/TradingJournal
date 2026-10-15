@@ -25,7 +25,7 @@ app.whenReady().then(async()=>{
   const sentinels=['SYTER','syter-desktop'].map(name=>path.join(app.getPath('appData'),name,'syter-preservation-test.txt'));
   for(const file of sentinels){fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,'preserve-settings');}
   const exe=path.resolve(__dirname,`../release/SYTER-Install-${version}.exe`);
-  let installedPath;
+  let installedPath; const trace=[];
   for (let pass = 0; pass < 2; pass++) {
     const port = 9227 + pass;
     const child=spawn(exe,[`--remote-debugging-port=${port}`],{stdio:'ignore',windowsHide:false});
@@ -37,7 +37,7 @@ app.whenReady().then(async()=>{
     await evaluate('document.getElementById("primary").click()');
     let phase;
     for(let n=0;n<360;n++){
-      phase=await evaluate('window.syterLifecycle.snapshot().phase');if(phase==='ready')break;
+      const snapshot=await evaluate('window.syterLifecycle.snapshot()');phase=snapshot.phase;trace.push({pass,...snapshot});if(phase==='ready')break;
       if(phase==='error')throw Error(await evaluate('window.syterLifecycle.snapshot().error'));
       if(n===3 && !pass)await screenshot('progress');await wait(500);
     }
@@ -51,6 +51,11 @@ app.whenReady().then(async()=>{
     await new Promise((resolve,reject)=>{if(child.exitCode!==null)return resolve();child.once('exit',code=>code===0?resolve():reject(Error(`Installer exit ${code}`)));setTimeout(()=>reject(Error('Installer did not exit')),20000).unref();});
     await wait(500);
   }
+  fs.writeFileSync(path.join(artifacts,'installer-progress.json'),JSON.stringify(trace,null,2));
+  const measured=trace.filter(s=>s.workTotal>0 && Number.isFinite(s.percent));
+  assert.ok(measured.some(s=>s.percent>0 && s.percent<100),'Real intermediate file-work percentage must be observed');
+  for(const s of measured)assert.ok(Math.abs(s.percent-(s.processed/s.workTotal*100))<0.0001,'Percent must match actual byte counts');
+  console.log('PASS: genuine file-work progress: '+measured.map(s=>Math.floor(s.percent)+'% '+s.stage).join(', '));
   const ps=path.join(process.env.SystemRoot,'System32','WindowsPowerShell','v1.0','powershell.exe');
   const script=path.join(artifacts,'verify-installed-launch.ps1');
   fs.writeFileSync(script,`param([string]$AppPath)

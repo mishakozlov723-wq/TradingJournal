@@ -7,7 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { createUpdateController, notesText } = require('../lifecycle/controller');
-const { verifyPayload, runSilent } = require('../installer/engine');
+const { verifyPayload, runSilent, parseInstallProgress } = require('../installer/engine');
 function fixture() {
   const updater = new EventEmitter(); let download = 0, checks = 0, shown = 0, dismissed = 0, quits = 0, installed;
   updater.downloadUpdate = async () => { download++; };
@@ -64,4 +64,19 @@ test('successful launch releases the installer close guard before quitting',()=>
   const src=fs.readFileSync(path.join(__dirname,'../installer/main.js'),'utf8');
   assert.match(src,/child\.once\('spawn', \(\) => \{ child\.unref\(\); busy = false; app\.quit\(\); \}\)/);
   assert.match(src,/onClose:\(\)=>!busy/);
+});
+
+test('install progress is extracted + successfully copied bytes, never elapsed time',()=>{
+  const status=(session,extracted,copied,stage='copying')=>`    Session    REG_SZ    ${session}\n    Stage    REG_SZ    ${stage}\n    Total    REG_SZ    1000\n    Extracted    REG_SZ    ${extracted}\n    Copied    REG_SZ    ${copied}\n`;
+  assert.equal(parseInstallProgress(status('current',500,0),'current').percent,25);
+  assert.equal(parseInstallProgress(status('current',1000,800),'current').percent,90);
+  assert.equal(parseInstallProgress(status('current',1000,1000,'finalizing'),'current').phase,'finalizing');
+  assert.equal(parseInstallProgress(status('old',1000,1000),'current'),null);
+  assert.equal(parseInstallProgress(status('current',1001,0),'current'),null);
+});
+test('compact lifecycle has no footer, card or resizing during launch',()=>{
+  const html=fs.readFileSync(path.join(__dirname,'../lifecycle/window.html'),'utf8');
+  assert.doesNotMatch(html,/<footer|brand-dot|class="detail"/);
+  const win=fs.readFileSync(path.join(__dirname,'../lifecycle/window.js'),'utf8');
+  assert.doesNotMatch(win,/setContentSize|setSize|setBounds/);
 });

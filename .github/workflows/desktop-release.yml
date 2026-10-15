@@ -119,6 +119,7 @@ jobs:
           path: |
             desktop/test-artifacts/lifecycle-*.png
             desktop/test-artifacts/branded-exe-*.png
+            desktop/test-artifacts/installer-progress.json
           if-no-files-found: warn
           retention-days: 14
       - name: Save verified installer
