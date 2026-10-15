@@ -77,6 +77,13 @@ try{
   $button=Element $window 'PrimaryAction';if(!$button -or $button.Current.Name -notmatch '^Install SYTER(?: →)?$'){throw 'Install consent button missing from UI Automation'}
   $bounds=$window.Current.BoundingRectangle
   Click $button
+  if($pass -eq 0){
+   $all=$window.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Condition]::TrueCondition)
+   $waiting=@($all|Where-Object{$_.Current.Name -eq 'Preparing installation' -and !$_.Current.IsOffscreen})
+   if(!$waiting.Count){throw 'Actual Install click did not reveal waiting bar'}
+   if(Element $window 'Percent'){throw 'Preparing phase exposed a fabricated percentage'}
+   Screenshot $handle 'waiting'
+  }
   $ready=$false;$sawIntermediate=$false;$sawProgressShot=$false;$wait=[Diagnostics.Stopwatch]::StartNew()
   while($wait.ElapsedMilliseconds -lt 180000){
    if($p.HasExited){throw 'Installer unexpectedly exited'}

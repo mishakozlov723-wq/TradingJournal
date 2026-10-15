@@ -97,3 +97,24 @@ test('optimized native installer does not unpack a second Electron before showin
  assert.match(native,/digest!=BuildInfo.Sha256/);
  assert.match(native,/totalWork=total\*2/);
 });
+
+
+test('native waiting uses the same bar without fabricated percentages',()=>{
+ const source=fs.readFileSync(path.join(__dirname,'../installer/native/Installer.cs'),'utf8');
+ assert.match(source,/session=null;Busy\("Installing SYTER…","",true\)/);
+ assert.match(source,/progress.Indeterminate=waiting/);
+ assert.match(source,/progress.Indeterminate=false/);
+ assert.match(source,/Math.Floor\(value\)/);
+ assert.match(source,/timer.Interval=40/);
+ assert.match(source,/SystemParametersInfo\(0x1042/);
+});
+test('native UI scales real fonts, uses grayscale antialias and keyboard-only focus cues',()=>{
+ const source=fs.readFileSync(path.join(__dirname,'../installer/native/Installer.cs'),'utf8');
+ assert.match(source,/LayoutScale=600f\/520f/);
+ assert.match(source,/fonts.Get\(entry.Value.Item1\*factor/);
+ assert.match(source,/TextRenderingHint.AntiAliasGridFit/);
+ assert.doesNotMatch(source,/ClearTypeGridFit|Windows · 64-bit/);
+ assert.match(source,/Shown\+=.*SetKeyboardFocus\(false\)/);
+ assert.match(source,/Keys.Tab\)SetKeyboardFocus\(true\)/);
+ assert.match(source,/Focused&&Enabled&&KeyboardFocusVisible/);
+});

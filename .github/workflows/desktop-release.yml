@@ -110,6 +110,13 @@ jobs:
           run-id: 38718005829
           github-token: ${{ github.token }}
           path: desktop/baseline
+      - name: Verify native installer typography, keyboard focus and waiting animation
+        if: ${{ !inputs.check_only }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          powershell.exe -NoProfile -Sta -ExecutionPolicy Bypass -File ./tests/native-installer-ui.ps1 -InstallerPath "release/SYTER-Install-$version.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Native installer UI verification failed' }
+          if (!(Test-Path test-artifacts/native-installer-ui-success.txt)) { throw 'Native UI checks did not finish' }
       - name: Verify delivered branded installer EXE
         if: ${{ !inputs.check_only }}
         run: |

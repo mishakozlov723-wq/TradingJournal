@@ -7,8 +7,8 @@ const root = path.resolve(__dirname, '..');
 const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
 const pkg = require('../package.json');
 const lock = require('../package-lock.json');
-test('1.3.4 has consistent package version and no packaged diagnostic UI', () => {
-  assert.equal(pkg.version, '1.3.4');
+test('1.3.5 has consistent package version and no packaged diagnostic UI', () => {
+  assert.equal(pkg.version, '1.3.5');
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages[''].version, pkg.version);
   for (const file of ['resize-diagnostics.js', 'autumn-motion-probe.js', 'cover-presentation.js',
