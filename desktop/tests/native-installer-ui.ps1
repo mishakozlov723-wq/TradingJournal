@@ -8,7 +8,9 @@ public static class NativeUiCapture {
  [DllImport("user32.dll")]public static extern bool PrintWindow(IntPtr h,IntPtr dc,uint flags);
 }
 '@
+[Windows.Forms.Application]::SetUnhandledExceptionMode([Windows.Forms.UnhandledExceptionMode]::ThrowException)
 [Windows.Forms.Application]::EnableVisualStyles()
+Write-Host "UI: loading production assembly"
 $root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $artifacts=Join-Path $root 'test-artifacts'
 New-Item -ItemType Directory $artifacts -Force|Out-Null
@@ -29,24 +31,29 @@ function CheckLayout($form){
 }
 $form=[Activator]::CreateInstance($type,$true)
 try{
+ Write-Host "UI: showing form"
  $form.Show();Pump 120
+ Write-Host "UI: scaling layout"
  Invoke $form 'ApplyLayout' @([single]1.0)|Out-Null
  $primary=Field $form 'primary';$close=Field $form 'close';$bar=Field $form 'progress';$title=Field $form 'title'
  if($form.Width -ne 600 -or $form.Height -ne 508){throw 'Moderate proportional layout dimensions wrong'}
  if([Math]::Abs($title.Font.Size-28*600/520) -gt 0.05){throw 'Title font was not redrawn at scaled pixel size'}
  if((Field $form 'platform').Text -ne 'Windows'){throw 'Platform label contains unnecessary architecture'}
  if($primary.KeyboardFocusVisible -or $close.KeyboardFocusVisible){throw 'Initial keyboard focus cue is visible'}
+ Write-Host "UI: initial focus and capture"
  $primary.Focus();Pump 40;$initial=Capture $form 'welcome-100'
  # White focus stroke cannot occur anywhere inside the default green button.
  $white=0
  for($y=$primary.Top;$y -lt $primary.Bottom;$y++){for($x=$primary.Left;$x -lt $primary.Right;$x++){$pixel=$initial.GetPixel($x,$y);if($pixel.R -gt 235 -and $pixel.G -gt 235 -and $pixel.B -gt 235){$white++}}}
  if($white){throw "Default button has $white white focus pixels"};$initial.Dispose()
+ Write-Host "UI: Tab navigation"
  Invoke $form 'ProcessDialogKey' @([Windows.Forms.Keys]::Tab)|Out-Null
  Invoke $form 'ProcessDialogKey' @([Windows.Forms.Keys]::Tab)|Out-Null
  $primary.Focus();Pump 40
  if(!$primary.KeyboardFocusVisible -or !$primary.Focused){throw 'Tab navigation did not enable keyboard focus cue'}
  $keyboard=Capture $form 'keyboard-focus';$keyboard.Dispose()
  Invoke $form 'SetKeyboardFocus' @($false)|Out-Null
+ Write-Host "UI: waiting animation"
  $bounds=$bar.Bounds
  Invoke $form 'Busy' @('Installing SYTER…','',$true)|Out-Null;Pump 40
  if(!$bar.Visible -or !$bar.Indeterminate -or (Field $form 'percent').Visible -or (Field $form 'stage').Visible){throw 'Waiting bar must be visible without stage copy or fake percentage'}
@@ -60,6 +67,7 @@ try{
  CheckLayout $form
  # Exercise layout at common DPI factors. This is a layout simulation, not OS-DPI emulation.
  foreach($scale in @([single]1.25,[single]1.5)){
+  Write-Host "UI: layout factor $scale"
   Invoke $form 'ApplyLayout' @($scale)|Out-Null
   Invoke $form 'Busy' @('Installing SYTER…','',$true)|Out-Null;Pump 40;CheckLayout $form
   if([Math]::Abs($title.Font.Size-28*600/520*$scale) -gt 0.05){throw 'DPI font scaling wrong'}
