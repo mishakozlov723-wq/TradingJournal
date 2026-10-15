@@ -1,6 +1,7 @@
 name: Build private local SYTER update test
 on:
   workflow_dispatch:
+  workflow_call:
 permissions:
   contents: read
   actions: read

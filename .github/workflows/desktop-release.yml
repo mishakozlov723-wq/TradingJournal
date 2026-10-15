@@ -3,6 +3,10 @@ name: Verify and build SYTER desktop
 on:
   workflow_dispatch:
     inputs:
+      local_update_test:
+        description: Build a private local 1.3.6 to 1.3.7 update test instead of a release
+        type: boolean
+        default: false
       publish:
         description: Publish the verified installer to syter-releases
         type: boolean
@@ -25,7 +29,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  local-update:
+    if: ${{ inputs.local_update_test }}
+    uses: ./.github/workflows/local-update-test.yml
   windows:
+    if: ${{ !inputs.local_update_test }}
     runs-on: windows-latest
     timeout-minutes: 45
     defaults:
