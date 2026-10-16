@@ -171,9 +171,9 @@
   function mount(host,b,bridge) {
     let wrapper,table,focusCell=null,returnFocus=null;
     const readOnly=bridge.readOnly;
-    function icon(name){const s=el('span','ndb-icon');bridge.icon(s,'line:'+name,'icon','gray');return s;}
+    function icon(name){const s=el('span','ndb-icon');s.setAttribute('aria-hidden','true');bridge.icon(s,'line:'+name,'icon','gray');return s;}
     function dataIcon(data,fallback){
-      if(data&&data.icon){const s=el('span','ndb-icon ndb-custom-icon');bridge.icon(s,data.icon,data.iconType||'emoji',data.iconColor||'default');return s;}
+      if(data&&data.icon){const s=el('span','ndb-icon ndb-custom-icon');s.setAttribute('aria-hidden','true');bridge.icon(s,data.icon,data.iconType||'emoji',data.iconColor||'default');return s;}
       return fallback?icon(fallback):null;
     }
     function setIcon(data,pick){if(pick&&pick.value){data.icon=pick.value;data.iconType=pick.type==='icon'?'icon':'emoji';data.iconColor=pick.color||'default';}else{delete data.icon;delete data.iconType;delete data.iconColor;}}
@@ -366,6 +366,9 @@
   var notesRemoteSaveInFlight = false; // serialize remote commits so an older save cannot land after a newer one
   var notesRemoteSaveOwner = null;
   var notesRemoteSavePending = false;
+  var notesCloudRevision = '[0,null]';
+  var notesCloudConflict = false;
+  var notesIgnoreLocalOnce = false;
   var notesCloudIncomplete = false; // protects against destructive saves if a referenced page document is missing
 
   /* v3.20: Row Pages are owned by their database, never sidebar pages.
@@ -1484,6 +1487,8 @@
   }
 
   function notesSaveLocal(ownerKey, snapshot) {
+    snapshot=Object.assign({},snapshot);
+    if(ownerKey===notesLoadedFor&&notesLoadedRemote){snapshot.cloudBase=notesCloudRevision;snapshot.conflict=notesCloudConflict;}
     if(ownerKey)notesMobileCachePut(ownerKey,snapshot);
     try { localStorage.setItem(notesStorageKey(ownerKey), JSON.stringify(snapshot)); return true; }
     catch (e) { return false; }
@@ -1544,6 +1549,29 @@
     catch (_) { return json.length; }
   }
 
+  function notesRevision(meta) {
+    return JSON.stringify([Number(meta&&meta.updatedAt)||0,(meta&&meta.revision)||null]);
+  }
+  function notesShowConflict(owner) {
+    notesCloudConflict=true;notesCloudIncomplete=true;
+    notesSetState('Conflict: local draft kept. Cloud was not overwritten.','error');
+    notesToast('Notes changed on another device. Your draft is safe; export it before reloading cloud.');
+    var panel=document.getElementById('notesConflictPanel');
+    if(!panel){panel=document.createElement('div');panel.id='notesConflictPanel';panel.className='notes-callout';panel.style.cssText='padding:12px;border:1px solid #c88a42;margin:12px;border-radius:10px;flex:none;display:flex;flex-wrap:wrap;gap:8px';document.querySelector('.notes-editor-shell').insertBefore(panel,document.getElementById('notesPageWrap'));}
+    panel.replaceChildren();panel.append(document.createTextNode('Cloud conflict. Your local draft has not been discarded. '));
+    function download(){
+      if(notesLoadedFor!==owner)return;
+      var data={version:3,owner:owner,pages:notesClone(notesPages),groups:notesClone(notesGroups),updatedAt:Date.now()};
+      var url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
+      var a=document.createElement('a');a.href=url;a.download='SYTER-Notes-local-recovery.json';a.click();setTimeout(function(){URL.revokeObjectURL(url);},10000);
+    }
+    var exportBtn=document.createElement('button');exportBtn.type='button';exportBtn.textContent='Export local draft';exportBtn.onclick=download;panel.append(exportBtn);
+    var reload=document.createElement('button');reload.type='button';reload.textContent='Export draft & reload cloud';reload.onclick=function(){
+      if(notesLoadedFor!==owner||!window.confirm('Download your local draft and load the latest cloud Notes? Keep the downloaded file to recover your edits.'))return;
+      download();notesDirty=false;notesIgnoreLocalOnce=true;notesCloudConflict=false;panel.remove();notesLoad(true);
+    };panel.append(reload);
+  }
+
   function notesSave() {
     clearTimeout(notesSaveTimer); notesSaveTimer = null;
     if (notesMobileLoading || !notesDirty || !notesLoadedFor) return;
@@ -1598,28 +1626,27 @@
     notesRemoteSaveInFlight = true;
     notesRemoteSaveOwner = ownerKey;
     notesRemoteSavePending = false;
-    notesSyncShares(ownerKey);
-
+    var expectedRevision=notesCloudRevision;
     var currentIds = snapshot.pages.map(function(p){ return p.id; });
     var currentSet = {}; currentIds.forEach(function(id){ currentSet[id]=true; });
     var nextHashes = {};
-    var batch = db.batch();
+    var changes=[];
     var opCount = 0;
 
     snapshot.pages.forEach(function(page){
       var h = notesPageCloudHash(page); nextHashes[page.id] = h;
       if (notesCloudPageHashes[page.id] === h) return;
-      batch.set(notesPageCloudRef(ownerKey, page.id), { notesPageOwner:ownerKey, uid:notesOwnerUid(ownerKey), notesPage:page, updatedAt:now }, { merge:false });
+      changes.push({ref:notesPageCloudRef(ownerKey,page.id),data:{ notesPageOwner:ownerKey, uid:notesOwnerUid(ownerKey), notesPage:page, updatedAt:now }});
       opCount++;
     });
     notesCloudPageIds.forEach(function(id){
-      if (!currentSet[id]) { batch.delete(notesPageCloudRef(ownerKey, id)); opCount++; }
+      if (!currentSet[id]) { changes.push({ref:notesPageCloudRef(ownerKey,id),remove:true}); opCount++; }
     });
 
-    // Root metadata is part of the SAME atomic batch. The legacy all-in-one field is only
+    // Root metadata is part of the SAME atomic transaction. The legacy all-in-one field is only
     // deleted if every page write succeeds, so migration cannot leave a half-split workspace.
-    var meta = { version:3, pageIds:currentIds, groups:snapshot.groups, updatedAt:now };
-    batch.set(db.collection('titles').doc(ownerKey), { uid:notesOwnerUid(ownerKey), notesWorkspaceMeta:meta, notesWorkspace:firebase.firestore.FieldValue.delete() }, { merge:true });
+    var meta = { version:3, pageIds:currentIds, groups:snapshot.groups, updatedAt:now, revision:now.toString(36)+'_'+Math.random().toString(36).slice(2) };
+    var rootRef=db.collection('titles').doc(ownerKey);
     opCount++;
 
     if (opCount > 490) {
@@ -1630,11 +1657,23 @@
       return;
     }
 
-    batch.commit().then(function(){
+    // The root is the optimistic concurrency guard for every page write/delete.
+    // A stale device never overwrites a newer index or silently wins a page conflict.
+    return db.runTransaction(function(tx){
+      return tx.get(rootRef).then(function(root){
+        var live=root.exists?(root.data()||{}):{};
+        if(notesRevision(live.notesWorkspaceMeta)!==expectedRevision)throw Object.assign(Error('Notes changed on another device'),{code:'notes-conflict'});
+        changes.forEach(function(change){if(change.remove)tx.delete(change.ref);else tx.set(change.ref,change.data,{merge:false});});
+        tx.set(rootRef,{ uid:notesOwnerUid(ownerKey), notesWorkspaceMeta:meta, notesWorkspace:firebase.firestore.FieldValue.delete() },{merge:true});
+      });
+    }).then(function(){
       // Never let an old owner's async completion overwrite the cache for the newly selected owner.
       if (notesLoadedFor === ownerKey) {
         notesCloudPageHashes = nextHashes;
         notesCloudPageIds = currentIds.slice();
+        notesCloudRevision=notesRevision(meta);notesCloudConflict=false;
+        if(!notesDirty)notesSaveLocal(ownerKey,Object.assign({},snapshot,{cloudBase:notesCloudRevision}));
+        notesSyncShares(ownerKey);
       }
       notesRemoteSaveInFlight = false; notesRemoteSaveOwner = null;
       var pending = notesRemoteSavePending; notesRemoteSavePending = false;
@@ -1650,6 +1689,7 @@
       // Do not mark the new owner's workspace dirty because an old owner's request failed.
       if (notesLoadedFor === ownerKey) {
         notesDirty = true;
+        if(err.code==='notes-conflict'){notesCloudConflict=true;notesSaveLocal(ownerKey,{version:3,pages:notesClone(notesPages),groups:notesClone(notesGroups),updatedAt:Date.now()});notesShowConflict(ownerKey);return;}
         notesSetState(localLabel,'error');
         if (pending) notesSetState('Saved locally · cloud retry needed','error');
       }
@@ -1699,11 +1739,13 @@
       var raw = localStorage.getItem(notesStorageKey(ownerKey));
       if (!raw) return { pages:[], groups:notesDefaultGroups(), updatedAt:0 };
       var parsed = JSON.parse(raw);
-      return { pages:notesNormalizePages(parsed && parsed.pages), groups:notesNormalizeGroups(parsed && parsed.groups), updatedAt:Number(parsed && parsed.updatedAt) || 0 };
+      return { pages:notesNormalizePages(parsed && parsed.pages), groups:notesNormalizeGroups(parsed && parsed.groups), updatedAt:Number(parsed && parsed.updatedAt) || 0, cloudBase:parsed&&parsed.cloudBase, conflict:!!(parsed&&parsed.conflict) };
     } catch (e) { return { pages:[], groups:notesDefaultGroups(), updatedAt:0 }; }
   }
 
   function notesResetForOwnerSwitch() {
+    var conflict=document.getElementById('notesConflictPanel');if(conflict)conflict.remove();
+    notesCloudRevision='[0,null]';notesCloudConflict=false;
     notesSyncSaveStatus(true);
     notesMobileBusy(false);
     notesTabsReset();
@@ -1792,7 +1834,8 @@
     notesSidebarPrimed = false; notesLastPageId = null; notesLastBlocksPageId = null;
     notesCloudPageHashes = {}; notesCloudPageIds = []; notesCloudIncomplete = false;
     notesSetState('Loading…','saving');
-    var local = notesLoadLocal(key);
+    var ignoreLocal=notesIgnoreLocalOnce;notesIgnoreLocalOnce=false;
+    var local = ignoreLocal ? {pages:[],groups:notesDefaultGroups(),updatedAt:0} : notesLoadLocal(key);
     if(notesIsMobile()){notesMobilePreview(local.pages,local.groups);}
     if (!owner || typeof db === 'undefined') {
       notesPages = local.pages; notesGroups = local.groups; notesEnsurePageGroups(); notesLoadedFor = key; notesLoadedRemote = false; notesMobileBusy(false);
@@ -1800,11 +1843,11 @@
       return Promise.resolve();
     }
     var rootRequest=db.collection('titles').doc(owner).get({ source:'server' });
-    if(notesIsMobile())rootRequest=Promise.all([rootRequest,notesMobileCacheGet(key).then(function(value){
+    if(notesIsMobile()&&!ignoreLocal)rootRequest=Promise.all([rootRequest,notesMobileCacheGet(key).then(function(value){
       if(seq!==notesLoadSeq||key!==(notesOwner()||'local'))return;
       var cached=value&&value.data;
       if(cached&&Array.isArray(cached.pages)&&(!local.pages.length||Number(cached.updatedAt)>local.updatedAt)){
-        local={pages:notesNormalizePages(cached.pages),groups:notesNormalizeGroups(cached.groups),updatedAt:Number(cached.updatedAt)||0};
+        local={pages:notesNormalizePages(cached.pages),groups:notesNormalizeGroups(cached.groups),updatedAt:Number(cached.updatedAt)||0,cloudBase:cached.cloudBase,conflict:!!cached.conflict};
         notesMobilePreview(local.pages,local.groups);
       }
     })]).then(function(values){return values[0];});
@@ -1814,8 +1857,17 @@
     }).then(function(snap) {
       if (!snap || seq !== notesLoadSeq || key !== (notesOwner() || 'local')) return;
       var root = snap.exists ? (snap.data() || {}) : {};
+      notesCloudRevision=notesRevision(root.notesWorkspaceMeta);notesCloudConflict=false;
       var meta = root.notesWorkspaceMeta && root.notesWorkspaceMeta.version >= 3 ? root.notesWorkspaceMeta : null;
       var legacy = root.notesWorkspace && typeof root.notesWorkspace === 'object' ? root.notesWorkspace : null;
+      // A changed root also protects empty indexes and legacy/recovery paths. Never
+      // auto-publish a stale draft merely because its device clock is ahead.
+      var rootAt=Number(meta&&meta.updatedAt)||Number(legacy&&legacy.updatedAt)||0;
+      if(local.conflict || (local.pages.length && local.cloudBase!==undefined && local.cloudBase!==notesCloudRevision && local.updatedAt>rootAt)){
+        notesPages=local.pages;notesGroups=local.groups;notesEnsurePageGroups();notesLoadedFor=key;notesLoadedRemote=true;notesMobileBusy(false);
+        notesPickActivePage();notesHistoryReset();notesRender();notesShowConflict(key);return;
+      }
+
 
       if (meta) {
         var seenIds = {};
@@ -1869,6 +1921,11 @@
           var cloudAt = Number(meta.updatedAt)||0;
           var localIds = {}; local.pages.forEach(function(p){ localIds[p.id] = true; });
           var localCanRepair = !!(missing.length && local.pages.length && ids.every(function(id){ return localIds[id]; }));
+          var staleDraft=local.pages.length && (local.conflict || (local.updatedAt>cloudAt && local.cloudBase!==notesCloudRevision));
+          if(staleDraft){
+            notesPages=local.pages;notesGroups=local.groups;notesEnsurePageGroups();notesLoadedFor=key;notesLoadedRemote=true;notesMobileBusy(false);
+            notesCloudPageHashes=hashes;notesCloudPageIds=ids.slice();notesPickActivePage();notesHistoryReset();notesRender();notesShowConflict(key);return;
+          }
           var useLocal = local.pages.length && (local.updatedAt > cloudAt || localCanRepair);
 
           notesPages = useLocal ? local.pages : cloudPages;
@@ -1876,7 +1933,7 @@
           notesCloudPageHashes = hashes; notesCloudPageIds = ids.slice();
           notesLoadedFor = key; notesLoadedRemote = true; notesMobileBusy(false);
           notesCloudIncomplete = missing.length > 0 && !localCanRepair;
-          if(notesIsMobile())notesSaveLocal(key,{version:3,pages:notesPages,groups:notesGroups,updatedAt:useLocal?local.updatedAt:cloudAt});
+          if(!useLocal||notesIsMobile())notesSaveLocal(key,{version:3,pages:notesPages,groups:notesGroups,updatedAt:useLocal?local.updatedAt:cloudAt});
           notesPickActivePage(); notesHistoryReset(); notesRender();
 
           if (localCanRepair) {

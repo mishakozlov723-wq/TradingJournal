@@ -1494,7 +1494,7 @@
       snap.docChanges().forEach(function(ch) {
         var d = ch.doc;
         if (d.metadata.hasPendingWrites) return;
-        var raw = d.data() || {}, id = raw.id || d.id;
+        var raw = d.data() || {}, id = d.id; raw.id = id;
         if (ch.type === 'removed') {
           delete tjServerTrades[id];
           var before = trades.length;
@@ -1516,7 +1516,7 @@
         snap.docChanges().forEach(function(ch) {
           var d = ch.doc;
           if (d.metadata.hasPendingWrites) return;
-          var raw = d.data() || {}, id = raw.id || d.id;
+          var raw = d.data() || {}, id = d.id; raw.id = id;
           if (ch.type === 'removed') {
             if (isTrades) {
               var n1 = allBacktestTrades.length;
@@ -1548,6 +1548,11 @@
           if (tjApplyLive(isTrades ? allBacktestTrades : backtests, rec, id)) changed = true;
         });
         if (!changed) return;
+        // A server snapshot must not erase this device's unacknowledged intent.
+        try {
+          if(isTrades)allBacktestTrades=tjOverlayBacktestOutbox(allBacktestTrades,'backtestTrades',user);
+          else backtests=tjOverlayBacktestOutbox(backtests,'backtests',user);
+        }catch(err){console.warn('Backtest pending changes preserved:',err);return;}
         if (!isTrades) backtests.sort(function(a, b) { return new Date(b.createdAt || b.startDate) - new Date(a.createdAt || a.startDate); });
         var activeBt = activeBacktestId ? backtests.filter(function(b) { return b.id === activeBacktestId; })[0] : null;
         backtestTrades = activeBt ? allBacktestTrades.filter(function(t) { return t.backtestId === activeBt.id; }) : [];
@@ -1629,29 +1634,22 @@
     }).then(function(snapshot) {
       if (!tjLoadIsCurrent(load)) return;
       var remote = [];
-      snapshot.forEach(function(d) { remote.push(d.data()); tjServerTrades[d.data().id || d.id] = tjClone(d.data()); });
+      snapshot.forEach(function(d) { var record=d.data(); record.id=d.id; remote.push(record); tjServerTrades[d.id] = tjClone(record); });
       if (remote.length > 0) {
         trades = remote.map(normalizeTradeRisk);
         var toFix = trades.filter(function(t) { return !t.uid && owner; });
         toFix.forEach(function(t) { t.uid = owner.uid; remoteSaveTrade(t, ['uid']); });
         return;
       }
-      // Nothing on the server yet for this user — check for older local data to migrate up once.
+      // Empty is authoritative. Legacy caches may contain deliberately deleted records.
+      // Keep a downloadable recovery copy, never automatically re-upload it.
+      trades = [];
       return migrateFromLocalStorage(user).catch(function() {}).then(function() {
         if (!tjLoadIsCurrent(load)) return;
         return idbGetAllForUser(user).catch(function() { return []; });
       }).then(function(localTrades) {
-        if (!tjLoadIsCurrent(load)) return;
-        if (localTrades && localTrades.length) {
-          var mig = Promise.resolve();
-          for (var mi = 0; mi < localTrades.length; mi += 450) {
-            (function(part) {
-              mig = mig.then(function() { if (!tjLoadIsCurrent(load)) return; var batch = db.batch(); part.forEach(function(t) { t.user = user; if (owner) t.uid = owner.uid; batch.set(db.collection('trades').doc(t.id), t); }); return batch.commit(); });
-            })(localTrades.slice(mi, mi + 450));
-          }
-          return mig.then(function() { if (!tjLoadIsCurrent(load)) return; localTrades.forEach(function(t) { tjServerTrades[t.id] = tjClone(t); }); trades = localTrades.map(normalizeTradeRisk); });
-        }
-        trades = [];
+        if (!tjLoadIsCurrent(load) || !localTrades || !localTrades.length) return;
+        tjOfferLegacyRecovery(localTrades, user, load);
       });
     }).then(function() {
       if (!tjLoadIsCurrent(load)) return;
@@ -1669,6 +1667,21 @@
       el.style.display = 'block';
       el.textContent = 'Failed to load data from the server. Check that Firestore Database is enabled in your Firebase project and that you have an internet connection.';
     }).then(function() { return tjLoadIsCurrent(load) ? load : null; });
+  }
+
+  function tjOfferLegacyRecovery(records, user, load) {
+    var el=document.getElementById('saveError');
+    if(!el)return;
+    el.replaceChildren(); el.style.display='block';
+    el.append(document.createTextNode('Found '+records.length+' legacy local trades. They were NOT imported: the empty cloud journal may be intentional. '));
+    var button=document.createElement('button'); button.type='button'; button.className='ghost-btn';
+    button.textContent='Export legacy trades…'; el.append(button);
+    button.onclick=function(){
+      if(!tjLoadIsCurrent(load))return;
+      var url=URL.createObjectURL(new Blob([JSON.stringify({version:1,owner:user,trades:records},null,2)],{type:'application/json'}));
+      var link=document.createElement('a');link.href=url;link.download='SYTER-legacy-trades-recovery.json';link.click();
+      setTimeout(function(){URL.revokeObjectURL(url);},10000);
+    };
   }
 
   function remoteSaveTrade(trade, fields, isNew) {
@@ -1724,13 +1737,15 @@
   }
 
   function remoteDeleteTrade(id) {
+    var deleteOwner=viewingUser,deleteGeneration=tjDataGeneration;
     var removedTrade=trades.find(function(t){return t.id===id;})||tjServerTrades[id],deletion=db.batch();
     (removedTrade&&removedTrade.images||[]).forEach(function(ref){deletion.delete(db.collection('tradeImages').doc(ref.id));});
     deletion.delete(db.collection('trades').doc(id));
     deletion.commit().then(function() {
-      delete tjServerTrades[id];
+      if(viewingUser===deleteOwner&&tjDataGeneration===deleteGeneration)delete tjServerTrades[id];
     }).catch(function(err) {
       console.error(err);
+      if(viewingUser!==deleteOwner||tjDataGeneration!==deleteGeneration)return;
       var el = document.getElementById('saveError');
       el.style.display = 'block';
       el.textContent = 'The trade was removed on this device, but could not be deleted from the server. It may come back after a reload.';
@@ -1760,6 +1775,88 @@
     el.style.display = message ? 'block' : 'none';
   }
 
+  // Owner-scoped durable intent log. Only acknowledged operations are removed.
+  // Server reads overlay the log so an offline result/deletion cannot disappear on reload.
+  var tjBacktestFlushes = Object.create(null), tjBacktestActiveLoads = Object.create(null), tjBacktestSequence=0;
+  function tjBacktestOpPrefix(owner) { return 'syter_backtest_op_v1_'+encodeURIComponent(owner)+'_'; }
+  function tjBacktestOutbox(owner) {
+    var prefix=tjBacktestOpPrefix(owner),queue=[];
+    for(var i=0;i<localStorage.length;i++){
+      var key=localStorage.key(i);if(key.indexOf(prefix)!==0)continue;
+      var op=JSON.parse(localStorage.getItem(key));
+      if(!op||!Array.isArray(op.parts))throw Error('Backtest sync queue is damaged; local data was kept.');
+      queue.push(op);
+    }
+    queue.sort(function(a,b){return a.id.localeCompare(b.id);});return queue;
+  }
+  function tjStoreBacktestOp(owner,op) {
+    localStorage.setItem(tjBacktestOpPrefix(owner)+op.id,JSON.stringify(op));
+  }
+  function tjQueueBacktestOps(parts,owner) {
+    owner=owner||viewingUser;
+    try {
+      var profile=findUser(owner), auth=firebase.auth().currentUser;
+      if(!profile||!auth)throw Error('Sign in before saving backtests.');
+      var op={id:Date.now().toString().padStart(16,'0')+'_'+String(++tjBacktestSequence).padStart(8,'0')+'_'+Math.random().toString(36).slice(2),authUid:auth.uid,ownerUid:profile.uid,parts:parts,index:0};
+      // A complete multi-batch intent is one atomic localStorage write. Separate keys
+      // prevent concurrent tabs from losing one another's queued operations.
+      tjStoreBacktestOp(owner,op);
+      if(tjBacktestActiveLoads[owner])tjBacktestActiveLoads[owner].push(JSON.parse(JSON.stringify(op)));
+    } catch(err){var failure=Promise.reject(err);failure.queued=false;return failure;}
+    var pending=tjFlushBacktestOutbox(owner);pending.queued=true;return pending;
+  }
+  function tjBacktestWrite(collection,id,data,options,owner) {
+    return tjQueueBacktestOps([[{collection:collection,id:id,data:data,merge:!!(options&&options.merge)}]],owner);
+  }
+  function tjFlushBacktestOutbox(owner) {
+    if(tjBacktestFlushes[owner])return tjBacktestFlushes[owner];
+    function next(){
+      var queue=tjBacktestOutbox(owner);
+      if(!queue.length)return Promise.resolve();
+      var op=queue[0], auth=firebase.auth().currentUser, profile=findUser(owner);
+      if(!auth||auth.uid!==op.authUid||!profile||profile.uid!==op.ownerUid)throw Error('Backtest sync is waiting for its original account.');
+      if(op.index>=op.parts.length){localStorage.removeItem(tjBacktestOpPrefix(owner)+op.id);return next();}
+      var batch=db.batch();
+      op.parts[op.index].forEach(function(w){var ref=db.collection(w.collection).doc(w.id);if(w.remove)batch.delete(ref);else batch.set(ref,w.data,{merge:w.merge});});
+      return batch.commit().then(function(){op.index++;tjStoreBacktestOp(owner,op);return next();});
+    }
+    var work=Promise.resolve().then(function(){
+      // Web Locks serialize pumps across tabs. Retrying a committed deletion after a
+      // crash is safe; its complete intent remains until the final acknowledgement.
+      return typeof navigator!=='undefined'&&navigator.locks ? navigator.locks.request('syter-backtest-sync-'+owner,next) : next();
+    });
+    var result=work.then(function(value){delete tjBacktestFlushes[owner];return value;},function(err){delete tjBacktestFlushes[owner];throw err;});
+    tjBacktestFlushes[owner]=result;return result;
+  }
+  function tjOverlayBacktestOutbox(records,collection,owner,readIntents) {
+    var map=Object.create(null);records.forEach(function(record){map[record.id]=record;});
+    (readIntents||[]).concat(tjBacktestOutbox(owner)).forEach(function(op){op.parts.forEach(function(part){part.forEach(function(w){
+      if(w.collection!==collection)return;
+      if(w.remove){delete map[w.id];return;}
+      var value=Object.assign({},w.data),existing=map[w.id]||{};
+      if(!w.merge)Object.keys(existing).forEach(function(key){delete existing[key];});
+      map[w.id]=Object.assign(existing,value,{id:w.id});
+    });});});
+    return Object.keys(map).map(function(id){return map[id];});
+  }
+  function tjDeleteBacktestRecords(records,parentId,owner) {
+    var parts=[],part=[];
+    records.forEach(function(record){
+      var group=(record.images||[]).map(function(image){return {collection:'tradeImages',id:image.id,remove:true};});
+      group.push({collection:'backtestTrades',id:record.id,remove:true});
+      if(part.length+group.length>450){if(part.length)parts.push(part);part=[];}
+      if(group.length>450)throw Error('Too many images in one trade to delete safely.');
+      part=part.concat(group);
+    });
+    if(part.length)parts.push(part);
+    // The parent is last; every preceding acknowledged chunk stays deleted on a retry.
+    if(parentId)parts.push([{collection:'backtests',id:parentId,remove:true}]);
+    return tjQueueBacktestOps(parts,owner);
+  }
+  window.addEventListener('online',function(){
+    if(viewingUser)tjFlushBacktestOutbox(viewingUser).catch(function(err){console.warn('Backtest sync pending:',err);});
+  });
+
   function mergeRecords(localRecords, remoteRecords) {
     var byId = {};
     localRecords.concat(remoteRecords).forEach(function(record) { if (record && record.id) byId[record.id] = record; });
@@ -1773,8 +1870,19 @@
     function current() { return tjLoadIsCurrent(load) && generation === tjBacktestLoadGeneration; }
     if (!current()) return Promise.resolve();
     backtestsLoadedFlag = false;
+    var loadOwner=load.user;
+    var readIntents=tjBacktestOutbox(loadOwner);tjBacktestActiveLoads[loadOwner]=readIntents;
+    tjFlushBacktestOutbox(loadOwner).catch(function(err){console.warn('Backtest sync pending:',err);});
     var localBacktests = readBacktestLocal('backtests');
     var localTrades = readBacktestLocal('backtest_trades').map(normalizeTradeRisk);
+    // Preserve the first pre-reconciliation cache. Old clients did not have an outbox,
+    // so a failed legacy write cannot be distinguished from a remotely deleted record.
+    // Do not silently upload either; retain an owner-scoped recovery copy instead.
+    try {
+      var recoveryKey='syter_backtest_recovery_v1_'+loadOwner;
+      if(!localStorage.getItem(recoveryKey)&&(localBacktests.length||localTrades.length))
+        localStorage.setItem(recoveryKey,JSON.stringify({backtests:localBacktests,trades:localTrades,savedAt:Date.now()}));
+    }catch(err){console.warn('Backtest recovery backup unavailable:',err);}
     backtests = localBacktests; allBacktestTrades = localTrades;
     activeBacktestId = null;
     backtestTrades = [];
@@ -1782,28 +1890,29 @@
     var remoteBacktests = db.collection('backtests').where('uid', '==', targetUid).get({ source: 'server' }).then(function(snapshot) {
       if (!current()) return;
       var records = [];
-      snapshot.forEach(function(d) { var b = d.data(); b.id = b.id || d.id; records.push(b); });
+      snapshot.forEach(function(d) { var b = d.data(); b.id = d.id; records.push(b); });
       return records;
     }).catch(function(err) { if (!current()) return; console.error(err); return localBacktests; });
     var remoteTrades = db.collection('backtestTrades').where('uid', '==', targetUid).get({ source: 'server' }).then(function(snapshot) {
       if (!current()) return;
       var records = [];
-      snapshot.forEach(function(d) { var t = d.data(); t.id = t.id || d.id; records.push(t); });
+      snapshot.forEach(function(d) { var t = d.data(); t.id = d.id; records.push(t); });
       return records;
     }).catch(function(err) { if (!current()) return; console.error(err); return localTrades; });
     return Promise.all([remoteBacktests, remoteTrades]).then(function(results) {
       if (!current()) return;
-      backtests = results[0];
-      allBacktestTrades = results[1].map(normalizeTradeRisk);
+      backtests = tjOverlayBacktestOutbox(results[0],'backtests',loadOwner,readIntents);
+      allBacktestTrades = tjOverlayBacktestOutbox(results[1],'backtestTrades',loadOwner,readIntents).map(normalizeTradeRisk);
       backtests.sort(function(a, b) { return new Date(b.createdAt || b.startDate) - new Date(a.createdAt || a.startDate); });
       saveBacktestLocal();
       backtestsLoadedFlag = true;
+      if(tjBacktestActiveLoads[loadOwner]===readIntents)delete tjBacktestActiveLoads[loadOwner];
     });
   }
 
   function loadBacktestTrades(bt) {
     backtestTrades = bt ? allBacktestTrades.filter(function(t) { return t.backtestId === bt.id; }) : [];
-    return Promise.resolve();
+    return Promise.resolve(backtestTrades);
   }
 
   function openBacktestNameModal(id) {
@@ -1828,7 +1937,7 @@
     saveBacktestLocal();
     renderBacktests();
     showBacktestSyncError('');
-    db.collection('backtests').doc(bt.id).set({ name: name }, { merge: true }).catch(function(err) {
+    tjBacktestWrite('backtests',bt.id,{ name: name }, { merge: true }).catch(function(err) {
       console.error(err);
       showBacktestSyncError('The new name was saved on this device, but could not be synced. Check your connection.');
     });
@@ -1849,58 +1958,32 @@
   }
 
   function deleteBacktest(id) {
-    var removedBacktest = backtests.filter(function(b) { return b.id === id; })[0] || null;
-    var removedTrades = allBacktestTrades.filter(function(t) { return t.backtestId === id; });
-    var tradeIds = removedTrades.map(function(t) { return t.id; });
-    backtests = backtests.filter(function(b) { return b.id !== id; });
-    allBacktestTrades = allBacktestTrades.filter(function(t) { return t.backtestId !== id; });
-    if (activeBacktestId === id) {
-      activeBacktestId = null;
-      backtestTrades = [];
-      backtestViewTransition = 'list';
-      document.body.classList.remove('backtest-detail-mode');
+    var owner=viewingUser,generation=tjDataGeneration;
+    var records=allBacktestTrades.filter(function(t){return t.backtestId===id;});
+    // Queue persistence occurs synchronously before the optimistic UI change.
+    var operation=tjDeleteBacktestRecords(records,id,owner);
+    var queued=false;try{queued=tjBacktestOutbox(owner).some(function(op){return op.parts.some(function(part){return part.some(function(w){return w.collection==='backtests'&&w.id===id&&w.remove;});});});}catch(_){}
+    if(queued){
+      backtests=backtests.filter(function(b){return b.id!==id;});
+      allBacktestTrades=allBacktestTrades.filter(function(t){return t.backtestId!==id;});
+      if(activeBacktestId===id){activeBacktestId=null;backtestTrades=[];backtestViewTransition='list';document.body.classList.remove('backtest-detail-mode');}
+      saveBacktestLocal();renderBacktests();
     }
-    saveBacktestLocal();
-    showBacktestSyncError('');
-    renderBacktests();
-    // v3.41: one batch = all or nothing. Firestore allows 500 writes per batch, so very large
-    // backtests are split; the backtest document itself goes in the LAST batch, so it can never
-    // disappear while some of its trades are still on the server.
-    var refs = tradeIds.map(function(tradeId) { return db.collection('backtestTrades').doc(tradeId); });
-    refs.push(db.collection('backtests').doc(id));
-    var chain = Promise.resolve();
-    for (var bi = 0; bi < refs.length; bi += 450) {
-      (function(part) {
-        chain = chain.then(function() { var batch = db.batch(); part.forEach(function(r) { batch.delete(r); }); return batch.commit(); });
-      })(refs.slice(bi, bi + 450));
-    }
-    return chain.catch(function(err) {
+    return operation.catch(function(err){
       console.error(err);
-      // Put it back so this device keeps showing what is really on the server.
-      if (removedBacktest && !backtests.some(function(b) { return b.id === id; })) {
-        backtests.push(removedBacktest);
-        backtests.sort(function(a, b) { return new Date(b.createdAt || b.startDate) - new Date(a.createdAt || a.startDate); });
-      }
-      var known = {}; allBacktestTrades.forEach(function(t) { known[t.id] = true; });
-      allBacktestTrades = allBacktestTrades.concat(removedTrades.filter(function(t) { return !known[t.id]; }));
-      saveBacktestLocal();
-      renderBacktests();
-      showBacktestSyncError('The backtest could not be deleted from the server, so it was restored. Check your connection and try again.');
+      if(viewingUser!==owner||tjDataGeneration!==generation)return;
+      showBacktestSyncError(queued?'Deletion is queued on this device and will retry when online. No deleted trades were restored.':'Deletion was not saved: '+err.message);
     });
   }
-
   function deleteBacktestTrade(id) {
-    allBacktestTrades = allBacktestTrades.filter(function(t) { return t.id !== id; });
-    backtestTrades = backtestTrades.filter(function(t) { return t.id !== id; });
-    saveBacktestLocal();
-    renderBacktests();
-    showBacktestSyncError('');
-    db.collection('backtestTrades').doc(id).delete().catch(function(err) {
-      console.error(err);
-      showBacktestSyncError('The trade was removed on this device, but could not be deleted from the server. Check your connection.');
-    });
+    var owner=viewingUser,generation=tjDataGeneration;
+    var record=allBacktestTrades.filter(function(t){return t.id===id;})[0];
+    if(!record)return Promise.resolve();
+    var operation=tjDeleteBacktestRecords([record],null,owner);
+    var queued=false;try{queued=tjBacktestOutbox(owner).some(function(op){return op.parts.some(function(part){return part.some(function(w){return w.collection==='backtestTrades'&&w.id===id&&w.remove;});});});}catch(_){}
+    if(queued){allBacktestTrades=allBacktestTrades.filter(function(t){return t.id!==id;});backtestTrades=backtestTrades.filter(function(t){return t.id!==id;});saveBacktestLocal();renderBacktests();}
+    return operation.catch(function(err){if(viewingUser===owner&&tjDataGeneration===generation)showBacktestSyncError(queued?'Trade deletion is queued and will retry when online.':'Deletion was not saved: '+err.message);});
   }
-
   function setTradeToggleState(trade) {
     isLong = trade.direction === 'LONG';
     isWin = Number(trade.r) > 0;
@@ -1911,7 +1994,7 @@
   }
 
   function openBacktestTradeEditor(id) {
-    var trade = backtestTrades.filter(function(t) { return t.id === id; })[0];
+    var trade = allBacktestTrades.filter(function(t) { return t.id === id && t.backtestId === activeBacktestId; })[0];
     if (!trade) return;
     backtestTradeMode = true;
     editingBacktestTradeId = id;
@@ -2090,7 +2173,7 @@
     if (rememberCustom && normalized !== '#34d399' && normalized !== '#8fa3b8') bt.customCurveColor = normalized;
     bt.curveColor = normalized; bt.pendingCurveColor = null; saveBacktestLocal(); updateBacktestCurveColourUI(); renderBacktestChart(backtestTrades);
     var payload = { curveColor: bt.curveColor }; if (bt.customCurveColor) payload.customCurveColor = bt.customCurveColor;
-    db.collection('backtests').doc(bt.id).set(payload, { merge: true }).catch(function(err) { console.error('backtest curve colour save failed:', err); });
+    tjBacktestWrite('backtests',bt.id,payload, { merge: true }).catch(function(err) { console.error('backtest curve colour save failed:', err); });
   }
 
   function renderBacktests() {
@@ -2151,7 +2234,7 @@
       var tradesForBacktest = buildBacktestTradesFromRR(b);
       var stats = computeStats(tradesForBacktest);
       var resultClass = stats.totalPercent > 0 ? 'positive' : (stats.totalPercent < 0 ? 'negative' : 'neutral');
-      return '<div class="backtest-item ' + resultClass + '" data-id="' + b.id + '"><div class="backtest-item-main"><div class="backtest-item-title">' + escapeHtml(b.name || 'Backtest') + '</div><div class="backtest-item-date">' + fmtBacktestDate(b.startDate) + ' → ' + fmtBacktestDate(b.endDate) + '</div></div><div class="backtest-item-summary"><div class="backtest-item-stat"><div class="backtest-item-stat-label">Total Gain</div><div class="backtest-item-stat-value" style="color:' + (stats.totalPercent >= 0 ? 'var(--green)' : 'var(--red)') + '">' + fmtPercent(stats.totalPercent) + '</div></div><div class="backtest-item-stat"><div class="backtest-item-stat-label">Win Rate</div><div class="backtest-item-stat-value">' + stats.winRate.toFixed(1) + '%</div></div><div class="backtest-item-stat"><div class="backtest-item-stat-label">Trades</div><div class="backtest-item-stat-value">' + stats.total + '</div></div></div><span class="backtest-actions backtest-item-actions"><button class="backtest-icon-btn rename-backtest" type="button" data-id="'+b.id+'" title="Rename backtest" aria-label="Rename backtest"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></button><button class="backtest-icon-btn delete remove-backtest" type="button" data-id="'+b.id+'" title="Delete backtest" aria-label="Delete backtest">×</button></span></div>';
+      return '<div class="backtest-item ' + resultClass + '" data-id="' + escapeAttr(b.id) + '"><div class="backtest-item-main"><div class="backtest-item-title">' + escapeHtml(b.name || 'Backtest') + '</div><div class="backtest-item-date">' + fmtBacktestDate(b.startDate) + ' → ' + fmtBacktestDate(b.endDate) + '</div></div><div class="backtest-item-summary"><div class="backtest-item-stat"><div class="backtest-item-stat-label">Total Gain</div><div class="backtest-item-stat-value" style="color:' + (stats.totalPercent >= 0 ? 'var(--green)' : 'var(--red)') + '">' + fmtPercent(stats.totalPercent) + '</div></div><div class="backtest-item-stat"><div class="backtest-item-stat-label">Win Rate</div><div class="backtest-item-stat-value">' + stats.winRate.toFixed(1) + '%</div></div><div class="backtest-item-stat"><div class="backtest-item-stat-label">Trades</div><div class="backtest-item-stat-value">' + stats.total + '</div></div></div><span class="backtest-actions backtest-item-actions"><button class="backtest-icon-btn rename-backtest" type="button" data-id="'+escapeAttr(b.id)+'" title="Rename backtest" aria-label="Rename backtest"><svg class="tj-ui-icon" data-icon="pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></button><button class="backtest-icon-btn delete remove-backtest" type="button" data-id="'+escapeAttr(b.id)+'" title="Delete backtest" aria-label="Delete backtest">×</button></span></div>';
     }).join('');
     playBacktestViewTransition(listView);
   }
@@ -2189,7 +2272,7 @@
     if (!draft) return;
     tjBacktestRRPending = null;
     clearTimeout(backtestRRSaveTimer); backtestRRSaveTimer = null;
-    db.collection('backtests').doc(draft.id).set({ rrText: draft.rrText, daysTested: draft.daysTested }, { merge: true }).then(function() {
+    tjBacktestWrite('backtests',draft.id,{ rrText: draft.rrText, daysTested: draft.daysTested }, { merge: true }, draft.user).then(function() {
       if (tjBacktestRRDrafts[draft.id] === draft) delete tjBacktestRRDrafts[draft.id];
     }).catch(function(err) {
       console.error('backtest rr save failed:', err);
@@ -2208,7 +2291,7 @@
     renderBacktests();
     showBacktestSyncError('');
     clearTimeout(backtestRRSaveTimer);
-    backtestRRSaveTimer = setTimeout(flushBacktestRRDraft, 600);
+    flushBacktestRRDraft();
   }
 
   function playBacktestViewTransition(view) {
@@ -3462,31 +3545,43 @@
     }, 10);
   }
 
+  function escapeAttr(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function(ch) {
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch];
+    });
+  }
+  function safeTradeImage(value) {
+    var url = String(value || '').trim();
+    if (/^data:image\/(?:png|jpe?g|gif|webp|bmp|avif);base64,[a-z0-9+/=\s]+$/i.test(url)) return url;
+    if (/^https?:\/\//i.test(url) && !/[\x00-\x1f\x7f]/.test(url)) return url;
+    return '';
+  }
+
   function tradeRowCells(t, num, isMainTable) {
     var color = tradeResultColor(t);
     var thumbCell = t.chart
-      ? '<button class="thumb-btn" data-id="' + t.id + '"><img' + mobileImageAttributes() + ' src="' + t.chart + '" alt="">' + '' + '</button>'
+      ? '<button class="thumb-btn" data-id="' + escapeAttr(t.id) + '"><img' + mobileImageAttributes() + ' src="' + escapeAttr(safeTradeImage(t.chart)) + '" alt="">' + '' + '</button>'
       : '<div class="thumb-empty"></div>';
     var screenshotTd = isMainTable
-      ? '<td data-col="screenshot" data-id="' + t.id + '">' + thumbCell + '</td>'
+      ? '<td data-col="screenshot" data-id="' + escapeAttr(t.id) + '">' + thumbCell + '</td>'
       : '<td>' + thumbCell + '</td>';
     var openTd = isMainTable
-      ? '<td data-col="open" data-id="' + t.id + '"><span class="mono">' + fmtDT(t.openDT) + '</span></td>'
+      ? '<td data-col="open" data-id="' + escapeAttr(t.id) + '"><span class="mono">' + fmtDT(t.openDT) + '</span></td>'
       : '<td class="mono">' + fmtDT(t.openDT) + '</td>';
     var closeTd = isMainTable
-      ? '<td data-col="close" data-id="' + t.id + '"><span class="mono">' + fmtDT(t.closeDT) + '</span></td>'
+      ? '<td data-col="close" data-id="' + escapeAttr(t.id) + '"><span class="mono">' + fmtDT(t.closeDT) + '</span></td>'
       : '<td class="mono">' + fmtDT(t.closeDT) + '</td>';
     var assetTd = isMainTable
-      ? '<td data-col="asset" data-id="' + t.id + '">' + assetBadge(t.asset) + '</td>'
+      ? '<td data-col="asset" data-id="' + escapeAttr(t.id) + '">' + assetBadge(t.asset) + '</td>'
       : '<td>' + assetBadge(t.asset) + '</td>';
     var dirTd = isMainTable
-      ? '<td data-col="direction" data-id="' + t.id + '">' + directionBadge(t.direction) + '</td>'
+      ? '<td data-col="direction" data-id="' + escapeAttr(t.id) + '">' + directionBadge(t.direction) + '</td>'
       : '<td>' + directionBadge(t.direction) + '</td>';
     var resTd = isMainTable
-      ? '<td data-col="result" data-id="' + t.id + '">' + resultBadge(t.r) + '</td>'
+      ? '<td data-col="result" data-id="' + escapeAttr(t.id) + '">' + resultBadge(t.r) + '</td>'
       : '<td>' + resultBadge(t.r) + '</td>';
     var rrTd = isMainTable
-      ? '<td data-col="rr" data-id="' + t.id + '"><span class="mono" style="color:' + color + '">' + fmtTradeResult(t) + '</span></td>'
+      ? '<td data-col="rr" data-id="' + escapeAttr(t.id) + '"><span class="mono" style="color:' + color + '">' + fmtTradeResult(t) + '</span></td>'
       : '<td class="mono" style="color:' + color + '">' + fmtTradeResult(t) + '</td>';
     return [
       screenshotTd,
@@ -3497,9 +3592,9 @@
       assetTd,
       dirTd,
       resTd,
-      '<td data-col="model" data-id="' + t.id + '">' + tradeModelHTML(t, isMainTable && activeEditCol === 'model') + '</td>',
+      '<td data-col="model" data-id="' + escapeAttr(t.id) + '">' + tradeModelHTML(t, isMainTable && activeEditCol === 'model') + '</td>',
       rrTd,
-      '<td><button class="del-btn" data-id="' + t.id + '">✕</button></td>'
+      '<td><button class="del-btn" data-id="' + escapeAttr(t.id) + '">✕</button></td>'
     ];
   }
 
@@ -3984,9 +4079,9 @@
     list.innerHTML = dayTrades.map(function(t) {
       var color = tradeResultColor(t);
       var thumb = t.chart
-        ? '<button class="thumb-btn" data-id="' + t.id + '"><img' + mobileImageAttributes() + ' src="' + t.chart + '" alt=""></button>'
+        ? '<button class="thumb-btn" data-id="' + escapeAttr(t.id) + '"><img' + mobileImageAttributes() + ' src="' + escapeAttr(safeTradeImage(t.chart)) + '" alt=""></button>'
         : '<div class="thumb-empty"></div>';
-      return '<div class="cal-day-trade-row" data-id="' + t.id + '">' +
+      return '<div class="cal-day-trade-row" data-id="' + escapeAttr(t.id) + '">' +
         '<div class="cal-day-trade-left">' + assetBadge(t.asset) + directionBadge(t.direction) + thumb + '</div>' +
         '<div class="trade-model-meta"><span class="card-sub">Модель</span>' + tradeModelHTML(t) + '</div>' +
         '<div class="mono" style="font-weight:700; color:' + color + '">' + fmtTradeResult(t) + '</div>' +
@@ -5380,8 +5475,8 @@
     empty.style.display = 'none';
     grid.innerHTML = withShots.map(function(t) {
       var rClass = Number(t.r) > 0 ? 'pos' : (Number(t.r) < 0 ? 'neg' : '');
-      return '<div class="gallery-item" data-id="' + t.id + '">' +
-        '<img' + mobileImageAttributes() + ' src="' + t.chart + '" alt="' + tjAssetEsc(t.asset) + '">' + '' +
+      return '<div class="gallery-item" data-id="' + escapeAttr(t.id) + '">' +
+        '<img' + mobileImageAttributes() + ' src="' + escapeAttr(safeTradeImage(t.chart)) + '" alt="' + tjAssetEsc(t.asset) + '">' + '' +
         '<div class="gallery-item-overlay">' +
           '<div>' +
             '<div class="gallery-item-r ' + rClass + '">' + tjAssetEsc(t.asset) + ' · ' + tjAssetEsc(t.direction) + '</div>' +
@@ -5616,7 +5711,7 @@
     var bt = backtests.filter(function(b) { return b.id === activeBacktestId; })[0];
     if (!bt || !!bt.cleanOnly === flag) return;
     bt.cleanOnly = flag; saveBacktestLocal(); renderBacktests();
-    db.collection('backtests').doc(bt.id).set({ cleanOnly: flag }, { merge: true }).catch(function(err) { console.error('backtest filter save failed:', err); });
+    tjBacktestWrite('backtests',bt.id,{ cleanOnly: flag }, { merge: true }).catch(function(err) { console.error('backtest filter save failed:', err); });
   }
   document.getElementById('backtestFilterAll').addEventListener('click', function() { setBacktestCleanOnly(false); });
   document.getElementById('backtestFilterClean').addEventListener('click', function() { setBacktestCleanOnly(true); });
@@ -5927,7 +6022,7 @@
           return tx.get(ref).then(function(doc) {
             var trade = doc.exists ? doc.data() : null;
             if (!trade || trade.uid !== uid || trade.asset !== fromName) return;
-            if (toName == null) tx.delete(ref); else tx.update(ref, { asset: toName });
+            if (toName == null) { (trade.images||[]).forEach(function(image){tx.delete(db.collection('tradeImages').doc(image.id));}); tx.delete(ref); } else tx.update(ref, { asset: toName });
           });
         }));
       });
@@ -6218,7 +6313,8 @@
       if (!bt || openDT < backtestRangeStart || openDT > backtestRangeEnd || closeDT < backtestRangeStart || closeDT > backtestRangeEnd || closeDT < openDT) {
         var rangeError = document.getElementById('saveError'); rangeError.style.display = 'block'; rangeError.textContent = 'Trade dates must stay inside the selected backtest range.'; return;
       }
-      var btTrade = editingBacktestTradeId ? backtestTrades.filter(function(t) { return t.id === editingBacktestTradeId; })[0] : null;
+      var btTrade = editingBacktestTradeId ? allBacktestTrades.filter(function(t) { return t.id === editingBacktestTradeId && t.backtestId === activeBacktestId; })[0] : null;
+      if(editingBacktestTradeId&&!btTrade){showBacktestSyncError('This trade no longer exists. Close the editor and reload.');return;}
       var oldBtTrade=btTrade;
       if (btTrade) {
         btTrade=Object.assign({},btTrade);
@@ -6233,14 +6329,15 @@
         try{await TJMedia.write('backtestTrades',btTrade,null,true);}catch(err){submitForm.dataset.saving='';submitForm.inert=false;showBacktestSyncError('Не сохранено: '+err.message);return;}
         submitForm.dataset.saving='';submitForm.inert=false;if(submitOwner!==viewingUser)return;
       }
+      if(!window.TJMedia){
+        var queuedWrite=tjBacktestWrite('backtestTrades',btTrade.id,btTrade);
+        queuedWrite.catch(function(err){if(viewingUser===submitOwner)showBacktestSyncError(queuedWrite.queued?'Saved on this device. Sync will retry when online.':'Not saved: '+err.message);});
+        if(!queuedWrite.queued){showBacktestSyncError('Not saved: local storage is unavailable.');return;}
+      }
       if(oldBtTrade)Object.assign(oldBtTrade,btTrade);else{backtestTrades.push(btTrade);allBacktestTrades.push(btTrade);}
       delete submitForm.dataset.pendingId;
       saveBacktestLocal();
       showBacktestSyncError('');
-      if(!window.TJMedia)db.collection('backtestTrades').doc(btTrade.id).set(btTrade).catch(function(err) {
-        console.error(err);
-        showBacktestSyncError('The trade was saved on this device, but could not be synced. Check your connection.');
-      });
       backtestTradeMode = false; editingBacktestTradeId = null; document.getElementById('magnitudeInput').value = ''; currentScreenshot = null; closeModal(); renderBacktests(); return;
     }
     var newTrade = {
@@ -6424,9 +6521,11 @@
       }
       var owner = findUser(viewingUser);
       var bt = { id: Date.now().toString() + Math.random().toString(36).slice(2, 6), name: 'Backtest', uid: owner ? owner.uid : null, ownerLogin: viewingUser, startDate: backtestDraftStart, endDate: value, createdAt: new Date().toISOString() };
+      var creation=tjBacktestWrite('backtests',bt.id,bt);
+      creation.catch(function(err){console.error(err);showBacktestSyncError(creation.queued?'Saved on this device. Sync will retry when online.':'Not saved: '+err.message);});
+      if(!creation.queued){showBacktestSyncError('Not saved: local storage is unavailable.');return;}
       backtests.push(bt); activeBacktestId = bt.id; backtestTrades = [];
       saveBacktestLocal();
-      db.collection('backtests').doc(bt.id).set(bt).catch(function(err) { console.error(err); });
       backtestCreationStep = null; backtestDraftStart = null;
       backtestViewTransition = 'detail';
       document.body.classList.remove('backtest-input-panel-collapsed');
@@ -6696,16 +6795,18 @@
       if (stats.percentChartData.length > 1) renderChart(stats.percentChartData);
       if (activeBacktestId) {
         var bt = backtests.filter(function(b) { return b.id === activeBacktestId; })[0];
-        if (bt) loadBacktestTrades(bt).then(function(btTrades) { renderBacktestChart(btTrades); });
+        if (bt) { var renderOwner=viewingUser,renderGeneration=tjDataGeneration,renderBacktestId=bt.id; loadBacktestTrades(bt).then(function(btTrades) { if(viewingUser===renderOwner&&tjDataGeneration===renderGeneration&&activeBacktestId===renderBacktestId)renderBacktestChart(btTrades); }); }
       }
     }
     // Save to Firestore so it syncs across devices
     if (persist !== false && viewingUser) {
       clearTimeout(curveColorSaveTimer);
+      var colourOwner=viewingUser, colourGeneration=tjDataGeneration;
+      var payload = { curveColor: String(curveColor).toLowerCase() };
+      if (savedCustomCurveColor) payload.customCurveColor = savedCustomCurveColor;
       curveColorSaveTimer = setTimeout(function() {
-        var payload = { curveColor: String(curveColor).toLowerCase() };
-        if (savedCustomCurveColor) payload.customCurveColor = savedCustomCurveColor;
-        db.collection('titles').doc(viewingUser).set(payload, { merge: true }).catch(function(err) { console.error('curveColor save failed:', err); });
+        if(viewingUser!==colourOwner || tjDataGeneration!==colourGeneration)return;
+        db.collection('titles').doc(colourOwner).set(payload, { merge: true }).catch(function(err) { console.error('curveColor save failed:', err); });
       }, 220);
     }
   }
@@ -6897,45 +6998,59 @@
     if (el) el.textContent = value;
   }
 
-  function queueUsageWrite(task) {
+  function queueUsageWrite(task, tracker) {
     // Serialize writes so a visibility event and the interval cannot double-count
     // the same active period at the same time.
-    usageTracker.saving = usageTracker.saving.catch(function() {}).then(task);
-    return usageTracker.saving;
+    tracker = tracker || usageTracker;
+    tracker.saving = tracker.saving.catch(function() {}).then(task);
+    return tracker.saving;
   }
 
+  function usagePendingPrefix(tracker) { return 'tj_usage_pending_v2_'+encodeURIComponent(tracker.uid)+'_'; }
+  function usagePendingRead(tracker) {
+    var records={};
+    try {
+      var prefix=usagePendingPrefix(tracker);
+      for(var i=0;i<localStorage.length;i++){
+        var key=localStorage.key(i);if(key.indexOf(prefix)!==0)continue;
+        var record=JSON.parse(localStorage.getItem(key));
+        if(record&&/^\d{4}-\d{2}-\d{2}$/.test(record.day)&&Number(record.ms)>0)records[key]=record;
+      }
+    }catch(err){console.warn('Usage retry storage unavailable:',err);}
+    return Object.assign(records,tracker.pending||{});
+  }
+  function usagePendingSave(tracker,day,ms) {
+    // Independent records cannot overwrite another tab's failed interval. Persist
+    // immediately, before awaiting a previous write or the cross-tab pump lock.
+    var key=usagePendingPrefix(tracker)+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2);
+    var record={day:day,ms:ms};
+    try{localStorage.setItem(key,JSON.stringify(record));}
+    catch(_){tracker.pending=tracker.pending||{};tracker.pending[key]=record;}
+  }
   function flushUsageTime() {
-    if (!usageTracker.activeSince || !usageTracker.login) return Promise.resolve();
-
-    var now = Date.now();
-    var startedAt = usageTracker.activeSince;
-    // Move the marker immediately so overlapping flushes cannot count the same span twice.
-    usageTracker.activeSince = document.hidden ? null : now;
-
-    var delta = now - startedAt;
-    if (!isFinite(delta) || delta < 1000) return Promise.resolve();
-    // Ignore absurd jumps caused by a suspended browser/process. Normal interval is 30s.
-    delta = Math.min(delta, 5 * 60 * 1000);
-
-    var key = usageDayKey(now), ownerUid=usageTracker.uid;
-    var ref = usageDoc();
-    if (!ref) return Promise.resolve();
-
-    return queueUsageWrite(function() {
-      var update = {};
-      update['usage.totalMs'] = firebase.firestore.FieldValue.increment(delta);
-      update['usage.days.' + key] = firebase.firestore.FieldValue.increment(delta);
-      update['usage.updatedAt'] = firebase.firestore.FieldValue.serverTimestamp();
-      return ref.update(update).catch(function(err) {
-        // If an old account somehow has no titles document/usage map yet, create it
-        // once and retry the increment without touching the journal's other fields.
-        console.warn('Usage update retry:', err);
+    var tracker=usageTracker,ref=usageDoc();
+    if(!tracker.login||!ref)return Promise.resolve();
+    var now=Date.now(),delta=tracker.activeSince?now-tracker.activeSince:0;
+    tracker.activeSince=document.hidden?null:now;
+    if(isFinite(delta)&&delta>=1000)usagePendingSave(tracker,usageDayKey(now),Math.min(delta,5*60*1000));
+    function drain(){
+      var pending=usagePendingRead(tracker),keys=Object.keys(pending);
+      if(!keys.length)return;
+      var update={},total=0,days={};
+      keys.forEach(function(key){var record=pending[key],ms=Number(record.ms)||0;total+=ms;days[record.day]=(days[record.day]||0)+ms;});
+      Object.keys(days).forEach(function(day){update['usage.days.'+day]=firebase.firestore.FieldValue.increment(days[day]);});
+      update['usage.totalMs']=firebase.firestore.FieldValue.increment(total);
+      update['usage.updatedAt']=firebase.firestore.FieldValue.serverTimestamp();
+      return ref.update(update).catch(function(err){
         if(err.code!=='not-found')throw err;
-        return ref.set({uid: ownerUid}, { merge: true }).then(function() { return ref.update(update); });
+        return ref.set({uid:tracker.uid},{merge:true}).then(function(){return ref.update(update);});
+      }).then(function(){
+        keys.forEach(function(key){if(tracker.pending)delete tracker.pending[key];try{localStorage.removeItem(key);}catch(_){}});
       });
-    }).catch(function(err) {
-      console.warn('Usage time save failed:', err);
-    });
+    }
+    return queueUsageWrite(function(){
+      return typeof navigator!=='undefined'&&navigator.locks?navigator.locks.request('syter-usage-sync-'+tracker.uid,drain):drain();
+    },tracker).catch(function(err){console.warn('Usage time save failed; interval retained:',err);});
   }
 
   function refreshUsageStats() {
@@ -7199,21 +7314,23 @@
     empty.style.display = 'none';
     var owner = findUser(viewingUser);
     if (!owner) { empty.style.display = 'block'; return; }
+    var diaryOwner=viewingUser, diaryGeneration=tjDataGeneration;
     db.collection('diary').where('uid', '==', owner.uid).get().then(function(snapshot) {
+      if (viewingUser!==diaryOwner || tjDataGeneration!==diaryGeneration) return;
       var entries = [];
-      snapshot.forEach(function(d) { entries.push(d.data()); });
+      snapshot.forEach(function(d) { var entry=d.data(); entry.id=d.id; entries.push(entry); });
       entries.sort(function(a, b) { return new Date(b.createdAt) - new Date(a.createdAt); });
       if (!entries.length) { empty.style.display = 'block'; return; }
       list.innerHTML = entries.map(function(e) {
-        return '<div class="diary-entry" data-id="' + e.id + '">' +
+        return '<div class="diary-entry" data-id="' + escapeAttr(e.id) + '">' +
           '<div class="diary-entry-head">' +
             '<span class="diary-entry-date mono">' + fmtDiaryDate(e.createdAt) + '</span>' +
             '<div class="diary-entry-actions">' +
-              '<button class="edit-btn" data-id="' + e.id + '" title="Edit">✎</button>' +
-              '<button class="del-btn" data-id="' + e.id + '">✕</button>' +
+              '<button class="edit-btn" data-id="' + escapeAttr(e.id) + '" title="Edit">✎</button>' +
+              '<button class="del-btn" data-id="' + escapeAttr(e.id) + '">✕</button>' +
             '</div>' +
           '</div>' +
-          '<div class="diary-entry-text" data-id="' + e.id + '">' + escapeHtml(e.text) + '</div>' +
+          '<div class="diary-entry-text" data-id="' + escapeAttr(e.id) + '">' + escapeHtml(e.text) + '</div>' +
         '</div>';
       }).join('');
 
@@ -7227,7 +7344,7 @@
       Array.prototype.forEach.call(list.querySelectorAll('.edit-btn'), function(btn) {
         btn.addEventListener('click', function() {
           var id = btn.getAttribute('data-id');
-          var textEl = list.querySelector('.diary-entry-text[data-id="' + id + '"]');
+          var textEl = Array.prototype.find.call(list.querySelectorAll('.diary-entry-text'),function(node){return node.dataset.id===id;});
           if (!textEl || textEl.querySelector('textarea')) return; // already editing
           var current = textEl.textContent;
           var ta = document.createElement('textarea');

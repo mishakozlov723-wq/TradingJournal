@@ -50,10 +50,10 @@ test('single-surface probe uses a native window without a child view or exposed 
   assert.equal(options.webPreferences.preload, undefined);
   assert.equal(options.titleBarStyle, undefined);
 });
-test('probe build does not auto-update and suppresses animation helpers only outside baseline', () => {
+test('production build retains normal acceleration and auto-update wiring, not diagnostic-only switches', () => {
   const source = fs.readFileSync(path.join(__dirname, '../main.js'), 'utf8');
-  assert.ok(source.includes('if (!PROBE_NO_COVER) windowMotion.warm()'));
-  assert.ok(source.includes('if (PROBE_NO_COVER) return false'));
-  assert.ok(source.includes("if (RESIZE_PROBE !== 'baseline') return;"));
-  assert.ok(source.includes('Auto-updates disabled in this diagnostic-only build'));
+  assert.ok(source.includes('autoUpdater'));
+  assert.ok(!source.includes('PROBE_NO_COVER'));
+  assert.ok(!source.includes('RESIZE_PROBE'));
+  assert.ok(!source.includes('Auto-updates disabled in this diagnostic-only build'));
 });

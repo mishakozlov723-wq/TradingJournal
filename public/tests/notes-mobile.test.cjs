@@ -7,7 +7,7 @@ function harness(mobile=true){
  const root=deferred(),reads=[],renders=[],writes=[],pending=new Map();let owner='alice';
  const c={Promise,setTimeout,clearTimeout,Array,Number,String,Date,console:{error(){}},location:{hash:''},
  document:{body:{classList:{contains:()=>mobile}}},notesOwner:()=>owner,
- notesLoadSeq:0,notesLoadedFor:null,notesDirty:false,notesLoadedRemote:false,notesActivePageId:null,
+ notesIgnoreLocalOnce:false,notesCloudRevision:'[0,null]',notesCloudConflict:false,notesRevision:meta=>JSON.stringify([Number(meta?.updatedAt)||0,meta?.revision||null]),notesShowConflict(){c.conflicted=true;c.notesCloudIncomplete=true;},notesLoadSeq:0,notesLoadedFor:null,notesDirty:false,notesLoadedRemote:false,notesActivePageId:null,
  notesPageCloudHash:JSON.stringify,notesClone:x=>JSON.parse(JSON.stringify(x)),notesNormalizePages:x=>x||[],notesNormalizeGroups:x=>x||[],
  notesEnsurePageGroups(){},notesPickActivePage(){if(!c.notesPages.some(p=>p.id===c.notesActivePageId))c.notesActivePageId=c.notesPages[0]?.id||null;},
  notesHistoryReset(){},notesApplyHashTarget(){},notesToast(){},notesSetState(){},
@@ -99,10 +99,10 @@ test('failed orphan recovery query is treated as cloud failure, never as an empt
  assert.equal(h.c.notesCloudIncomplete,true);
  assert.equal(h.writes.includes('cloud'),false);
 });
-test('desktop retains parallel full fetch without mobile preview or cache write',async()=>{
+test('desktop retains parallel full fetch and persists an acknowledged revision baseline',async()=>{
  const h=harness(false);const ids=Array.from({length:12},(_,i)=>'p'+i),done=h.c.notesLoad(true);
  assert.equal(h.renders.length,0);h.root.resolve(snap({notesWorkspaceMeta:{version:3,pageIds:ids}}));await tick();assert.equal(h.reads.length,12);assert.equal(h.renders.length,0);
- for(const [id,d] of h.pending)d.resolve(page(id));await done;assert.equal(h.renders.length,1);assert.equal(h.writes.length,0);
+ for(const [id,d] of h.pending)d.resolve(page(id));await done;assert.equal(h.renders.length,1);assert.equal(h.writes.length,1);assert.equal(h.writes[0].k,'alice');
 });
 function dragHarness(mobile=true){
  const events={},classes=new Set(),marks=new Set(),moves=[],container={},target={dataset:{id:'b'},parentElement:container,classList:{add:x=>marks.add(x),remove:(...xs)=>xs.forEach(x=>marks.delete(x))},getBoundingClientRect:()=>({top:100,height:40})};
@@ -135,3 +135,5 @@ test('sheet follows pointer and distance swipe dismisses after animation',()=>{c
 test('short slow swipe springs back without closing',()=>{const h=sheetHarness();h.fire('pointerdown');h.fire('pointermove',{clientY:20,timeStamp:100});h.fire('pointerup',{timeStamp:250});h.run();assert.equal(h.closed(),0);assert.equal(h.props.transform,undefined);});
 test('fast flick closes below distance threshold',()=>{const h=sheetHarness();h.fire('pointerdown');h.fire('pointermove',{clientY:35,timeStamp:30});h.fire('pointerup',{timeStamp:35});h.run();assert.equal(h.closed(),1);});
 test('sheet pointer cancellation returns to resting position',()=>{const h=sheetHarness();h.fire('pointerdown');h.fire('pointermove',{clientY:150,timeStamp:40});h.fire('pointercancel');h.run();assert.equal(h.closed(),0);assert.equal(h.props.transform,undefined);});
+test('changed revision with an empty cloud index never auto-publishes a stale local draft',async()=>{const h=harness();h.c.notesLoadLocal=()=>({pages:[{id:'stale'}],groups:[],updatedAt:20,cloudBase:'[5,"old"]'});const done=h.c.notesLoad(true);h.root.resolve(snap({notesWorkspaceMeta:{version:3,pageIds:[],groups:[],updatedAt:10,revision:'new'}}));await done;assert.equal(h.c.conflicted,true);assert.equal(h.c.notesPages[0].id,'stale');assert.equal(h.writes.includes('cloud'),false);});
+test('a conflict marker survives reload even when the device clock is behind',async()=>{const h=harness();h.c.notesLoadLocal=()=>({pages:[{id:'draft'}],groups:[],updatedAt:1,conflict:true});const done=h.c.notesLoad(true);h.root.resolve(snap({notesWorkspaceMeta:{version:3,pageIds:['remote'],updatedAt:100}}));await done;assert.equal(h.c.conflicted,true);assert.equal(h.writes.includes('cloud'),false);});

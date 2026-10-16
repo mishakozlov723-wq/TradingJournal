@@ -1,0 +1,41 @@
+name: Journal regression checks
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Install isolated browser test dependency
+        run: npm install --prefix /tmp/tj-browser --no-save playwright@1.63.0
+      - name: Syntax and unit/browser regression suite
+        env:
+          NODE_PATH: /tmp/tj-browser/node_modules
+        run: |
+          export CHROME_PATH="$(command -v google-chrome || command -v chromium)"
+          test -x "$CHROME_PATH"
+          node --check public/app.js
+          node --check public/notes-workspace.js
+          node --check public/replay-space.js
+          node --check public/accounts-space.js
+          node --check accounts-proxy-vercel/api/myfxbook.js
+          node --check accounts-proxy/netlify/functions/myfxbook.js
+          node --test tests/*.test.cjs public/tests/*.test.cjs desktop/tests/*.test.cjs
+      - name: Isolated Notes, security and persistence scenarios
+        env:
+          NODE_PATH: /tmp/tj-browser/node_modules
+        run: |
+          export CHROME_PATH="$(command -v google-chrome || command -v chromium)"
+          mkdir -p verification
+          for scenario in models-recovery notes-empty notes-admin-status notes-share usage-stats notes-database stabilization; do
+            node "public/tests/$scenario.browser.cjs"
+          done

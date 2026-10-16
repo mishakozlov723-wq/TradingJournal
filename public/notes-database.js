@@ -171,9 +171,9 @@
   function mount(host,b,bridge) {
     let wrapper,table,focusCell=null,returnFocus=null;
     const readOnly=bridge.readOnly;
-    function icon(name){const s=el('span','ndb-icon');bridge.icon(s,'line:'+name,'icon','gray');return s;}
+    function icon(name){const s=el('span','ndb-icon');s.setAttribute('aria-hidden','true');bridge.icon(s,'line:'+name,'icon','gray');return s;}
     function dataIcon(data,fallback){
-      if(data&&data.icon){const s=el('span','ndb-icon ndb-custom-icon');bridge.icon(s,data.icon,data.iconType||'emoji',data.iconColor||'default');return s;}
+      if(data&&data.icon){const s=el('span','ndb-icon ndb-custom-icon');s.setAttribute('aria-hidden','true');bridge.icon(s,data.icon,data.iconType||'emoji',data.iconColor||'default');return s;}
       return fallback?icon(fallback):null;
     }
     function setIcon(data,pick){if(pick&&pick.value){data.icon=pick.value;data.iconType=pick.type==='icon'?'icon':'emoji';data.iconColor=pick.color||'default';}else{delete data.icon;delete data.iconType;delete data.iconColor;}}

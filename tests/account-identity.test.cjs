@@ -58,7 +58,7 @@ function fixture({ stale = true, missing = false, unavailable = false } = {}) {
     db, console: { warn() {}, error(e) { throw e; } }, clearTimeout,
     firebase: { auth: () => ({ currentUser: adminAuth }) },
     document: { body: { classList: { remove() {} } }, activeElement: null, getElementById: () => ({ style: {} }) },
-    tjDataGeneration: 0, tjBacktestLoadGeneration: 0,
+    tjBacktestOutbox:()=>[],tjFlushBacktestOutbox:()=>Promise.resolve(),tjBacktestActiveLoads:{},tjOverlayBacktestOutbox:records=>records,localStorage:{getItem:()=>null,setItem(){}},tjDataGeneration: 0, tjBacktestLoadGeneration: 0,
     tjServerTrades: {}, tjLive: { unsubs: [], timer: null, generation: 0 },
     currentUser: null, viewingUser: null, trades: [], backtests: [], allBacktestTrades: [], backtestTrades: [],
     tradingModels: [], activeBacktestId: null,
@@ -151,4 +151,11 @@ test('switching to another student cancels and ignores previous subscriptions', 
   assert.equal(c.trades.length, 1);
   assert.equal(c.trades[0].uid, 'other');
   assert.ok(subscriptions.filter(s => s.active && s.uid).every(s => s.uid === 'other'));
+});
+
+test('an authoritative empty server journal offers legacy export without recreating old records',async()=>{
+ const {context:c}=fixture();await c.tjLoadUserDirectory(adminAuth);c.currentUser=c.findUser('Retocker');c.viewingUser='Retocker';
+ const collection=c.db.collection.bind(c.db);c.db.collection=name=>{const col=collection(name);if(name==='trades')col.where=()=>({get:()=>Promise.resolve({forEach(){}})});return col;};
+ c.idbGetAllForUser=()=>Promise.resolve([{id:'deleted-before',uid:'admin',r:99}]);let offered;c.tjOfferLegacyRecovery=records=>offered=records;
+ await c.loadData();assert.equal(c.trades.length,0);assert.equal(offered[0].id,'deleted-before');
 });
