@@ -1489,8 +1489,9 @@
   function notesSaveLocal(ownerKey, snapshot) {
     snapshot=Object.assign({},snapshot);
     if(ownerKey===notesLoadedFor&&notesLoadedRemote){snapshot.cloudBase=notesCloudRevision;snapshot.conflict=notesCloudConflict;}
-    if(ownerKey)notesMobileCachePut(ownerKey,snapshot);
-    try { localStorage.setItem(notesStorageKey(ownerKey), JSON.stringify(snapshot)); return true; }
+    // Reuse the mobile cache JSON without delaying the durable local write.
+    var serialized = ownerKey ? notesMobileCachePut(ownerKey,snapshot) : undefined;
+    try { localStorage.setItem(notesStorageKey(ownerKey), serialized === undefined ? JSON.stringify(snapshot) : serialized); return true; }
     catch (e) { return false; }
   }
 
@@ -1727,11 +1728,14 @@
   }
   function notesMobileCachePut(key,data){
     if(!notesMobileCacheEnabled()) return;
-    data=notesClone(data);
+    // Freeze the IndexedDB snapshot before yielding; share its encoding with localStorage.
+    var serialized=JSON.stringify(data);
+    data=JSON.parse(serialized);
     notesMobileCacheOpen().then(function(db){
       if(!db)return;
       try { var tx=db.transaction('snapshots','readwrite'); tx.objectStore('snapshots').put({time:Date.now(),data:data},key); } catch(e){}
     });
+    return serialized;
   }
 
   function notesLoadLocal(ownerKey) {
@@ -2810,6 +2814,14 @@
   function notesLoadingTransition(begin) {
     var overlay=document.getElementById('notesTransitionOverlay');
     if(!overlay){begin(function(){});return;}
+    // Phones show the real read-only loading state immediately, not a timed intro.
+    // notesLoad still reconciles every page before allowing edits or cloud writes.
+    if(notesIsMobile()){
+      clearTimeout(notesTransitionTimer);notesTransitionTimer=null;notesLoadingRun++;
+      overlay.classList.remove('open','loading','leaving','ready');
+      overlay.setAttribute('aria-hidden','true');
+      begin(function(){});return;
+    }
     /* Keep the transition outside #appRoot. The app shell is width-limited
        before notes-workspace-mode is applied, which used to clip the first
        900ms of the loading cover to the journal column. */
