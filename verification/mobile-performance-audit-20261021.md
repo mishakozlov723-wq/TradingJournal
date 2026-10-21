@@ -1,47 +1,72 @@
 # iPhone website cold-loading audit (2026-10-21)
 
-Inspected baseline: `f26f062a9399909c08df32dc50b6befe5540945f`. Scope: website only, after Sign in and first/cold Notes opening. The user reports that reopening Notes is fast, but the first opening after login or long inactivity is slow. Reported durations are estimates, not measurements. A stale-cache explanation is a hypothesis, not an established cause.
+Baseline: `f26f062a9399909c08df32dc50b6befe5540945f`. Scope: the website after Sign in and the first Notes opening after login/long inactivity. The user reports that reopening Notes in the same session is normal. The reported 15–30 seconds is an estimate, not an instrumented measurement. Cache staleness remains a hypothesis.
 
-## Design constraint and correction
+## Non-negotiable design constraint
 
-“Your Notes Space” is an intentional part of the design. Its visuals, mobile/desktop behavior, 900 ms initial hold, 4200 ms minimum intro, animation-completion gate and 220 ms exit are fully preserved. The earlier commit's mobile intro bypass has been reverted in this branch; tests and PR scope now explicitly protect the original schedule. No animation removal is part of the optimization.
+“Your Notes Space” is intentional. Its visuals and mobile/desktop schedule remain exactly unchanged: 900 ms initial hold, 4200 ms minimum intro, animation-completion gate, and 220 ms exit. No CSS, animation, transition, or early reveal change is included. The transition/entry regression tests continue to protect this behavior.
 
-The entire `notesLoadingRun` / `notesTransition` / `notesLoadingTransition` / `enterNotesWorkspace` section was compared with the baseline and is exactly identical. No CSS, animation, access-rule or cloud-loading lifecycle change remains.
+## Confirmed causes in code
 
-## Retained production change
+### Overview skeleton unnecessarily waited for Backtests
 
-`notesSaveLocal` previously stringified the full mobile Notes snapshot for localStorage after `notesMobileCachePut` had already stringified and parsed it for IndexedDB. A synthetic VM probe confirmed two full stringifications for a single local save.
+`loadData` loaded settings, trades, and then both server Backtest collections before the Sign in completion callback hid the Overview skeleton. Backtests were therefore a confirmed dependency of the skeleton even though Overview does not need them.
 
-The patch reuses that JSON for localStorage, while preserving the detached IndexedDB snapshot, immediate durable local write, quota reporting, owner-scoped keys and revision/conflict fields. It also avoids duplicate encoding on final mobile load reconciliation. It does not change the storage format, cache expiry, server reads or persistence debounce. Root `notes.js` and served `public/notes-workspace.js` remain identical; the served resource fingerprint is updated.
+The patch now resolves the core load after settings/trades and keeps the two Backtest reads in `load.backtestsReady`. Overview renders and removes its skeleton immediately after the core load. Backtests has an explicit non-interactive “Loading backtests…” state; Replay continues to use `backtestsLoadedFlag`. Initial live listeners still start only after `backtestsReady`, preserving the existing reconciliation order.
 
-This is a small CPU/allocation optimization, NOT a claim to have fixed the 15–30-second cold-loading symptom. No iPhone end-to-end speedup has been measured.
+Owner/generation guards, `tjBacktestLoadGeneration`, owner-scoped local cache/recovery, outbox capture/flush, and both `tjOverlayBacktestOutbox` calls remain in the Backtest loader. A stale load rechecks identity before UI refresh or listener startup. Failed server reads retain local/outbox state and show an explicit refresh warning.
 
-## Confirmed cold-loading lifecycle (baseline paths)
+Expected effect: the post-Sign-in Overview skeleton no longer includes the latency of the `backtests` and `backtestTrades` server queries. The actual improvement on the user’s iPhone has not yet been measured.
 
-- `public/app.js:7548–7602`: Sign in awaits the user directory and usage initialization before entering the app. `startUsageTracking` (`7092–7148`) includes a server read and transaction and refreshes usage stats. Root initialization/ownership guarantees must not simply be removed.
-- `public/app.js:1580–1660`: `loadData` reads settings/models, then trades, then waits for `loadBacktests`. Both backtest server collections (`1866–1911`) therefore gate removal of the Overview skeleton (`7592`). Safely separating this requires explicit Backtests/Replay loading/error states and owner/outbox regression coverage.
-- `tjLoadUserDirectory` shares an in-flight promise for the same UID; `startUsageTracking` also guards a started tracker. The auth-state callback and sign-in callback calling these helpers is not by itself proof of duplicated full requests.
-- `public/app.js:1484–1564`: live subscriptions follow initial reads. Initial snapshots can repeat CPU reconciliation, but SDK caching/stream reuse means this is not proof of another billable full download.
-- `notesLoad(false)` immediately returns when `notesLoadedFor` already matches the owner, so a warm reopening can avoid root/page refetching. That is consistent with, but does not prove the cause of, the user's warm/cold difference. A reload starts a new in-memory lifetime.
-- On a cold load, localStorage can supply a preview, and IndexedDB is raced against a 180 ms fallback. IndexedDB snapshots older than seven days are rejected. This 180 ms race is not evidence of a 15–30-second cache wait; actual cache presence/age and synchronous parsing cost have not been measured.
-- The Notes root is explicitly fetched from the server; an owner repair, if needed, adds a write and reread. Then all page documents are fetched, with at most four mobile workers. All documents must reconcile before editing is enabled. Missing/inaccessible pages must never be treated as an empty workspace just to remove the spinner.
-- `enterNotesWorkspace` starts loading from the original transition callback after the initial 900 ms hold. On mobile it calls reveal immediately and starts `notesLoad(false)` via requestAnimationFrame/setTimeout; the actual read-only loading continues underneath the branded animation. Cached/warm data does not shorten the intended animation.
+### Cold Notes performs a server root read followed by all indexed page reads
 
-## Local checks after restoring the animation
+A warm `notesLoad(false)` returns immediately when the same owner is already loaded. A new in-memory lifetime reads the root from the server and then all page documents. Mobile uses at most four workers and keeps the workspace read-only until the full set is reconciled. This explains the structural cold/warm difference, but does not identify which phase takes 15–30 seconds on the user’s device.
 
-- Targeted suite: **55 passed, 0 failed** (42 preexisting, six snapshot-encoding regressions, seven original-animation lifecycle regressions).
-  `node --test tests/chart-resize.test.cjs tests/stabilization.test.cjs tests/notes-local-save-perf.test.cjs tests/notes-loading-transition.test.cjs public/tests/notes-mobile.test.cjs`
-- Animation tests cover the same 900/4200/220 ms schedule for mobile and desktop, remaining-time calculation, unfinished animation completion, stale transition callbacks, partial-data protection and absent-overlay fallback. Timers are controlled synthetic fixtures, not a physical-device frame-timing benchmark.
-- Existing `mobile-polish.browser.cjs` was rerun after restoration: 24 checks passed at 320/390/600/768 widths, external requests blocked. Its hardcoded Windows Chrome path was temporarily substituted for installed Linux Chromium; the harness change is not committed.
-- JavaScript syntax checks for both Notes copies; mirror equality; full transition/entry lifecycle equality with baseline; changed-production-file whitespace checks.
-- Full repository suite, remote CI, live Firebase, actual iPhone browser/WebKit, and live CPU/network timings have NOT been validated. No production credentials or private trading/Notes contents were inspected.
+The IndexedDB preview is raced against a 180 ms fallback and snapshots older than seven days are rejected. This is not evidence that cache expiry itself causes the long wait.
 
-## Next investigation, with the animation preserved
+### Admin owner repair could compete with the current Notes cold path
 
-1. Record private-content-free phase timings for auth, directory, usage init, settings, trades, both backtest queries, Overview readiness, Notes root/repair, page requests, normalization and cache save. Compare cold/warm loads on the actual iPhone/browser over Wi-Fi and mobile data.
-2. Capture only document counts, aggregate byte sizes and cache age/hit status; never record text, image URLs, tokens or trade contents. Do not label stale cache as the cause without evidence.
-3. Prioritize removing the dependency between Overview readiness and unrelated backtest reads, with explicit background-loading states and identity guards.
-4. Loading Notes data in parallel with the unchanged intro may be investigated. Do not move `notesLoad` earlier blindly: it renders, updates workspace state and can trigger recovery/owner-repair persistence. A safe prefetch would need a read-only phase, current auth/owner/generation guards, no early focus/visible mutations, in-flight deduplication and a guarded handoff to the existing reconciliation lifecycle. No prefetch implementation is included here.
-5. Do not enable partial-page editing or relax conflict/access checks to shorten the loading indicator.
+Before this patch, `notesLoad` launched `notesRepairKnownOwnerRoots()` immediately. For an admin with multiple known profiles, that function starts one server root read per profile, independently of the currently viewed workspace. The requests were not awaited, but could compete with the current root/page reads.
 
-No new paid service, native application, merge, deployment or release is part of this work.
+The patch defers this cross-account maintenance until the current Notes load settles and the browser is idle (or a 1200 ms fallback timer). The current owner’s `notesEnsureCloudOwner` guard remains on the load path, so write authorization/ownership repair is not weakened. The code-level fan-out is confirmed; its contribution on this user’s account is still a hypothesis because role, profile count, and live network timing were not inspected.
+
+## Notes phase diagnostics and separation
+
+The patch adds content-free in-memory diagnostics exposed as `window.TJNotesDiagnostics.latest()` and a `tj:notes-load-diagnostics` event. It records only:
+
+- cold/warm, mobile, force-load, cache hit/miss;
+- total time and phase durations for local read, cache read, server root read, owner check, page reads, preparation, UI apply, or orphan recovery query when applicable;
+- aggregate counts: local pages, page requests, cloud pages, missing pages, and total serialized page-character count;
+- outcome/recovery category.
+
+It does **not** record owner/login/UID, titles, note text, images/URLs, tokens, document IDs, trade data, or Firebase credentials. The last ten summaries exist only in page memory; nothing is uploaded by this instrumentation.
+
+For the normal indexed-root path, page snapshots are now passed through a side-effect-free `notesPrepareCloudPages` phase before any global/UI mutation. Only after the complete set is prepared does the code apply workspace state, render, and—when required—queue local/cloud repair. Missing-page, stale-draft, conflict, owner/generation, partial-editing, and cloud-incomplete protections remain.
+
+This refactor enables real phase measurement and clearer safety boundaries. It is not itself a claim of a 15–30-second speedup. The earlier full-snapshot encoding reuse remains as a small independent CPU/allocation optimization.
+
+## Hypotheses still requiring a real cold trace
+
+- Slow server root read after a long idle connection.
+- Many/large page documents making the bounded page-read phase dominant.
+- An owner metadata repair adding a write plus root reread for the current workspace.
+- Orphan-index recovery query or cloud repair path being entered.
+- Synchronous local JSON parse/normalization or render cost on the specific iPhone.
+- Browser/network reconnection behavior after long inactivity.
+
+No current evidence justifies increasing Firebase spend, changing access rules, allowing partial editing, removing the animation, or building a native app.
+
+## Verification
+
+- **63 targeted Node tests passed, 0 failed**: 42 pre-existing coverage plus prior snapshot/animation regressions and 8 new cold-load/diagnostic assertions.
+- New tests verify that Overview resolves while Backtests remains pending; live listeners wait for guarded Backtest reconciliation; stale identities cannot start listeners; Backtests is non-interactive while loading; outbox/owner/generation guards remain; Notes preparation precedes UI/recovery writes; diagnostics omit content/identity fields; cross-account repair is deferred.
+- Existing Notes mobile tests still verify four-request concurrency, early local/IndexedDB preview, owner-switch invalidation, missing-page protection, orphan recovery, stale-revision conflict behavior, and desktop parallel fetch.
+- **24 isolated mobile browser checks passed** at widths 320/390/600/768 with outside requests blocked. The Windows executable path was temporarily changed to the installed Linux Chromium path; no harness edit is committed.
+- JavaScript syntax checks passed; root/served Notes copies are identical; asset fingerprints were updated.
+- The original Notes transition/entry lifecycle remains covered by 7 exact timer/guard regressions.
+
+Not validated: a live Firebase cold trace, actual iPhone/browser timings, remote CI, full repository suite, merge, deploy, or release. No credentials, private notes, attachments, or trading records were inspected.
+
+## Next measurement requested
+
+On the affected iPhone/browser, reproduce one first Notes opening after a long idle period and then one immediate reopening. Read only `window.TJNotesDiagnostics.latest()` (or capture the event summary). The phase summary—not note contents—will show whether root, page reads, preparation, render, repair, or cache behavior dominates. Browser name/version, iPhone model/iOS, approximate page count, and whether Notes includes many images would complete the comparison.
