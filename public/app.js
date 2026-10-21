@@ -324,6 +324,7 @@
   var activeTab = 'overview';
   var backtests = [];
   var backtestsLoadedFlag = false; /* true once local cache + server copy of the backtests were merged (used by Replay Space) */
+  var backtestsLoadError = false;
   var activeBacktestId = null;
   var backtestTrades = [];
   var allBacktestTrades = [];
@@ -1588,6 +1589,8 @@
     tradingModelsUser = viewingUser;
     tradingModelsReady = false;
     tradingModelsLoadError = false;
+    backtestsLoadedFlag = false;
+    backtestsLoadError = false;
     selectedTradeModelId = '';
     selectedTradeModelName = '';
     renderTradeModelControl();
@@ -1655,7 +1658,18 @@
       if (!tjLoadIsCurrent(load)) return;
       trades = (trades || []).map(normalizeTradeRisk);
       invalidateTradeNumbers();
-      return loadBacktests(targetUid, load);
+      // Overview is ready once settings and trades are reconciled. Backtests keep
+      // their own explicit loading state and finish in the background; callers use
+      // load.backtestsReady before starting listeners that touch those collections.
+      load.backtestsReady = loadBacktests(targetUid, load).catch(function(err) {
+        if (!tjLoadIsCurrent(load)) return load;
+        backtestsLoadError = true;
+        backtestsLoadedFlag = true;
+        showBacktestSyncError('Backtests could not be refreshed. Saved changes remain on this device.');
+        console.error(err);
+        return load;
+      }).then(function() { return load; });
+      return load;
     // Loading a journal must never delete model references. Missing catalogue
     // entries may be temporary or legacy data; cleanup belongs only to the
     // explicit, confirmed model-delete action.
@@ -1667,6 +1681,19 @@
       el.style.display = 'block';
       el.textContent = 'Failed to load data from the server. Check that Firestore Database is enabled in your Firebase project and that you have an internet connection.';
     }).then(function() { return tjLoadIsCurrent(load) ? load : null; });
+  }
+
+  function finishJournalCoreLoad(load, button) {
+    if (!tjLoadIsCurrent(load)) return;
+    render(); hideOverviewSkeleton(); maybeShowStreakToast();
+    if (button) button.classList.remove('is-loading');
+    // Keep Backtests/Replay listeners behind the initial reconciliation so their
+    // first snapshots cannot race the outbox overlay or an owner switch.
+    Promise.resolve(load.backtestsReady).then(function() {
+      if (!tjLoadIsCurrent(load)) return;
+      if (activeTab === 'backtests') renderBacktests();
+      startLiveSync(load);
+    });
   }
 
   function tjOfferLegacyRecovery(records, user, load) {
@@ -1870,6 +1897,7 @@
     function current() { return tjLoadIsCurrent(load) && generation === tjBacktestLoadGeneration; }
     if (!current()) return Promise.resolve();
     backtestsLoadedFlag = false;
+    backtestsLoadError = false;
     var loadOwner=load.user;
     var readIntents=tjBacktestOutbox(loadOwner);tjBacktestActiveLoads[loadOwner]=readIntents;
     tjFlushBacktestOutbox(loadOwner).catch(function(err){console.warn('Backtest sync pending:',err);});
@@ -1892,13 +1920,13 @@
       var records = [];
       snapshot.forEach(function(d) { var b = d.data(); b.id = d.id; records.push(b); });
       return records;
-    }).catch(function(err) { if (!current()) return; console.error(err); return localBacktests; });
+    }).catch(function(err) { if (!current()) return; backtestsLoadError = true; console.error(err); return localBacktests; });
     var remoteTrades = db.collection('backtestTrades').where('uid', '==', targetUid).get({ source: 'server' }).then(function(snapshot) {
       if (!current()) return;
       var records = [];
       snapshot.forEach(function(d) { var t = d.data(); t.id = d.id; records.push(t); });
       return records;
-    }).catch(function(err) { if (!current()) return; console.error(err); return localTrades; });
+    }).catch(function(err) { if (!current()) return; backtestsLoadError = true; console.error(err); return localTrades; });
     return Promise.all([remoteBacktests, remoteTrades]).then(function(results) {
       if (!current()) return;
       backtests = tjOverlayBacktestOutbox(results[0],'backtests',loadOwner,readIntents);
@@ -1906,6 +1934,7 @@
       backtests.sort(function(a, b) { return new Date(b.createdAt || b.startDate) - new Date(a.createdAt || a.startDate); });
       saveBacktestLocal();
       backtestsLoadedFlag = true;
+      if (backtestsLoadError) showBacktestSyncError('Backtests could not be fully refreshed. Saved changes remain on this device.');
       if(tjBacktestActiveLoads[loadOwner]===readIntents)delete tjBacktestActiveLoads[loadOwner];
     });
   }
@@ -2178,8 +2207,19 @@
 
   function renderBacktests() {
     var list = document.getElementById('backtestsList'), empty = document.getElementById('backtestsEmpty'), detail = document.getElementById('backtestDetailView'), listView = document.getElementById('backtestsListView');
+    var addButton = document.getElementById('addBacktestBtn');
     document.body.classList.toggle('backtest-detail-mode', !!activeBacktestId && backtestWorkspaceMode);
-    document.getElementById('addBacktestBtn').style.display = activeBacktestId ? 'none' : 'inline-flex';
+    addButton.style.display = activeBacktestId ? 'none' : 'inline-flex';
+    addButton.disabled = !backtestsLoadedFlag;
+    if (!backtestsLoadedFlag) {
+      activeBacktestId = null;
+      listView.style.display = 'block'; detail.style.display = 'none'; list.innerHTML = ''; empty.style.display = 'block';
+      empty.querySelector('.empty-title').textContent = 'Loading backtests…';
+      empty.querySelector('.empty-title').nextElementSibling.textContent = 'Your journal is ready while Backtests finish syncing.';
+      return;
+    }
+    empty.querySelector('.empty-title').textContent = backtestsLoadError ? 'Backtests are available offline' : 'No backtests yet';
+    empty.querySelector('.empty-title').nextElementSibling.textContent = backtestsLoadError ? 'The latest cloud refresh did not finish. Pending changes remain protected.' : 'Add a backtest to track a historical strategy range.';
     if (activeBacktestId) {
       listView.style.display = 'none'; detail.style.display = 'block';
       var bt = backtests.filter(function(b) { return b.id === activeBacktestId; })[0]; if (!bt) { activeBacktestId = null; return renderBacktests(); }
@@ -6575,7 +6615,7 @@
     setupSiteVersionSettings();
     activeTab = 'overview'; monthlySelectedMonth = null; quarterSel = null; yearSel = null; setAssetFilter('ALL', false); currentTradesPage = 1;
     setActiveTab('overview');
-    loadData().then(function(load) { if (!tjLoadIsCurrent(load)) return; render(); hideOverviewSkeleton(); maybeShowStreakToast(); startLiveSync(load); });
+    loadData().then(function(load) { if (load) finishJournalCoreLoad(load); });
   });
 
   document.getElementById('adminAccountTrigger').addEventListener('click', function(e) {
@@ -7589,7 +7629,7 @@
         setupSiteVersionSettings();
         activeTab = 'overview'; monthlySelectedMonth = null; quarterSel = null; yearSel = null; setAssetFilter('ALL', false); currentTradesPage = 1;
         setActiveTab('overview');
-        loadData().then(function(load) { if (!tjLoadIsCurrent(load)) return; render(); hideOverviewSkeleton(); maybeShowStreakToast(); btn.classList.remove('is-loading'); startLiveSync(load); });
+        loadData().then(function(load) { if (load) finishJournalCoreLoad(load, btn); });
       }
 
       if (deviceMode === 'mobile') {

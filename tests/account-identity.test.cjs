@@ -123,6 +123,7 @@ test('admin switch loads existing trades and backtests and subscribes to the sam
   c.currentUser = await c.tjLoadUserDirectory(adminAuth);
   c.viewingUser = 'Limon';
   const load = await c.loadData();
+  await load.backtestsReady;
   assert.equal(c.trades[0]?.id, 'trades-limon');
   assert.equal(c.backtests[0]?.id, 'backtests-limon');
   assert.equal(c.allBacktestTrades[0]?.id, 'backtestTrades-limon');
@@ -142,10 +143,10 @@ test('switching to another student cancels and ignores previous subscriptions', 
   const { context: c, subscriptions } = fixture();
   c.currentUser = await c.tjLoadUserDirectory(adminAuth);
   c.viewingUser = 'Limon';
-  c.startLiveSync(await c.loadData());
+  const limonLoad = await c.loadData(); await limonLoad.backtestsReady; c.startLiveSync(limonLoad);
   const old = subscriptions.slice();
   c.viewingUser = 'Other';
-  c.startLiveSync(await c.loadData());
+  const otherLoad = await c.loadData(); await otherLoad.backtestsReady; c.startLiveSync(otherLoad);
   assert.ok(old.every(s => !s.active));
   old.find(s => s.name === 'trades').callback({ docChanges: () => { throw new Error('stale callback used'); } });
   assert.equal(c.trades.length, 1);

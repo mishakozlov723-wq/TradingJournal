@@ -824,6 +824,14 @@
       }).catch(function(err){ console.warn('Notes owner repair skipped for '+profile.login+':', err); });
     }));
   }
+  var notesKnownOwnerRepairScheduled = false;
+  function notesScheduleKnownOwnerRepair(){
+    if(notesKnownOwnerRepairStarted||notesKnownOwnerRepairScheduled)return;
+    notesKnownOwnerRepairScheduled=true;
+    var run=function(){notesKnownOwnerRepairScheduled=false;notesRepairKnownOwnerRoots();};
+    if(typeof requestIdleCallback==='function')requestIdleCallback(run,{timeout:5000});
+    else setTimeout(run,1200);
+  }
   function notesStorageKey(ownerKey) { return 'tjNotesWorkspaceV2:' + (ownerKey || notesOwner() || 'local'); }
   // contentEditable turns Enter into <div>/<br>; textContent drops those line breaks, innerText keeps them.
   function notesReadEditable(el) {
@@ -1489,8 +1497,9 @@
   function notesSaveLocal(ownerKey, snapshot) {
     snapshot=Object.assign({},snapshot);
     if(ownerKey===notesLoadedFor&&notesLoadedRemote){snapshot.cloudBase=notesCloudRevision;snapshot.conflict=notesCloudConflict;}
-    if(ownerKey)notesMobileCachePut(ownerKey,snapshot);
-    try { localStorage.setItem(notesStorageKey(ownerKey), JSON.stringify(snapshot)); return true; }
+    // Reuse the mobile cache JSON without delaying the durable local write.
+    var serialized = ownerKey ? notesMobileCachePut(ownerKey,snapshot) : undefined;
+    try { localStorage.setItem(notesStorageKey(ownerKey), serialized === undefined ? JSON.stringify(snapshot) : serialized); return true; }
     catch (e) { return false; }
   }
 
@@ -1727,11 +1736,14 @@
   }
   function notesMobileCachePut(key,data){
     if(!notesMobileCacheEnabled()) return;
-    data=notesClone(data);
+    // Freeze the IndexedDB snapshot before yielding; share its encoding with localStorage.
+    var serialized=JSON.stringify(data);
+    data=JSON.parse(serialized);
     notesMobileCacheOpen().then(function(db){
       if(!db)return;
       try { var tx=db.transaction('snapshots','readwrite'); tx.objectStore('snapshots').put({time:Date.now(),data:data},key); } catch(e){}
     });
+    return serialized;
   }
 
   function notesLoadLocal(ownerKey) {
@@ -1774,6 +1786,20 @@
 
 
   function notesIsMobile(){ return document.body.classList.contains('mobile-mode'); }
+  var notesLoadDiagnostics = [];
+  function notesPerfNow(){ return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now(); }
+  function notesPerfStart(force,warm){
+    return {started:notesPerfNow(),force:!!force,warm:!!warm,mobile:notesIsMobile(),cache:'not-used',outcome:'loading',recovery:'none',phases:{},counts:{localPages:0,pageRequests:0,cloudPages:0,missingPages:0,payloadChars:0}};
+  }
+  function notesPerfPhase(run,name,started){ if(run)run.phases[name]=Math.max(0,Math.round((notesPerfNow()-started)*10)/10); }
+  function notesPerfFinish(run,outcome){
+    if(!run||run.finished)return;
+    run.finished=true;run.outcome=outcome||run.outcome;run.totalMs=Math.max(0,Math.round((notesPerfNow()-run.started)*10)/10);
+    var safe={force:run.force,warm:run.warm,mobile:run.mobile,cache:run.cache,outcome:run.outcome,recovery:run.recovery,totalMs:run.totalMs,phases:Object.assign({},run.phases),counts:Object.assign({},run.counts)};
+    notesLoadDiagnostics.push(safe);if(notesLoadDiagnostics.length>10)notesLoadDiagnostics.shift();
+    if(typeof window!=='undefined')window.TJNotesDiagnostics={latest:function(){return notesLoadDiagnostics.length?notesClone(notesLoadDiagnostics[notesLoadDiagnostics.length-1]):null;},all:function(){return notesClone(notesLoadDiagnostics);}};
+    try{document.dispatchEvent(new CustomEvent('tj:notes-load-diagnostics',{detail:notesClone(safe)}));}catch(_){}
+  }
   var notesMobileLoading = false;
   function notesMobileBusy(busy) {
     if (!notesIsMobile() && !notesMobileLoading) return;
@@ -1822,12 +1848,31 @@
     return Promise.all(Array.from({length:Math.min(4,ids.length)},worker)).then(function(){return results;});
   }
 
+  function notesPrepareCloudPages(pageSnaps,ids,meta,local,cloudRevision){
+    var rawPages=[],missing=[];
+    pageSnaps.forEach(function(ps,i){
+      var expectedId=ids[i];
+      if(!ps.exists){missing.push(expectedId);return;}
+      var d=ps.data()||{},raw=d.notesPage;
+      if(!raw||typeof raw!=='object'){missing.push(expectedId);return;}
+      raw=notesClone(raw);raw.id=expectedId;rawPages.push(raw);
+    });
+    var cloudPages=notesNormalizePages(rawPages),hashes={},payloadChars=0;
+    cloudPages.forEach(function(page){var hash=notesPageCloudHash(page);hashes[page.id]=hash;payloadChars+=hash.length;});
+    var cloudAt=Number(meta.updatedAt)||0,localIds={};
+    local.pages.forEach(function(page){localIds[page.id]=true;});
+    var localCanRepair=!!(missing.length&&local.pages.length&&ids.every(function(id){return localIds[id];}));
+    var staleDraft=local.pages.length&&(local.conflict||(local.updatedAt>cloudAt&&local.cloudBase!==cloudRevision));
+    var useLocal=local.pages.length&&(local.updatedAt>cloudAt||localCanRepair);
+    return {cloudPages:cloudPages,hashes:hashes,missing:missing,cloudAt:cloudAt,localCanRepair:localCanRepair,staleDraft:staleDraft,useLocal:useLocal,pages:useLocal?local.pages:cloudPages,groups:useLocal?local.groups:notesNormalizeGroups(meta.groups),payloadChars:payloadChars};
+  }
+
   function notesLoad(force) {
     var owner = notesOwner(), key = owner || 'local';
-    // One admin Notes session repairs missing UID ownership metadata for every known
-    // workspace. This is intentionally independent from the currently viewed user.
-    notesRepairKnownOwnerRoots();
-    if (!force && notesLoadedFor === key) return Promise.resolve();
+    var perf=notesPerfStart(force,!force&&notesLoadedFor===key);
+    // Cross-account owner maintenance is deferred until the current workspace has
+    // finished loading so an admin fan-out cannot compete with this cold path.
+    if (!force && notesLoadedFor === key) { notesPerfFinish(perf,'warm-memory'); if(typeof notesScheduleKnownOwnerRepair==='function')notesScheduleKnownOwnerRepair(); return Promise.resolve(); }
     if (notesDirty) notesSave();
     var seq = ++notesLoadSeq;
     notesLoadedFor = null;
@@ -1835,25 +1880,30 @@
     notesCloudPageHashes = {}; notesCloudPageIds = []; notesCloudIncomplete = false;
     notesSetState('Loading…','saving');
     var ignoreLocal=notesIgnoreLocalOnce;notesIgnoreLocalOnce=false;
+    var localStarted=notesPerfNow();
     var local = ignoreLocal ? {pages:[],groups:notesDefaultGroups(),updatedAt:0} : notesLoadLocal(key);
+    notesPerfPhase(perf,'localRead',localStarted);perf.counts.localPages=local.pages.length;
     if(notesIsMobile()){notesMobilePreview(local.pages,local.groups);}
     if (!owner || typeof db === 'undefined') {
       notesPages = local.pages; notesGroups = local.groups; notesEnsurePageGroups(); notesLoadedFor = key; notesLoadedRemote = false; notesMobileBusy(false);
       notesPickActivePage(); notesHistoryReset(); notesRender(); notesSetState('Saved locally'); notesApplyHashTarget(); notesMobileBusy(false);
-      return Promise.resolve();
+      notesPerfFinish(perf,'local-only');if(typeof notesScheduleKnownOwnerRepair==='function')notesScheduleKnownOwnerRepair();return Promise.resolve();
     }
-    var rootRequest=db.collection('titles').doc(owner).get({ source:'server' });
-    if(notesIsMobile()&&!ignoreLocal)rootRequest=Promise.all([rootRequest,notesMobileCacheGet(key).then(function(value){
+    var rootStarted=notesPerfNow();
+    var rootRequest=db.collection('titles').doc(owner).get({ source:'server' }).then(function(snap){notesPerfPhase(perf,'rootRead',rootStarted);return snap;});
+    if(notesIsMobile()&&!ignoreLocal){var cacheStarted=notesPerfNow();rootRequest=Promise.all([rootRequest,notesMobileCacheGet(key).then(function(value){
+      notesPerfPhase(perf,'cacheRead',cacheStarted);perf.cache=value&&value.data?'hit':'miss';
       if(seq!==notesLoadSeq||key!==(notesOwner()||'local'))return;
       var cached=value&&value.data;
       if(cached&&Array.isArray(cached.pages)&&(!local.pages.length||Number(cached.updatedAt)>local.updatedAt)){
         local={pages:notesNormalizePages(cached.pages),groups:notesNormalizeGroups(cached.groups),updatedAt:Number(cached.updatedAt)||0,cloudBase:cached.cloudBase,conflict:!!cached.conflict};
         notesMobilePreview(local.pages,local.groups);
       }
-    })]).then(function(values){return values[0];});
+    })]).then(function(values){return values[0];});}
     return rootRequest.then(function(snap) {
       if (seq !== notesLoadSeq || key !== (notesOwner() || 'local')) return snap;
-      return notesEnsureCloudOwner(owner, snap);
+      var ownerCheckStarted=notesPerfNow();
+      return notesEnsureCloudOwner(owner,snap).then(function(checked){notesPerfPhase(perf,'ownerCheck',ownerCheckStarted);return checked;});
     }).then(function(snap) {
       if (!snap || seq !== notesLoadSeq || key !== (notesOwner() || 'local')) return;
       var root = snap.exists ? (snap.data() || {}) : {};
@@ -1879,7 +1929,8 @@
         // split page documents. Always scan the server even when this device has a
         // local snapshot: otherwise stale local data can hide recoverable cloud pages.
         if (!ids.length) {
-          return notesRecoverOrphanCloudSnapshot(owner).then(function(recovery){
+          perf.recovery='orphan-scan';var orphanStarted=notesPerfNow();
+          return notesRecoverOrphanCloudSnapshot(owner).then(function(recovery){notesPerfPhase(perf,'orphanRead',orphanStarted);
             if (seq !== notesLoadSeq || key !== (notesOwner() || 'local')) return;
             var orphanPages=recovery.pages||[], cloudAt=Math.max(Number(meta.updatedAt)||0,Number(recovery.updatedAt)||0);
             if (!orphanPages.length) {
@@ -1904,47 +1955,38 @@
             notesDirty=true;notesSave();notesApplyHashTarget();
           });
         }
+        perf.counts.pageRequests=ids.length;var pagesStarted=notesPerfNow();
         return (notesIsMobile()?notesFetchMobilePages(owner,ids,seq,key,local,meta):Promise.all(ids.map(function(id){ return notesPageCloudRef(owner,id).get({ source:'server' }); }))).then(function(pageSnaps){
+          notesPerfPhase(perf,'pagesRead',pagesStarted);
           if (seq !== notesLoadSeq || key !== (notesOwner() || 'local')) return;
-          var rawPages = [], missing = [];
-          pageSnaps.forEach(function(ps, i){
-            var expectedId = ids[i];
-            if (!ps.exists) { missing.push(expectedId); return; }
-            var d = ps.data() || {}, raw = d.notesPage;
-            if (!raw || typeof raw !== 'object') { missing.push(expectedId); return; }
-            raw = notesClone(raw); raw.id = expectedId; // document id is authoritative
-            rawPages.push(raw);
-          });
-          // Normalize the full set together so duplicate block/page ids and parent cycles are repaired globally.
-          var cloudPages = notesNormalizePages(rawPages);
-          var hashes = {}; cloudPages.forEach(function(p){ hashes[p.id] = notesPageCloudHash(p); });
-          var cloudAt = Number(meta.updatedAt)||0;
-          var localIds = {}; local.pages.forEach(function(p){ localIds[p.id] = true; });
-          var localCanRepair = !!(missing.length && local.pages.length && ids.every(function(id){ return localIds[id]; }));
-          var staleDraft=local.pages.length && (local.conflict || (local.updatedAt>cloudAt && local.cloudBase!==notesCloudRevision));
+          // Reading and normalization stay side-effect free; UI state and any recovery
+          // writes are applied only after the complete workspace has been prepared.
+          var prepareStarted=notesPerfNow(),prepared=notesPrepareCloudPages(pageSnaps,ids,meta,local,notesCloudRevision);
+          notesPerfPhase(perf,'prepare',prepareStarted);perf.counts.cloudPages=prepared.cloudPages.length;perf.counts.missingPages=prepared.missing.length;perf.counts.payloadChars=prepared.payloadChars;
+          var hashes=prepared.hashes,missing=prepared.missing,cloudAt=prepared.cloudAt,localCanRepair=prepared.localCanRepair,staleDraft=prepared.staleDraft,useLocal=prepared.useLocal;
           if(staleDraft){
+            perf.outcome='conflict';
             notesPages=local.pages;notesGroups=local.groups;notesEnsurePageGroups();notesLoadedFor=key;notesLoadedRemote=true;notesMobileBusy(false);
             notesCloudPageHashes=hashes;notesCloudPageIds=ids.slice();notesPickActivePage();notesHistoryReset();notesRender();notesShowConflict(key);return;
           }
-          var useLocal = local.pages.length && (local.updatedAt > cloudAt || localCanRepair);
-
-          notesPages = useLocal ? local.pages : cloudPages;
-          notesGroups = useLocal ? local.groups : notesNormalizeGroups(meta.groups); notesEnsurePageGroups();
+          var applyStarted=notesPerfNow();
+          notesPages=prepared.pages;
+          notesGroups=prepared.groups; notesEnsurePageGroups();
           notesCloudPageHashes = hashes; notesCloudPageIds = ids.slice();
           notesLoadedFor = key; notesLoadedRemote = true; notesMobileBusy(false);
           notesCloudIncomplete = missing.length > 0 && !localCanRepair;
           if(!useLocal||notesIsMobile())notesSaveLocal(key,{version:3,pages:notesPages,groups:notesGroups,updatedAt:useLocal?local.updatedAt:cloudAt});
-          notesPickActivePage(); notesHistoryReset(); notesRender();
+          notesPickActivePage(); notesHistoryReset(); notesRender();notesPerfPhase(perf,'apply',applyStarted);
 
           if (localCanRepair) {
-            notesSetState('Repairing cloud pages…','saving');
+            perf.recovery='cloud-page-repair';notesSetState('Repairing cloud pages…','saving');
             notesDirty = true; notesCloudIncomplete = false; notesSave();
           } else if (notesCloudIncomplete) {
-            notesSetState('Cloud copy incomplete · saved locally','error');
+            perf.outcome='incomplete';notesSetState('Cloud copy incomplete · saved locally','error');
             notesToast('Some page files are missing in the cloud. Local data was kept safe.');
           } else {
             notesSetState('Saved');
-            if (useLocal) { notesDirty=true; notesSave(); }
+            if (useLocal) { perf.recovery='local-sync';notesDirty=true; notesSave(); }
           }
           notesApplyHashTarget();
         });
@@ -1958,7 +2000,8 @@
       // split page documents can survive a damaged or overwritten root document. Scan
       // even when a local snapshot exists so that device-local state cannot mask cloud data.
       if (!legacy) {
-        return notesRecoverOrphanCloudSnapshot(owner).then(function(recovery){
+        perf.recovery='orphan-scan';var legacyOrphanStarted=notesPerfNow();
+        return notesRecoverOrphanCloudSnapshot(owner).then(function(recovery){notesPerfPhase(perf,'orphanRead',legacyOrphanStarted);
           if (seq !== notesLoadSeq || key !== (notesOwner() || 'local')) return;
           var orphanPages=recovery.pages||[], cloudAt=Number(recovery.updatedAt)||0;
           if (orphanPages.length) {
@@ -1994,7 +2037,7 @@
       notesApplyHashTarget();
     }).catch(function(err) {
       if (seq !== notesLoadSeq || key !== (notesOwner() || 'local')) return;
-      console.error('Notes load failed:',err);
+      perf.outcome='cloud-error';console.error('Notes load failed:',err);
       // A failed server read is NOT an empty cloud workspace. Keep any device-local
       // snapshot visible for recovery, but never allow it to masquerade as a complete
       // remote load or overwrite the cloud until a successful reload.
@@ -2008,6 +2051,7 @@
       if(seq===notesLoadSeq&&key===(notesOwner()||'local')){
         notesMobileBusy(false);
       }
+      notesPerfFinish(perf,perf.outcome==='loading'?'complete':perf.outcome);if(typeof notesScheduleKnownOwnerRepair==='function')notesScheduleKnownOwnerRepair();
     });
   }
 
