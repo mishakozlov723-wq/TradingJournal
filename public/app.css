@@ -5073,3 +5073,18 @@ body.mobile-mode .notes-empty-create { min-height:44px; }
 @media(prefers-reduced-motion:reduce) { .backtest-model-control.open .trade-asset-menu { animation:none; } #backtestChart path { animation:none; stroke-dashoffset:0; } }
 
 #backtestEmptyChart { color:var(--textDim); font-size:14px; }
+
+/* Mobile-only header alignment and workspace menu. Never gate on viewport
+   alone: the desktop version can also be opened in a narrow window. */
+body.mobile-mode #secondaryActions #changePassBtn,
+body.mobile-mode #secondaryActions #curveColorTrigger,
+body.mobile-mode #secondaryActions #settingsBtn {
+  box-sizing: border-box;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+body.mobile-mode #secondaryActions #settingsBtn { width: 28px; padding: 0; }
+body.mobile-mode #secondaryActions #settingsBtn .settings-icon { width: 13px; height: 13px; }
+body.mobile-mode #openReplayWorkspaceBtn { display: none !important; }
