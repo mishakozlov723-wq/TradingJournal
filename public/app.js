@@ -4567,20 +4567,32 @@
       h.unpin(); h.hide();
     });
   }
-  // Mobile Overview: dismiss both hover and pinned cards on an ordinary
-  // outside tap. Desktop and the other charts keep their existing behavior.
-  function tjDismissMobileOverviewTooltip(target) {
-    if (!document.body.classList.contains('mobile-mode')) return;
-    var svg = document.getElementById('chartSvg');
-    var tip = document.getElementById('tooltip');
-    if (target && ((svg && svg.contains(target)) || (tip && tip.contains(target)))) return;
-    var h = svg && svg._tjHover;
+  // Only these journal charts use mobile tap-to-dismiss. Desktop and
+  // Backtest/Replay interactions keep their existing behavior.
+  function tjMobileTooltipChart(svg) {
+    return !!(svg && document.body.classList.contains('mobile-mode') &&
+      ['chartSvg', 'monthChartSvg', 'quarterChartSvg', 'yearChartSvg'].indexOf(svg.id) !== -1);
+  }
+  function tjDismissMobileChartTooltip(svg) {
+    if (!tjMobileTooltipChart(svg)) return;
+    var h = svg._tjHover;
     if (h) { h.unpin(); h.hide(); }
-    hideChartTooltip();
+    if (svg.id === 'chartSvg') hideChartTooltip();
+    else hideDetailTooltip(svg);
+  }
+  function tjDismissMobileChartTooltips(target) {
+    if (!document.body.classList.contains('mobile-mode')) return;
+    ['chartSvg', 'monthChartSvg', 'quarterChartSvg', 'yearChartSvg'].forEach(function(id) {
+      var svg = document.getElementById(id);
+      if (!svg) return;
+      var tip = id === 'chartSvg' ? document.getElementById('tooltip') : svg._tjTip;
+      if (target && (svg.contains(target) || (tip && tip.contains(target)))) return;
+      tjDismissMobileChartTooltip(svg);
+    });
   }
   document.addEventListener('pointerdown', function(e) {
     tjLastPointerTouch = e.pointerType === 'touch' || e.pointerType === 'pen';
-    tjDismissMobileOverviewTooltip(e.target);
+    tjDismissMobileChartTooltips(e.target);
     tjReleasePins(e.target);
   }, true);
   document.addEventListener('keydown', function(e) { if (e.key === 'Escape') tjReleasePins(null); });
@@ -5099,8 +5111,8 @@
     }
     // A tap far from the curve is empty space, not the nearest trade by X.
     // Use a forgiving CSS-pixel radius so a finger can still select the line.
-    function mobileOverviewBlankTap(e) {
-      if (svg.id !== 'chartSvg' || !document.body.classList.contains('mobile-mode')) return false;
+    function mobileChartBlankTap(e) {
+      if (!tjMobileTooltipChart(svg)) return false;
       var m = svg._hoverModel;
       if (!m || !m.pts || !m.pts.length || !ensure()) return false;
       sync(m);
@@ -5109,9 +5121,6 @@
       var vx = (e.clientX - r.left) * m.W / r.width;
       var curveY = r.top + yAt(vx) * r.height / m.H;
       return vx < m.pts[0].x || vx > m.pts[m.pts.length - 1].x || Math.abs(e.clientY - curveY) > 24;
-    }
-    function dismissMobileOverview() {
-      unpin(); hide(); hideChartTooltip();
     }
     function paint() {
       var m = h.model; if (!m) return;
@@ -5133,7 +5142,7 @@
       if (h.x !== h.tx) h.raf = requestAnimationFrame(tick); else h.last = 0;
     }
     function move(e) {
-      if (mobileOverviewBlankTap(e)) return;
+      if (mobileChartBlankTap(e)) return;
       if (h.pinned) return;
       var m = svg._hoverModel;
       if (!m || !ensure()) return;
@@ -5194,12 +5203,12 @@
     }
     svg.addEventListener('pointerdown', function(e) {
       h.pointer = e.pointerType || 'mouse';
-      if (mobileOverviewBlankTap(e)) { dismissMobileOverview(); return; }
+      if (mobileChartBlankTap(e)) { tjDismissMobileChartTooltip(svg); return; }
       move(e);
     });
     svg.addEventListener('pointerleave', function(e) { if (!e.pointerType || e.pointerType === 'mouse' || e.pointerType === 'pen') hide(); });
     svg.addEventListener('click', function(e) {
-      if (mobileOverviewBlankTap(e)) { dismissMobileOverview(); return; }
+      if (mobileChartBlankTap(e)) { tjDismissMobileChartTooltip(svg); return; }
       var m = svg._hoverModel;
       if (!m) return;
       var r = svg.getBoundingClientRect();

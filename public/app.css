@@ -5088,3 +5088,24 @@ body.mobile-mode #secondaryActions #settingsBtn {
 body.mobile-mode #secondaryActions #settingsBtn { width: 28px; padding: 0; }
 body.mobile-mode #secondaryActions #settingsBtn .settings-icon { width: 13px; height: 13px; }
 body.mobile-mode #openReplayWorkspaceBtn { display: none !important; }
+
+/* Mobile gear: keep its shell stationary through press/release. The SVG
+   retains one compositor layer and one fixed rotation centre in both states,
+   avoiding a final pixel snap when the rotation transition completes. */
+body.mobile-mode #secondaryActions #settingsBtn,
+body.mobile-mode #secondaryActions #settingsBtn:hover,
+body.mobile-mode #secondaryActions #settingsBtn:active {
+  transform: translateZ(0);
+}
+body.mobile-mode #secondaryActions #settingsBtn .settings-icon {
+  flex: 0 0 13px;
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+  transform: translate3d(0, 0, 0) rotate(0deg);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  will-change: transform;
+}
+body.mobile-mode #secondaryActions .settings-wrap.open #settingsBtn .settings-icon {
+  transform: translate3d(0, 0, 0) rotate(45deg);
+}
