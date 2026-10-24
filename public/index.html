@@ -19,7 +19,7 @@
    (~450 KB) loads right after the page is ready instead of before it. Their menu
    entries stay hidden until the code has loaded, exactly as before. */
 (function(){
-  var files=['accounts-config.js?v=1053adb163','accounts-space.js?v=7a208a9ec5','vendor/lightweight-charts.js?v=37e5f4fe8b','replay-data-config.js?v=a87b6ba84a','replay-space.js?v=5c5341fe56'];
+  var files=['accounts-config.js?v=1053adb163','accounts-space.js?v=117c13babe','vendor/lightweight-charts.js?v=37e5f4fe8b','replay-data-config.js?v=a87b6ba84a','replay-space.js?v=c4639a4b62'];
   var started=false;
   function next(i){
     if(i>=files.length)return;
@@ -445,7 +445,7 @@
     <div class="modal-box asset-delete-box" role="dialog" aria-modal="true" aria-labelledby="assetDeleteTitle">
       <div class="row" style="margin-bottom:10px;"><div class="card-title" style="margin-bottom:0;" id="assetDeleteTitle">Delete asset</div></div>
       <div class="asset-delete-message">Do you really want to delete asset <strong id="assetDeleteName"></strong>?</div>
-      <div class="asset-delete-check"><input type="checkbox" id="assetDeleteAcknowledge"><span>Yes, I understand that deleting this asset will permanently delete all statistics, trades and photos connected to it, and this action cannot be undone.</span></div>
+      <div class="asset-delete-check"><input type="checkbox" id="assetDeleteAcknowledge"><span>Yes, I understand that this permanently deletes this asset’s journal trades and photos. Backtest and Replay instruments are separate and are not changed. This action cannot be undone.</span></div>
       <div class="asset-delete-actions"><button type="button" class="ghost-btn" id="assetDeleteCancelBtn">Cancel</button><button type="button" class="add-btn" id="assetDeleteConfirmBtn">Confirm deletion</button></div>
     </div>
   </div>
@@ -1287,12 +1287,12 @@ separated by commas or new lines"></textarea>
 
       <div class="field">
         <label class="field-label">RR</label>
-        <input type="number" step="0.01" min="0" id="magnitudeInput" class="no-spin" placeholder="1.0" required>
+        <input type="number" step="0.01" min="0" max="1000000" id="magnitudeInput" class="no-spin" placeholder="1.0" required>
       </div>
 
       <div class="field">
         <label class="field-label">Risk %</label>
-        <input type="number" step="0.01" min="0" id="riskPercentInput" class="no-spin" value="1" placeholder="1" required>
+        <input type="number" step="0.01" min="0" max="100" id="riskPercentInput" class="no-spin" value="1" placeholder="1" required>
       </div>
 
       <div class="field" id="tradeScreenshotField">
@@ -1472,7 +1472,7 @@ separated by commas or new lines"></textarea>
   firebase.initializeApp(firebaseConfig);
   var db = firebase.firestore();
 </script>
-<script src="app.js?v=049361e5da"></script>
+<script src="app.js?v=860e77f0d6"></script>
 <script src="trade-media.js?v=703d21b514"></script>
 <script src="desktop-autologin.js?v=8c2de5be35"></script>
 
@@ -1525,6 +1525,7 @@ separated by commas or new lines"></textarea>
     getTrades: function(btId){ return allBacktestTrades.filter(function(t){ return t.backtestId === btId; }); },
     /* t: { asset, direction, openDT, closeDT, r, riskPercent, modelId, ...extra } */
     addTrade: function(btId, t){
+      var existing=t.id&&allBacktestTrades.find(function(x){return x.id===t.id&&x.backtestId===btId;});if(existing)return existing;
       var bt = backtests.filter(function(b){ return b.id === btId; })[0]; if (!bt) return null;
       var ow = owner(); if (!ow) return null;
       var lo = bt.startDate.slice(0, 10) + 'T00:00', hi = bt.endDate.slice(0, 10) + 'T23:59';
@@ -1595,7 +1596,7 @@ separated by commas or new lines"></textarea>
 </script>
 
 <!-- Notes v3.20.3: database runtime and styles are embedded; no additional asset request. -->
-<script src="notes-workspace.js?v=84732df255"></script>
+<script src="notes-workspace.js?v=8e871e563c"></script>
 
 
 
