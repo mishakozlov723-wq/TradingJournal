@@ -36,8 +36,12 @@ async function persistPrivate({github,context,kind,root=process.cwd(),files,log=
  if(new Set(inputs.map(a=>a.name)).size!==inputs.length)throw Error('Duplicate export names');
  const receipt={kind,sourceSha,runId:context.runId,runAttempt,assets:inputs.map(a=>({name:a.name,size:a.data.length,sha256:sha(a.data)}))};
  const tag=`ci-${kind}-${context.runId}-${runAttempt}`,title=`Private verified CI ${kind} ${context.runId}/${runAttempt}`;
- let release;
- try{release=(await github.rest.repos.getReleaseByTag({owner,repo,tag})).data;}catch(e){if(e.status!==404)throw e;release=(await github.rest.repos.createRelease({owner,repo,tag_name:tag,target_commitish:sourceSha,name:title,body:`Private CI export for ${sourceSha}. Not an updater/public release.`,draft:true,prerelease:true})).data;}
+ // Draft tags may not have a git ref yet: get-by-tag returns 404 even when
+ // listReleases correctly includes that draft. Never create duplicates on retry.
+ const matches=(await github.paginate(github.rest.repos.listReleases,{owner,repo,per_page:100})).filter(r=>r.tag_name===tag);
+ if(matches.length>1)throw Error('Duplicate private storage drafts require review; refusing mutation');
+ let release=matches[0];
+ if(!release)release=(await github.rest.repos.createRelease({owner,repo,tag_name:tag,target_commitish:sourceSha,name:title,body:`Private CI export for ${sourceSha}. Not an updater/public release.`,draft:true,prerelease:true})).data;
  if(release.draft!==true||release.tag_name!==tag||release.target_commitish!==sourceSha||release.name!==title)throw Error('Unrecognized or published storage release; refusing any mutation');
  async function save(name,data){
   const existing=(release.assets||[]).find(a=>a.name===name);
