@@ -174,7 +174,7 @@ service cloud.firestore {
           )
         ));
 
-      allow update: if (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['assets','deletedAssets','assetRevision']) || (journalUnlocked(resource.data.get('uid', request.auth.uid)) && request.resource.data.assetRevision is int && request.resource.data.assetRevision == resource.data.get('assetRevision', 0) + 1))
+      allow update: if (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['assets','deletedAssets','assetRevision']) || (journalUnlocked(resource.data.get('uid', request.auth.uid)) && ((request.resource.data.assetRevision is int && request.resource.data.assetRevision == resource.data.get('assetRevision', 0) + 1) || (resource.data.get('assetRevision', 0) == 0 && !request.resource.data.keys().hasAny(['assetRevision']) && !existsAfter(/databases/$(database)/documents/journalAssetGuards/$(resource.data.get('uid', request.auth.uid)))))))
         && (isRetocker()
         || (
           ownsLogin(titleId)
@@ -324,12 +324,13 @@ service cloud.firestore {
           )
         );
 
-      allow create: if request.resource.data.get('historyRevision', 0) == 1
+      allow create: if request.resource.data.get('historyRevision', 0) in [0, 1]
         && request.resource.data.history is list
         && (isRetocker() || (ownSnapshotId() && owns(request.resource.data.get('uid', null))));
 
-      allow update: if request.resource.data.historyRevision is int
-        && request.resource.data.historyRevision == resource.data.get('historyRevision', 0) + 1
+      allow update: if ((request.resource.data.historyRevision is int
+        && request.resource.data.historyRevision == resource.data.get('historyRevision', 0) + 1)
+        || (resource.data.get('historyRevision', 0) == 0 && !request.resource.data.keys().hasAny(['historyRevision'])))
         && request.resource.data.history is list
         && (isRetocker()
         || (

@@ -3,7 +3,7 @@
 // Preserve upstream two-pass uninstaller generation/signing. Adapt only the
 // final installer section in memory; no dependency files are modified.
 const signing=require('./signing-policy').signingConfiguration();
-if (signing.extraMetadata.syterUpdatePolicy === 'manual') {
+if (signing.extraMetadata.syterUpdatePolicy !== 'authenticode') {
   delete process.env.CSC_LINK; delete process.env.CSC_KEY_PASSWORD;
   process.env.CSC_IDENTITY_AUTO_DISCOVERY = 'false';
 }

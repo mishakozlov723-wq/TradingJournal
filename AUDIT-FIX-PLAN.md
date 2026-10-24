@@ -1,3 +1,6 @@
+> Release-policy update: see RELEASE-1.3.13.md and desktop/SIGNED-RELEASES.md.
+> GitHub auto-updates are retained; prior manual-only TJ-18 text below is historical and superseded.
+
 # TJ audit remediation
 Base: 889428625de06e3b27a7ed850904a2ecdfb7b574. Branch: fix/audit-tj-01-18-data-safety.
 No merge, production deploy, release, production data/rules/secret changes authorized.

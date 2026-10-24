@@ -17,7 +17,31 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  preflight:
+    if: ${{ !inputs.deploy_live }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: npm install --prefix /tmp/syter-preflight --no-save google-auth-library@9.15.1
+      - name: Read current production rules and Hosting release without changes
+        env:
+          NODE_PATH: /tmp/syter-preflight/node_modules
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RETOCKER }}
+        run: node scripts/firebase-release-preflight.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SYTER-rollout-preflight
+          path: rollout-backup/
+          if-no-files-found: warn
+          retention-days: 14
   deploy:
+    if: ${{ inputs.deploy_live }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

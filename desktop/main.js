@@ -1,7 +1,7 @@
 // SYTER desktop app (Electron).
 // The window simply opens the published site, so every `firebase deploy`
-// shows up on the next launch. Free builds use manual desktop installation;
-// optional Authenticode builds use the verified electron-updater path.
+// shows up on the next launch. GitHub desktop auto-updates remain enabled without mandatory paid signing;
+// optional Authenticode adds installed publisher verification.
 //
 // Layout: the BrowserWindow itself shows a thin black title bar (titlebar.html,
 // native Windows buttons drawn over it by titleBarOverlay); the site lives in a
@@ -491,13 +491,13 @@ let updateController = null, updateWindow = null;
 let updateTrustError = '';
 async function showUpdateHelp() {
   const result = await dialog.showMessageBox(win || undefined, {type:'info',title:'Обновления SYTER',buttons:['Закрыть','Открыть страницу релизов'],defaultId:0,cancelId:0,
-    message: updateTrustError || (require('./package.json').syterUpdatePolicy === 'authenticode' ? 'Автообновления проверяют подпись настроенного издателя.' : 'Бесплатная сборка: автоматические загрузка и установка обновлений отключены.'),
-    detail:'Ручная установка — отдельное решение пользователя. HTTPS и хеш из того же релиза не доказывают независимую подлинность. Сверьте источник и, если доступна, подпись по независимому доверенному каналу. Неподписанный EXE может вызывать предупреждения Windows. Приложение не скачает и не запустит установщик.'});
+    message: updateTrustError || (require('./package.json').syterUpdatePolicy === 'authenticode' ? 'Автообновления проверяют подпись настроенного издателя.' : 'GitHub-обновления включены: приложение предлагает загрузку и перезапуск с вашим согласием.'),
+    detail:'Источник обновлений — GitHub mishakozlov723-wq/syter-releases через HTTPS. SHA512 проверяет целостность загрузки, но не защищает от компрометации владельца релизов. Без Authenticode Windows может показывать неизвестного издателя. Установка требует вашего подтверждения.'});
   if (result.response === 1) await shell.openExternal('https://github.com/mishakozlov723-wq/syter-releases/releases');
 }
 async function setupUpdates() {
   if (!app.isPackaged || updateController) return;
-  try { await require('./lifecycle/update-trust').requireUpdatePublisher(autoUpdater, require('./package.json').syterUpdatePolicy || 'manual'); }
+  try { await require('./lifecycle/update-trust').requireUpdatePublisher(autoUpdater, require('./package.json').syterUpdatePolicy || 'github'); }
   catch(error) { updateTrustError=error.message;console.error(error.message);return; }
   const { createUpdateController } = require('./lifecycle/controller');
   const { createLifecycleWindow, publishLifecycleState } = require('./lifecycle/window');

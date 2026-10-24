@@ -1,7 +1,7 @@
 {
   "name": "syter-desktop",
   "productName": "SYTER",
-  "version": "1.3.12",
+  "version": "1.3.13",
   "description": "SYTER Trading Journal",
   "author": "SYTER",
   "main": "main.js",
@@ -83,5 +83,5 @@
     ],
     "forceCodeSigning": false
   },
-  "syterUpdatePolicy": "manual"
+  "syterUpdatePolicy": "github"
 }

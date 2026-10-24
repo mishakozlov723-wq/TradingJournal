@@ -1,7 +1,7 @@
 param([Parameter(Mandatory=$true)][string]$Path)
 $ErrorActionPreference = 'Stop'
 if (!$env:SYTER_SIGNED_RELEASE -or $env:SYTER_SIGNED_RELEASE -eq 'false') {
-  Write-Host 'MANUAL BUILD: no Authenticode identity; automatic updates disabled. Windows may warn about the unknown publisher.'
+  Write-Host 'GITHUB UPDATE BUILD: no Authenticode identity; Windows may warn about the unknown publisher. Existing updater checks remain enabled.'
   return
 }
 if ($env:SYTER_SIGNED_RELEASE -ne 'true') { throw 'Invalid signing mode' }

@@ -1,3 +1,6 @@
+> Release-policy update: see RELEASE-1.3.13.md and desktop/SIGNED-RELEASES.md.
+> GitHub auto-updates are retained; prior manual-only TJ-18 text below is historical and superseded.
+
 # Audit follow-up: import decisions, asset fencing, free desktop builds
 
 This document supersedes the earlier TJ-04/TJ-05/TJ-18 limitations in

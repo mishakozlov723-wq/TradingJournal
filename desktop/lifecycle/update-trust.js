@@ -1,16 +1,17 @@
-'use strict';
-// The installed, signed application's configuration anchors publisher identity.
-// Never learn the expected signer from downloaded release metadata.
-async function requireUpdatePublisher(updater, installedPolicy = 'manual') {
+"use strict";
+// GitHub release/account + TLS is the existing trust model. SHA512 detects
+// corruption, not a malicious release publisher. Do not invent a signing anchor.
+async function requireUpdatePublisher(updater, installedPolicy = 'github') {
   updater.autoDownload = false;
   updater.autoInstallOnAppQuit = false;
-  if (installedPolicy !== 'authenticode') throw new Error('Automatic updates disabled: this free/manual build has no independent update signature. Use the manual installer after verifying its source.');
+  updater.allowDowngrade = false;
+  updater.allowPrerelease = false;
+  if (!['github','authenticode'].includes(installedPolicy)) throw Error('Unsupported installed updater policy');
   const config = await updater.configOnDisk.value;
-  const names = Array.isArray(config && config.publisherName) ? config.publisherName : [config && config.publisherName];
-  if (!names.length || names.some(name => typeof name !== 'string' || !name.trim())) {
-    throw new Error('Automatic updates disabled: installed publisher identity is missing. Install a verified signed build.');
-  }
-  if (typeof updater.verifyUpdateCodeSignature !== 'function') throw new Error('Automatic updates disabled: signature checking was disabled.');
-  return names;
+  if (!config || config.provider !== 'github' || config.owner !== 'mishakozlov723-wq' || config.repo !== 'syter-releases') throw Error('Unexpected installed updater repository');
+  if (typeof updater.verifyUpdateCodeSignature !== 'function') throw Error('Built-in update signature checking was disabled');
+  const names = Array.isArray(config.publisherName) ? config.publisherName : [config.publisherName];
+  if (installedPolicy === 'authenticode' && (!names.length || names.some(name => typeof name !== 'string' || !name.trim()))) throw Error('Signed-mode installed publisher identity is missing');
+  return installedPolicy === 'authenticode' ? names : [];
 }
 module.exports = { requireUpdatePublisher };

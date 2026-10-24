@@ -8,11 +8,11 @@ $version = (Get-Content (Join-Path $PSScriptRoot '../package.json') -Raw | Conve
 foreach ($name in @("SYTER-Setup-$version.exe", "SYTER-Install-$version.exe")) {
   $file = Join-Path $PSScriptRoot "../release/$name"
   if (!(Test-Path $file -PathType Leaf)) { throw "Missing release artifact: $name" }
-  if (!$signed) { continue } # manual publication has NO updater feed and runs no installer automatically
+  if (!$signed) { continue } # GitHub mode retains checksum verification; no claim of an independent publisher signature
   $signature = Get-AuthenticodeSignature $file
   if ($signature.Status -ne 'Valid' -or !$signature.SignerCertificate) { throw "Invalid Authenticode signature: $name" }
   $publisher = $signature.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
   if ($publisher -cne $env:SYTER_PUBLISHER_NAME) { throw "Unexpected publisher: $name" }
 }
 if ($signed) { Write-Output 'PASS: both delivered installers have valid signatures from the configured publisher' }
-else { Write-Output 'PASS: manual artifacts exist; NOT authenticated by Authenticode; updater feed must not be published' }
+else { Write-Output 'PASS: GitHub update artifacts validated; no mandatory Authenticode; no independent signer authentication claimed' }
