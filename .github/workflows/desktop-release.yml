@@ -57,6 +57,8 @@ jobs:
         shell: pwsh
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - name: Reject incomplete publication checks
         run: |
           if ('${{ inputs.publish }}' -eq 'true' -and ('${{ github.ref }}' -ne 'refs/heads/main' -or '${{ inputs.notes_only }}' -eq 'true' -or '${{ inputs.installer_only }}' -eq 'true' -or '${{ inputs.reuse_verified_update }}' -eq 'true' -or '${{ inputs.check_only }}' -eq 'true')) { throw 'Publishing requires main and every full verification gate; reduced or reused builds cannot publish' }
@@ -91,9 +93,17 @@ jobs:
           if ($test.ExitCode -ne 0) { throw "Live resize test failed: $($test.ExitCode)" }
       - name: Measure 1.3.10 preparation on this same Windows runner
         if: ${{ !inputs.installer_only && !inputs.notes_only }}
+        env:
+          TJ_GIT_READ_TOKEN: ${{ github.token }}
         run: |
-          git fetch --no-tags --depth=1 origin d4b69b90a881f6e1c92899c9bf42743c9a98bf78
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot fetch exact 1.3.10 timing baseline' }
+          # Scope private baseline authentication to this fetch only, never npm/build scripts.
+          $basic = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:TJ_GIT_READ_TOKEN"))
+          Write-Output "::add-mask::$basic"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $basic" fetch --no-tags --depth=1 origin d4b69b90a881f6e1c92899c9bf42743c9a98bf78
+          $fetchExit = $LASTEXITCODE
+          Remove-Item Env:TJ_GIT_READ_TOKEN
+          $basic = $null
+          if ($fetchExit -ne 0) { throw 'Cannot fetch exact 1.3.10 timing baseline' }
           $files = @('window-motion.js','mode-transition.js')
           try {
             foreach ($file in $files) {
