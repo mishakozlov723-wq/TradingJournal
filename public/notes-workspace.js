@@ -1952,7 +1952,7 @@
               else notesSetState('Saved');
               notesApplyHashTarget();return;
             }
-            var preferLocal=local.pages.length&&local.updatedAt>cloudAt;
+            var preferLocal=local.pending===true&&local.cloudBase===notesCloudRevision;
             notesPages=notesMergeRecoveryPages(orphanPages,local.pages,preferLocal);
             notesGroups=preferLocal?local.groups:notesNormalizeGroups(meta.groups);notesEnsurePageGroups();
             notesCloudPageHashes={};notesCloudPageIds=[];
@@ -2015,7 +2015,7 @@
           if (seq !== notesLoadSeq || key !== (notesOwner() || 'local')) return;
           var orphanPages=recovery.pages||[], cloudAt=Number(recovery.updatedAt)||0;
           if (orphanPages.length) {
-            var preferLocal=local.pages.length&&local.updatedAt>cloudAt;
+            var preferLocal=local.pending===true&&local.cloudBase===notesCloudRevision;
             notesPages=notesMergeRecoveryPages(orphanPages,local.pages,preferLocal);
             notesGroups=preferLocal?local.groups:notesDefaultGroups();notesEnsurePageGroups();
             notesCloudPageHashes={};notesCloudPageIds=[];
