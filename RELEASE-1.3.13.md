@@ -84,3 +84,5 @@ may fail on quota; actual tests and final private installer/rollback export do
 not continue on failure. Normal public publication still requires main and all
 full Windows gates, after compatible production rollout. Previously published
 v1.3.12 and all pinned historical baseline artifacts remain unchanged.
+
+Private storage draft metadata anchors to existing `main` rather than creating a feature-SHA tag (which can require workflows-write). Exact tested source SHA is in the draft body and byte-verified receipt; no workflow-write permission is granted and these drafts are never published.

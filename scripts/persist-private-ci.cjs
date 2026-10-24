@@ -36,13 +36,19 @@ async function persistPrivate({github,context,kind,root=process.cwd(),files,log=
  if(new Set(inputs.map(a=>a.name)).size!==inputs.length)throw Error('Duplicate export names');
  const receipt={kind,sourceSha,runId:context.runId,runAttempt,assets:inputs.map(a=>({name:a.name,size:a.data.length,sha256:sha(a.data)}))};
  const tag=`ci-${kind}-${context.runId}-${runAttempt}`,title=`Private verified CI ${kind} ${context.runId}/${runAttempt}`;
+ const body=`Private CI export for ${sourceSha}. Not an updater/public release.`;
+ // Storage is not a source-release tag: anchor its unpublished metadata to the
+ // existing default branch. Creating a new ref at a workflow-changing feature
+ // SHA may require workflows:write; never broaden CI permissions for storage.
+ // Exact build provenance remains bound in body and byte-verified receipt.
+ if(info.default_branch!=='main')throw Error('Unexpected storage anchor branch');
  // Draft tags may not have a git ref yet: get-by-tag returns 404 even when
  // listReleases correctly includes that draft. Never create duplicates on retry.
  const matches=(await github.paginate(github.rest.repos.listReleases,{owner,repo,per_page:100})).filter(r=>r.tag_name===tag);
  if(matches.length>1)throw Error('Duplicate private storage drafts require review; refusing mutation');
  let release=matches[0];
- if(!release)release=(await github.rest.repos.createRelease({owner,repo,tag_name:tag,target_commitish:sourceSha,name:title,body:`Private CI export for ${sourceSha}. Not an updater/public release.`,draft:true,prerelease:true})).data;
- if(release.draft!==true||release.tag_name!==tag||release.target_commitish!==sourceSha||release.name!==title)throw Error('Unrecognized or published storage release; refusing any mutation');
+ if(!release)release=(await github.rest.repos.createRelease({owner,repo,tag_name:tag,target_commitish:info.default_branch,name:title,body,draft:true,prerelease:true})).data;
+ if(release.draft!==true||release.tag_name!==tag||![info.default_branch,sourceSha].includes(release.target_commitish)||release.name!==title||release.body!==body)throw Error('Unrecognized or published storage release; refusing any mutation');
  async function save(name,data){
   const existing=(release.assets||[]).find(a=>a.name===name);
   const asset=existing||(await github.rest.repos.uploadReleaseAsset({owner,repo,release_id:release.id,url:release.upload_url,name,data,headers:{'content-type':'application/octet-stream','content-length':data.length}})).data;
