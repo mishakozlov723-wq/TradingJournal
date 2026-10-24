@@ -232,6 +232,13 @@ function openOutside(u) {
   }
   catch (e) { /* ignore bad links */ }
 }
+function isBundledOfflineUrl(url) {
+  try {
+    const parsed = new URL(url);
+    parsed.hash = '';
+    return parsed.href === require('node:url').pathToFileURL(path.join(__dirname, 'offline.html')).href;
+  } catch (_) { return false; }
+}
 function installLinkHandlers(wc) {
   // Shared Notes/model pages go to the system default browser. Ordinary journal
   // navigation stays inside; no new Electron window is ever created.
@@ -244,7 +251,7 @@ function installLinkHandlers(wc) {
     return { action: 'deny' };
   });
   wc.on('will-navigate', (e, url) => {
-    if (!isSharedNoteUrl(url) && isAppUrl(url)) return;
+    if (!isSharedNoteUrl(url) && (isAppUrl(url) || isBundledOfflineUrl(url))) return;
     e.preventDefault();
     openOutside(url);
   });
