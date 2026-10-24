@@ -395,7 +395,7 @@
     var k=sesKey(s.sid); if(!k) return;
     if(s.btId) stSchedule();
     /* a finished backtest, or one that has not moved at all, is not kept */
-    if(sessionDone(s)||sessionEmpty(s)){ try { localStorage.removeItem(k); } catch(_){} return; }
+    if((sessionDone(s)&&!s.pos.length)||sessionEmpty(s)){ try { localStorage.removeItem(k); } catch(_){} return; }
     try { var st=stateOf(s); st.upd=Date.now(); st.drawings=S.dr&&S.dr.op&&S.dr.op.pre?JSON.parse(S.dr.op.pre):(s.drawings||[]); st.drawAt=s.drawAt||0; localStorage.setItem(k, JSON.stringify(st)); } catch(_){}
   }
   /* the same state is mirrored into the backtest document, so the card follows the backtest to other devices and is gone when the backtest is deleted */
@@ -405,7 +405,7 @@
     clearTimeout(ST_TM); ST_TM=null;
     var s=S.sess, b=bridge(); if(!s||!s.btId||!b||!b.ready()||!b.isOwnAccount()) return;
     var bt=b.getBacktest(s.btId); if(!bt) return;
-    if(sessionDone(s)){ if(bt.replayState){ b.updateBacktest(s.btId,{ replayState:'', replayEnd:Date.now() }); } s.stSig=''; return; }
+    if(sessionDone(s)&&!s.pos.length){ if(bt.replayState){ b.updateBacktest(s.btId,{ replayState:'', replayEnd:Date.now() }); } s.stSig=''; return; }
     var st=stateOf(s), sig=JSON.stringify(st); if(sig===s.stSig&&bt.replayState) return;
     st.upd=Date.now(); s.stSig=sig;
     b.updateBacktest(s.btId,{ replayState:JSON.stringify(st) });
@@ -432,10 +432,10 @@
     var out=[], byBt={};
     local.sort(function(x,y){ return (y.upd||0)-(x.upd||0); }).forEach(function(e){
       if(e.btId){
-        if(byBt[e.btId]){ clearSession(e.sid); return; } /* two local copies of one backtest: keep the newest */
+        if(byBt[e.btId]){ if((e.pos||[]).some(function(p){return p.pendingClose;}))out.push(e);else clearSession(e.sid); return; } /* two local copies of one backtest: keep the newest */
         if(loaded){
           var bt=b.getBacktest(e.btId);
-          if(!bt||(Number(bt.replayEnd)||0)>=(e.upd||0)){ clearSession(e.sid); return; } /* backtest deleted, or its card was finished / dropped elsewhere */
+          if((!bt||(Number(bt.replayEnd)||0)>=(e.upd||0))&&!(e.pos||[]).some(function(p){return p.pendingClose;})){ clearSession(e.sid); return; } /* backtest deleted, or its card was finished / dropped elsewhere */
         }
         byBt[e.btId]=e;
       }
@@ -448,7 +448,7 @@
       if(bt.replayEnd>=(r.upd||0)) return;
       var l=byBt[bt.id];
       if(!l){ out.push(r); return; }
-      if((r.upd||0)>(l.upd||0)) out[out.indexOf(l)]=r;
+      if((r.upd||0)>(l.upd||0)&&!(l.pos||[]).some(function(p){return p.pendingClose;})) out[out.indexOf(l)]=r;
     });
     return out.sort(function(x,y){ return (y.upd||0)-(x.upd||0); });
   }
@@ -549,6 +549,7 @@
         if(extra&&extra.maxT!=null){ S.sess.maxIdx=Math.min(Math.max(lowerBound(d.T,extra.maxT,d.n),cur),endIdx); }
         S.rewind=false; S.shown={};
         var br=bridge();
+        if(extra){S.sess.btId=extra.btId||null;S.sess.pos=(extra.pos||[]).filter(function(p){return p&&p.entry!=null;});}
         if(extra&&extra.btId&&br&&br.getBacktest(extra.btId)){
           S.sess.btId=extra.btId; S.sess.pos=(extra.pos||[]).filter(function(p){ return p&&p.entry!=null; });
           br.getTrades(extra.btId).forEach(function(t){ if(t.entry!=null&&t.openTs!=null) S.sess.closed.push({ id:t.id, dir:t.direction==='LONG'?1:-1, entry:t.entry, sl:t.sl, tp:t.tp, exit:t.exit, openT:t.openTs, closeT:t.closeTs, r:Number(t.r)||0, riskPct:t.riskPercent, reason:t.exitReason, ar:!!t.afterRewind, hid:!!t.hiddenOnChart }); });
@@ -557,6 +558,7 @@
         var info=assetInfo(asset), chip=$('rpAssetChip'); chip.style.setProperty('--rp-color',info.color); chip.querySelector('span').textContent=asset;
         S.series.applyOptions({ priceFormat:{ type:'price', precision:d.dp, minMove:Math.pow(10,-d.dp) } });
         S.tf = tf || '1D'; if(S.tf==='5m'||S.tf==='15m'||S.tf==='30m'){ if(!(d.m5Start&&cur>=d.m5Idx)) S.tf='1D'; }
+        S.sess.pos.slice().forEach(function(p){if(p.pendingClose)finishTrade(p,p.pendingClose.exit,p.pendingClose.reason,p.pendingClose.time);});
         updateTfButtons(); fullRefresh(false); saveSession(); reveal(); renderTrade(true);
       }).catch(function(err){
         S.sess=null; showLobbyUI(); showError((err&&err.message)||'Data loading error.'); reveal();
@@ -865,15 +867,19 @@
   function posR(p,price){ return p.risk0>0?p.dir*(price-p.entry)/p.risk0:0; }
   function finishTrade(p,exitPrice,reason,closeT){
     var s=S.sess, b=bridge(), r=r2(posR(p,exitPrice));
-    s.pos=s.pos.filter(function(x){ return x!==p; });
+    var close=p.pendingClose||(p.pendingClose={id:newId(),exit:exitPrice,reason:reason,time:closeT});
+    exitPrice=close.exit;reason=close.reason;closeT=close.time;r=r2(posR(p,exitPrice));
+    saveSession(); // Keep the exact original exit intent until the bridge durably acknowledges it.
     var rec=null;
     /* the backtest was deleted in the journal while this session was open: create it again, so the trade is not lost */
     if(b&&s.btId&&b.ready()&&!b.getBacktest(s.btId)){ var keep=s.closed; s.btId=null; if(ensureBacktest()) s.closed=keep; else { s.closed=keep; s.btId=null; } }
     if(b&&s.btId){
-      rec=b.addTrade(s.btId,{ asset:s.asset, direction:p.dir>0?'LONG':'SHORT', openDT:dtStr(p.openT), closeDT:dtStr(closeT), r:r, riskPercent:p.riskPct, modelId:p.modelId,
+      rec=b.addTrade(s.btId,{ id:close.id, asset:s.asset, direction:p.dir>0?'LONG':'SHORT', openDT:dtStr(p.openT), closeDT:dtStr(closeT), r:r, riskPercent:p.riskPct, modelId:p.modelId,
         source:'replay', entry:p.entry, sl:p.sl, tp:p.tp==null?null:p.tp, exit:exitPrice, exitReason:reason, openTs:p.openT, closeTs:closeT, afterRewind:!!p.ar, seenUntilTs:p.ar?(s.d.T[s.maxIdx]+s.d.D[s.maxIdx]):null });
     }
-    s.closed.push({ id:rec?rec.id:newId(), dir:p.dir, entry:p.entry, sl:p.sl, tp:p.tp, exit:exitPrice, openT:p.openT, closeT:closeT, r:r, riskPct:p.riskPct, reason:reason, ar:!!p.ar, hid:false });
+    if(!rec){saveSession();toast('Close not saved. Position and exit intent are kept; free local storage and retry.','bad');return null;}
+    s.pos=s.pos.filter(function(x){return x!==p;});
+    s.closed.push({ id:rec.id, dir:p.dir, entry:p.entry, sl:p.sl, tp:p.tp, exit:exitPrice, openT:p.openT, closeT:closeT, r:r, riskPct:p.riskPct, reason:reason, ar:!!p.ar, hid:false });
     pushDays(true);
     return r;
   }
@@ -881,6 +887,7 @@
   function processBar(i){
     var s=S.sess, d=s.d, H=d.H[i], L=d.L[i], T=d.T[i], E=T+d.D[i], ev=[];
     s.pos.slice().forEach(function(p){
+      if(p.pendingClose){finishTrade(p,p.pendingClose.exit,p.pendingClose.reason,p.pendingClose.time);return;}
       if(p.status==='pending'){
         var hit = p.dir>0 ? (p.kind==='stop'?H>=p.entry:L<=p.entry) : (p.kind==='stop'?L<=p.entry:H>=p.entry);
         if(!hit) return;
@@ -898,13 +905,13 @@
     var s=S.sess; if(!s) return; var p=s.pos.filter(function(x){ return x.id===id; })[0]; if(!p) return;
     if(p.status==='pending'){ s.pos=s.pos.filter(function(x){ return x!==p; }); saveSession(); renderTrade(true); requestDraw(); return toast('Order cancelled.'); }
     var r=finishTrade(p,curPrice(),'Manual',nowT());
-    saveSession(); renderTrade(true); requestDraw(); toast('Closed manually: '+sgnR(r),r>=0?'ok':'bad');
+    saveSession(); renderTrade(true); requestDraw(); if(r!==null)toast('Closed manually: '+sgnR(r),r>=0?'ok':'bad');
   }
   function finishPeriod(){
     var s=S.sess; if(!s||!s.pos.length) return;
     var n=0; s.pos.slice().forEach(function(p){
       if(p.status==='pending') s.pos=s.pos.filter(function(x){ return x!==p; });
-      else { finishTrade(p,curPrice(),'End of period',nowT()); n++; }
+      else { if(finishTrade(p,curPrice(),'End of period',nowT())!==null)n++; }
     });
     if(n) toast('Period complete — open trades were closed at market.','warn');
   }

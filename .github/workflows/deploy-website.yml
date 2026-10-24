@@ -3,6 +3,14 @@ name: Deploy website
 on:
   workflow_dispatch:
     inputs:
+      artifact_maintenance:
+        description: 'Inventory or delete explicitly reviewed old CI artifacts; no deployment'
+        type: boolean
+        default: false
+      delete_ids:
+        description: 'Explicit reviewed obsolete artifact IDs; empty means inventory only'
+        type: string
+        default: ''
       deploy_live:
         description: 'Publish main to the live website retocker.web.app'
         type: boolean
@@ -17,7 +25,39 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  preflight:
+    permissions:
+      contents: write
+    if: ${{ !inputs.deploy_live && !inputs.artifact_maintenance }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: npm install --prefix /tmp/syter-preflight --no-save google-auth-library@9.15.1
+      - name: Verify existing release credential without writes
+        env:
+          SYTER_RELEASE_TOKEN: ${{ secrets.SYTER_RELEASE_TOKEN }}
+        run: node scripts/release-access-preflight.cjs
+      - name: Read current production rules and Hosting release without changes
+        env:
+          NODE_PATH: /tmp/syter-preflight/node_modules
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RETOCKER }}
+        run: node scripts/firebase-release-preflight.cjs
+      - name: Persist and read back private rollback snapshot (no Actions quota)
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const {persistPrivate}=require('./scripts/persist-private-ci.cjs');
+            const result=await persistPrivate({github,context,kind:'rollback'});
+            await core.summary.addHeading('Read-only preflight backup').addLink('Verified private rollback export',result.url).write();
   deploy:
+    permissions:
+      contents: write
+    if: ${{ inputs.deploy_live && !inputs.artifact_maintenance }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -46,35 +86,103 @@ jobs:
           node --test tests/backtest-model-filter.test.cjs tests/chart-resize.test.cjs
           test -s public/index.html
           test -s public/app.css
-      - name: Check Firebase deploy credential
+      - name: Install isolated Firebase API authentication helper
+        run: npm install --prefix /tmp/syter-preflight --no-save google-auth-library@9.15.1
+      - name: Read and validate actual production rollback baseline
         env:
+          NODE_PATH: /tmp/syter-preflight/node_modules
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RETOCKER }}
-        run: |
-          node <<'JS'
-          const value = process.env.FIREBASE_SERVICE_ACCOUNT;
-          if (!value) {
-            console.error('::error::Add repository Actions secret FIREBASE_SERVICE_ACCOUNT_RETOCKER before deploying.');
-            process.exit(1);
-          }
-          try {
-            const key = JSON.parse(value);
-            if (key.type !== 'service_account' || key.project_id !== 'retocker' || !key.client_email || !key.private_key) throw new Error('invalid');
-          } catch {
-            console.error('::error::The secret must contain the complete service-account JSON key for project retocker.');
-            process.exit(1);
-          }
-          JS
-      - name: Deploy only Firebase Hosting (not Firestore rules or desktop)
+        run: node scripts/firebase-release-preflight.cjs
+      - name: Persist rollback snapshot BEFORE any production write
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const {persistPrivate}=require('./scripts/persist-private-ci.cjs');
+            const result=await persistPrivate({github,context,kind:'rollback'});
+            await core.summary.addLink('Byte-verified private rollback export',result.url).write();
+      - name: Activate compatible Firestore rules and verify readback
+        env:
+          NODE_PATH: /tmp/syter-preflight/node_modules
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RETOCKER }}
+          CONFIRM_LIVE: ${{ inputs.deploy_live }}
+        run: node scripts/firebase-release-control.cjs publish-rules
+      - name: Deploy verified frontend Hosting after compatible rules
         uses: FirebaseExtended/action-hosting-deploy@500ac625ca2dd40cbd15f7659af953801858032a # v0, pinned
         with:
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RETOCKER }}
           projectId: retocker
           channelId: live
+      - name: Verify actual live rules and frontend bytes without login or user writes
+        env:
+          NODE_PATH: /tmp/syter-preflight/node_modules
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RETOCKER }}
+          CONFIRM_LIVE: ${{ inputs.deploy_live }}
+        run: node scripts/firebase-release-control.cjs verify-live
+      - name: Save release verification and rollback references
+        continue-on-error: true
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SYTER-production-result-${{ github.sha }}
+          path: rollout-backup/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Record published source
         run: |
           {
             echo '## Website deployed'
             echo '- Website: https://retocker.web.app/'
             echo "- Source commit: $GITHUB_SHA"
-            echo '- Scope: Firebase Hosting only. No EXE rebuild or Firestore rules deployment.'
+            echo '- Scope: compatible Firestore rules + Firebase Hosting, verified readback. No user-data migration or desktop publication.'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  artifact_inventory:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/github-script@v8
+      env:
+        DELETE_IDS: ${{ inputs.delete_ids }}
+      with:
+        script: 'const pinned = new Set([11963244018,11977522018,11974956463]);
+
+          const rows = await github.paginate(github.rest.actions.listArtifactsForRepo,
+          {...context.repo,per_page:100});
+
+          const clean = rows.map(a=>({id:a.id,name:a.name,size_in_bytes:a.size_in_bytes,created_at:a.created_at,expired:a.expired,run_id:a.workflow_run?.id,sha:a.workflow_run?.head_sha,pinned:pinned.has(a.id)}));
+
+          console.log(''INVENTORY_JSON=''+JSON.stringify(clean));
+
+          const ids=(process.env.DELETE_IDS||'''').split('','').map(s=>s.trim()).filter(Boolean);
+
+          if(ids.some(s=>!/^\d+$/.test(s))) throw Error(''Numeric IDs only'');
+
+          const requested=[...new Set(ids.map(Number))];
+
+          const cutoff=Date.now()-7*24*3600*1000;
+
+          const selected=requested.map(id=>{const a=rows.find(a=>a.id===id);if(!a)throw
+          Error(''Unknown ID ''+id);if(pinned.has(id))throw Error(''Protected baseline
+          ''+id);if(!Number.isFinite(Date.parse(a.created_at))||!(Date.parse(a.created_at)<=cutoff))throw Error(''Fresh artifact protected
+          ''+id);return a;});
+
+          console.log(''REVIEWED_DELETE_PLAN=''+JSON.stringify(selected.map(a=>({id:a.id,name:a.name,size_in_bytes:a.size_in_bytes}))));
+
+          for(const a of selected){await github.rest.actions.deleteArtifact({...context.repo,artifact_id:a.id});console.log(''DELETED_JSON=''+JSON.stringify({id:a.id,name:a.name,size_in_bytes:a.size_in_bytes}));}
+
+          const remaining=await github.paginate(github.rest.actions.listArtifactsForRepo,{...context.repo,per_page:100});
+
+          for(const id of pinned)if(rows.some(a=>a.id===id)&&!remaining.some(a=>a.id===id))throw
+          Error(''Protected baseline missing ''+id);
+
+          console.log(''REMAINING_BYTES=''+remaining.filter(a=>!a.expired).reduce((n,a)=>n+a.size_in_bytes,0));
+
+          await core.summary.addHeading(''Artifact maintenance'').addRaw(''Deleted ''+selected.length+''
+          explicitly reviewed obsolete artifacts; ''+selected.reduce((n,a)=>n+a.size_in_bytes,0)+''
+          bytes. Pinned baseline artifacts preserved. Billing quota recalculation may
+          be delayed. No release assets touched.'').write();
+
+          '
+    if: ${{ inputs.artifact_maintenance }}
+    permissions:
+      contents: read
+      actions: write

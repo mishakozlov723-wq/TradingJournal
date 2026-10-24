@@ -97,11 +97,19 @@ test('dangerous protocols never reach the OS shell and cannot create child windo
 });
 test('local offline-page navigation keeps its existing behavior', () => {
   const s = setup();
-  assert.equal(s.navigate('file:///app/offline.html'), false);
+  assert.equal(s.navigate(require('node:url').pathToFileURL(path.resolve(__dirname, '../offline.html')).href), false);
   assert.deepEqual(s.opened, []);
 });
 test('similar-looking hosts never become trusted journal pages', () => {
   const s = setup(), url = `https://retocker.web.app.example.com/?note=${token}`;
   assert.equal(s.classify(url), false);
   s.open(url); assert.deepEqual(s.opened, [url]); assert.deepEqual(s.loaded, []);
+});
+test('same-tab file navigation trusts only the exact bundled offline document', () => {
+ const s=setup();
+ for(const url of ['file:///app/offline.html','file:///tmp/offline.html','file:///tmp/untrusted.html','file:///etc/passwd','file://untrusted-host/app/offline.html'])assert.equal(s.navigate(url),true);
+ const bundled=require('node:url').pathToFileURL(path.resolve(__dirname,'../offline.html')).href;
+ assert.equal(s.navigate(bundled+'#retry'),false);
+ assert.equal(s.navigate(bundled+'?untrusted=1'),true);
+ assert.deepEqual(s.opened,[]);
 });

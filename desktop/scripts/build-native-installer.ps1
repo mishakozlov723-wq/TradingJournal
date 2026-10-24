@@ -21,5 +21,6 @@ if(!(Test-Path $csc)){throw '.NET Framework C# compiler missing'}
 $out=Join-Path $root "release/SYTER-Install-$version.exe"
 & $csc /nologo /target:winexe /platform:x64 /optimize+ /utf8output /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Core.dll /reference:System.dll "/win32icon:$(Join-Path $root 'build/icon.ico')" "/win32manifest:$(Join-Path $native 'app.manifest')" "/resource:$payload,Payload" "/resource:$(Join-Path $root 'build/app-icon.png'),Logo" "/resource:$(Join-Path $build 'poppins-regular.ttf'),FontRegular" "/resource:$(Join-Path $build 'poppins-semibold.ttf'),FontBold" "/out:$out" (Join-Path $native 'Installer.cs') $info
 if($LASTEXITCODE -ne 0){throw 'Native installer compilation failed'}
+& (Join-Path $PSScriptRoot 'sign-native-installer.ps1') -Path $out
 @{version=$version;sha256=$hash;installer="SYTER-Install-$version.exe";bootstrapper='native-dotnet-framework';payloadSize=$size} | ConvertTo-Json | Set-Content (Join-Path $root 'release/installer-manifest.json') -Encoding utf8
 Write-Host "Native offline installer: $out, $((Get-Item $out).Length) bytes"

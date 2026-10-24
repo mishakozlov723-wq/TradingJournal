@@ -1,0 +1,306 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // retocker's Firebase Authentication UID.
+    function isRetocker() {
+      return request.auth != null
+        && request.auth.uid == 'DXBgoKHXkAVW9Rclf1juT6JrMhA2';
+    }
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function owns(uid) {
+      return signedIn() && uid == request.auth.uid;
+    }
+
+    // /users is writable only by the administrator. Its login is the
+    // authoritative owner of a settings/Notes namespace.
+    function ownsLogin(login) {
+      return signedIn()
+        && login is string
+        && login.size() > 0
+        && get(/databases/$(database)/documents/users/$(request.auth.uid))
+          .data.get('login', '') == login;
+    }
+
+    function isNotesPageId(titleId, ownerKey) {
+      return ownerKey is string
+        && titleId.size() > ownerKey.size() + 6
+        && titleId[0:ownerKey.size() + 6] == ownerKey + '__np__';
+    }
+
+    function rootFields(data) {
+      return !data.keys().hasAny(['notesPageOwner', 'notesPage']);
+    }
+
+    function ownsNotesPage(titleId, data) {
+      return ownsLogin(data.get('notesPageOwner', null))
+        && isNotesPageId(titleId, data.notesPageOwner);
+    }
+
+    // Keep legacy pages readable/editable. Only the namespace owner may
+    // normalize a missing/old uid to their own current authenticated UID.
+    function notesUidUnchangedOrOwned() {
+      return request.resource.data.get('uid', null)
+          == resource.data.get('uid', null)
+        || owns(request.resource.data.get('uid', null));
+    }
+
+    // Profile records are keyed by the Firebase Auth UID.
+    match /users/{userId} {
+      allow read: if isRetocker()
+        || (signedIn() && userId == request.auth.uid);
+
+      allow write: if isRetocker();
+    }
+
+    // Trades are owned by the UID stored in the document.
+    match /trades/{tradeId} {
+      allow read: if isRetocker()
+        || owns(resource.data.uid);
+
+      allow create: if isRetocker()
+        || owns(request.resource.data.uid);
+
+      allow update: if isRetocker()
+        || (
+          owns(resource.data.uid)
+          && request.resource.data.uid == resource.data.uid
+        );
+
+      allow delete: if isRetocker()
+        || owns(resource.data.uid);
+    }
+
+    // Private chart images. Saved atomically together with their trade.
+    match /tradeImages/{imageId} {
+      allow read: if isRetocker() || owns(resource.data.uid);
+      allow create: if (isRetocker() || owns(request.resource.data.uid))
+        && request.resource.data.keys().hasOnly(['id','uid','tradeId','data'])
+        && request.resource.data.data is string
+        && request.resource.data.data.size() < 650000;
+      allow update: if (isRetocker() || owns(resource.data.uid))
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.tradeId == resource.data.tradeId
+        && request.resource.data.keys().hasOnly(['id','uid','tradeId','data'])
+        && request.resource.data.data is string
+        && request.resource.data.data.size() < 650000;
+      allow delete: if isRetocker() || owns(resource.data.uid);
+    }
+
+    // Diary entries follow the same ownership model as trades.
+    match /diary/{entryId} {
+      allow read: if isRetocker()
+        || owns(resource.data.uid);
+
+      allow create: if isRetocker()
+        || owns(request.resource.data.uid);
+
+      allow update: if isRetocker()
+        || (
+          owns(resource.data.uid)
+          && request.resource.data.uid == resource.data.uid
+        );
+
+      allow delete: if isRetocker()
+        || owns(resource.data.uid);
+    }
+
+    // Root settings: titles/<login>.
+    // Notes pages: titles/<login>__np__<pageId>.
+    match /titles/{titleId} {
+      allow get: if isRetocker()
+        || (
+          ownsLogin(titleId)
+          && (
+            !exists(/databases/$(database)/documents/titles/$(titleId))
+            || owns(resource.data.get('uid', null))
+          )
+        )
+        || ownsNotesPage(titleId, resource.data);
+
+      // Notes recovery uses where('notesPageOwner', '==', login).
+      allow list: if isRetocker()
+        || ownsLogin(resource.data.notesPageOwner);
+
+      allow create: if isRetocker()
+        || (
+          ownsLogin(titleId)
+          && owns(request.resource.data.get('uid', null))
+          && rootFields(request.resource.data)
+        )
+        || (
+          ownsNotesPage(titleId, request.resource.data)
+          && (
+            !request.resource.data.keys().hasAny(['uid'])
+            || owns(request.resource.data.uid)
+          )
+        );
+
+      allow update: if isRetocker()
+        || (
+          ownsLogin(titleId)
+          && owns(resource.data.get('uid', null))
+          && request.resource.data.get('uid', null) == resource.data.uid
+          && rootFields(request.resource.data)
+        )
+        || (
+          ownsNotesPage(titleId, resource.data)
+          && request.resource.data.get('notesPageOwner', null)
+            == resource.data.notesPageOwner
+          && notesUidUnchangedOrOwned()
+        );
+
+      allow delete: if isRetocker()
+        || (ownsLogin(titleId) && owns(resource.data.get('uid', null)))
+        || ownsNotesPage(titleId, resource.data);
+    }
+
+    // The selected site version is global, including the login screen.
+    // It contains no user data, so anyone may read the current style;
+    // only retocker may change it.
+    match /siteConfig/{configId} {
+      allow read: if true;
+      allow write: if isRetocker();
+    }
+
+    match /backtests/{backtestId} {
+      allow read: if isRetocker()
+        || owns(resource.data.uid);
+
+      allow create: if isRetocker()
+        || owns(request.resource.data.uid);
+
+      allow update: if isRetocker()
+        || (
+          owns(resource.data.uid)
+          && request.resource.data.uid == resource.data.uid
+        );
+
+      allow delete: if isRetocker()
+        || owns(resource.data.uid);
+    }
+
+    match /backtestTrades/{tradeId} {
+      allow read: if isRetocker()
+        || owns(resource.data.uid);
+
+      allow create: if isRetocker()
+        || owns(request.resource.data.uid);
+
+      allow update: if isRetocker()
+        || (
+          owns(resource.data.uid)
+          && request.resource.data.uid == resource.data.uid
+        );
+
+      allow delete: if isRetocker()
+        || owns(resource.data.uid);
+    }
+
+    // NEW: Replay Space chart style templates (profiles).
+    // Same ownership model as backtests: each user sees only their own.
+    match /replayProfiles/{profileId} {
+      allow read: if isRetocker()
+        || owns(resource.data.uid);
+
+      allow create: if isRetocker()
+        || owns(request.resource.data.uid);
+
+      allow update: if isRetocker()
+        || (
+          owns(resource.data.uid)
+          && request.resource.data.uid == resource.data.uid
+        );
+
+      allow delete: if isRetocker()
+        || owns(resource.data.uid);
+    }
+
+    // Public read-only Notes links (?note=TOKEN).
+    // Anyone who has the exact token can read that one shared page snapshot.
+    // Nobody can list/enumerate shared links.
+    match /notesShares/{token} {
+      allow get: if true;
+      allow list: if false;
+
+      allow create: if isRetocker()
+        || owns(request.resource.data.uid);
+
+      allow update: if isRetocker()
+        || (
+          owns(resource.data.uid)
+          && request.resource.data.uid == resource.data.uid
+        );
+
+      allow delete: if isRetocker()
+        || owns(resource.data.uid);
+    }
+
+    // NEW (v3.38): Notes images, each stored as its own document.
+    // Image ids are long random strings, so an image can be opened only
+    // by someone who already has its link. Nobody can list all images.
+    // Only a signed-in user can upload, and only under their own uid.
+    match /notesImages/{imageId} {
+      allow get: if true;
+      allow list: if false;
+
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.data is string
+        && request.resource.data.data.size() < 1000000;
+
+      allow update: if false;
+
+      allow delete: if isRetocker()
+        || owns(resource.data.uid);
+    }
+
+    // Myfxbook history cache. The client reads known IDs, never lists this collection.
+    match /accountSnapshots/{snapshotId} {
+      function ownSnapshotId() {
+        return signedIn()
+          && snapshotId.size() > request.auth.uid.size() + 5
+          && snapshotId[0:request.auth.uid.size() + 5]
+            == 'mfb_' + request.auth.uid + '_';
+      }
+
+      allow get: if isRetocker()
+        || (
+          ownSnapshotId()
+          && (
+            !exists(/databases/$(database)/documents/accountSnapshots/$(snapshotId))
+            || owns(resource.data.get('uid', null))
+          )
+        );
+
+      allow create: if isRetocker()
+        || (ownSnapshotId() && owns(request.resource.data.get('uid', null)));
+
+      allow update: if isRetocker()
+        || (
+          ownSnapshotId()
+          && owns(resource.data.get('uid', null))
+          && request.resource.data.get('uid', null) == resource.data.uid
+        );
+
+      allow delete: if isRetocker()
+        || (ownSnapshotId() && owns(resource.data.get('uid', null)));
+    }
+
+
+    // Movie/series tracker.
+    match /movieTrackerApp/mt_d51e19c9c35f0d8fe46d560e7fc3d1a6 {
+      allow read, write: if true;
+    }
+
+    // Deny everything not explicitly allowed above.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

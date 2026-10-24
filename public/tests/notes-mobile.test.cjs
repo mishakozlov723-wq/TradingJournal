@@ -71,7 +71,7 @@ test('empty root index recovers orphan split-page documents and rebuilds cloud m
 });
 test('stale local snapshot cannot hide orphan cloud pages during index recovery',async()=>{
  const h=harness();
- h.c.notesLoadLocal=()=>({pages:[{id:'local-only',title:'Local backup',blocks:[]}],groups:[],updatedAt:3});
+ h.c.notesLoadLocal=()=>({pages:[{id:'local-only',title:'Local backup',blocks:[]}],groups:[],updatedAt:3,pending:false});
  h.c.db={collection(){return {
    doc(){return {get:()=>h.root.promise};},
    where(){return {get:()=>Promise.resolve({forEach(cb){cb({id:'alice__np__cloud',data:()=>({notesPageOwner:'alice',updatedAt:6,notesPage:{id:'cloud',title:'Cloud page',blocks:[]}})});}})};}
@@ -86,7 +86,7 @@ test('stale local snapshot cannot hide orphan cloud pages during index recovery'
 });
 test('failed orphan recovery query is treated as cloud failure, never as an empty workspace',async()=>{
  const h=harness();
- h.c.notesLoadLocal=()=>({pages:[{id:'safe-local',title:'Safe local',blocks:[]}],groups:[],updatedAt:2});
+ h.c.notesLoadLocal=()=>({pages:[{id:'safe-local',title:'Safe local',blocks:[]}],groups:[],updatedAt:2,pending:false});
  h.c.db={collection(){return {
    doc(){return {get:()=>h.root.promise};},
    where(){return {get:()=>Promise.reject(Error('offline recovery scan'))};}
@@ -137,3 +137,11 @@ test('fast flick closes below distance threshold',()=>{const h=sheetHarness();h.
 test('sheet pointer cancellation returns to resting position',()=>{const h=sheetHarness();h.fire('pointerdown');h.fire('pointermove',{clientY:150,timeStamp:40});h.fire('pointercancel');h.run();assert.equal(h.closed(),0);assert.equal(h.props.transform,undefined);});
 test('changed revision with an empty cloud index never auto-publishes a stale local draft',async()=>{const h=harness();h.c.notesLoadLocal=()=>({pages:[{id:'stale'}],groups:[],updatedAt:20,cloudBase:'[5,"old"]'});const done=h.c.notesLoad(true);h.root.resolve(snap({notesWorkspaceMeta:{version:3,pageIds:[],groups:[],updatedAt:10,revision:'new'}}));await done;assert.equal(h.c.conflicted,true);assert.equal(h.c.notesPages[0].id,'stale');assert.equal(h.writes.includes('cloud'),false);});
 test('a conflict marker survives reload even when the device clock is behind',async()=>{const h=harness();h.c.notesLoadLocal=()=>({pages:[{id:'draft'}],groups:[],updatedAt:1,conflict:true});const done=h.c.notesLoad(true);h.root.resolve(snap({notesWorkspaceMeta:{version:3,pageIds:['remote'],updatedAt:100}}));await done;assert.equal(h.c.conflicted,true);assert.equal(h.writes.includes('cloud'),false);});
+
+test('clean cache with a fast clock cannot overwrite a healthy orphan cloud page during root repair',async()=>{
+ const h=harness();
+ h.c.notesLoadLocal=()=>({pages:[{id:'same',title:'OLD LOCAL',blocks:[]}],groups:[],updatedAt:1000,pending:false});
+ h.c.db={collection(){return {doc(){return {get:()=>h.root.promise};},where(){return {get:()=>Promise.resolve({forEach(cb){cb({id:'alice__np__same',data:()=>({notesPageOwner:'alice',updatedAt:6,notesPage:{id:'same',title:'NEW CLOUD',blocks:[]}})});}})};}};}};
+ const done=h.c.notesLoad(true);h.root.resolve(snap({notesWorkspaceMeta:{version:3,pageIds:[],groups:[],updatedAt:7}}));await done;
+ assert.equal(h.c.notesPages[0].title,'NEW CLOUD');assert.ok(h.writes.includes('cloud'));
+});

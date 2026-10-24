@@ -3,6 +3,10 @@ name: Verify and build SYTER desktop
 on:
   workflow_dispatch:
     inputs:
+      signed_release:
+        description: Optional trusted Authenticode signing; false preserves existing GitHub auto-updates without paid signing
+        type: boolean
+        default: false
       notes_only:
         description: Focus checks on update notes and scrollbar styling; no mini animation or installer redesign checks
         type: boolean
@@ -41,6 +45,9 @@ jobs:
     if: ${{ inputs.local_update_test }}
     uses: ./.github/workflows/local-update-test.yml
   windows:
+    permissions:
+      contents: write
+      actions: read
     if: ${{ !inputs.local_update_test }}
     runs-on: windows-latest
     timeout-minutes: 45
@@ -50,6 +57,11 @@ jobs:
         shell: pwsh
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Reject incomplete publication checks
+        run: |
+          if ('${{ inputs.publish }}' -eq 'true' -and ('${{ github.ref }}' -ne 'refs/heads/main' -or '${{ inputs.notes_only }}' -eq 'true' -or '${{ inputs.installer_only }}' -eq 'true' -or '${{ inputs.reuse_verified_update }}' -eq 'true' -or '${{ inputs.check_only }}' -eq 'true')) { throw 'Publishing requires main and every full verification gate; reduced or reused builds cannot publish' }
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
@@ -81,9 +93,17 @@ jobs:
           if ($test.ExitCode -ne 0) { throw "Live resize test failed: $($test.ExitCode)" }
       - name: Measure 1.3.10 preparation on this same Windows runner
         if: ${{ !inputs.installer_only && !inputs.notes_only }}
+        env:
+          TJ_GIT_READ_TOKEN: ${{ github.token }}
         run: |
-          git fetch --no-tags --depth=1 origin d4b69b90a881f6e1c92899c9bf42743c9a98bf78
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot fetch exact 1.3.10 timing baseline' }
+          # Scope private baseline authentication to this fetch only, never npm/build scripts.
+          $basic = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:TJ_GIT_READ_TOKEN"))
+          Write-Output "::add-mask::$basic"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $basic" fetch --no-tags --depth=1 origin d4b69b90a881f6e1c92899c9bf42743c9a98bf78
+          $fetchExit = $LASTEXITCODE
+          Remove-Item Env:TJ_GIT_READ_TOKEN
+          $basic = $null
+          if ($fetchExit -ne 0) { throw 'Cannot fetch exact 1.3.10 timing baseline' }
           $files = @('window-motion.js','mode-transition.js')
           try {
             foreach ($file in $files) {
@@ -123,6 +143,8 @@ jobs:
           if ($test.ExitCode -ne 0) { throw "Lifecycle test failed: $($test.ExitCode)" }
           if (!(Select-String -Path lifecycle-test.log -Pattern "PASS: isolated native lifecycle windows" -Quiet)) { throw "Lifecycle test did not reach completion" }
       - name: Save native transition inspection frames
+        # Optional diagnostic PNG export; native test failures and final EXE export remain blocking.
+        continue-on-error: true
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -133,7 +155,11 @@ jobs:
       - name: Build installer and updater files
         if: ${{ !inputs.check_only && !inputs.reuse_verified_update }}
         env:
+          SYTER_SIGNED_RELEASE: ${{ inputs.signed_release }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          CSC_LINK: ${{ secrets.SYTER_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.SYTER_CSC_KEY_PASSWORD }}
+          SYTER_PUBLISHER_NAME: ${{ vars.SYTER_PUBLISHER_NAME }}
         run: npm run build
       - name: Fetch exact verified 1.3.7 updater payload
         if: ${{ !inputs.check_only && inputs.reuse_verified_update }}
@@ -171,6 +197,8 @@ jobs:
           Get-Content icon-test-error.log
           if ($test.ExitCode -ne 0) { throw "Packaged icon test failed: $($test.ExitCode)" }
       - name: Save verified icon previews
+        # Optional diagnostic PNG export; native test failures and final EXE export remain blocking.
+        continue-on-error: true
         if: ${{ always() && !inputs.check_only && !inputs.notes_only }}
         uses: actions/upload-artifact@v4
         with:
@@ -206,13 +234,41 @@ jobs:
             Get-Content test-artifacts/native-installer-ui-test.log
             Get-Content test-artifacts/native-installer-ui-test-error.log
           }
+      - name: Verify real installed 1.3.12 to 1.3.13 update with private loopback feed
+        if: ${{ !inputs.check_only && !inputs.installer_only && !inputs.notes_only && !inputs.reuse_verified_update }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($version -eq '1.3.13') {
+            New-Item baseline -ItemType Directory -Force | Out-Null
+            Invoke-WebRequest 'https://github.com/mishakozlov723-wq/syter-releases/releases/download/v1.3.12/SYTER-Setup-1.3.12.exe' -OutFile baseline/SYTER-Setup-1.3.12.exe
+            if ((Get-FileHash baseline/SYTER-Setup-1.3.12.exe -Algorithm SHA256).Hash.ToLower() -ne 'c0a6b61d9bbcbb1e5cc8e20b014cd7993164c85bf82789639c968cc49bd6ca3f') { throw 'Published 1.3.12 baseline digest mismatch' }
+            Get-Process SYTER -ErrorAction SilentlyContinue | Stop-Process -Force
+            $p=Start-Process (Resolve-Path baseline/SYTER-Setup-1.3.12.exe).Path -ArgumentList '/S' -PassThru -Wait
+            if ($p.ExitCode -ne 0) { throw '1.3.12 baseline install failed' }
+            Get-Process SYTER -ErrorAction SilentlyContinue | Stop-Process -Force
+            New-Item "$env:APPDATA/syter-desktop" -ItemType Directory -Force | Out-Null
+            'preserve-v1313-transition' | Set-Content "$env:APPDATA/syter-desktop/v1313-sentinel.txt"
+            node update-test/package-1313.cjs
+            if ($LASTEXITCODE -ne 0) { throw 'Transition pack preparation failed' }
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./update-test-pack/Test-Update.ps1 -Automation
+            if ($LASTEXITCODE -ne 0) { throw 'Real installed 1.3.12 -> 1.3.13 update failed' }
+            if ((Get-Content "$env:APPDATA/syter-desktop/v1313-sentinel.txt" -Raw).Trim() -ne 'preserve-v1313-transition') { throw 'Profile sentinel lost' }
+            if (Test-Path update-test-pack/test-session.json) { throw 'Temporary feed was not restored' }
+            'PASS: real installed 1.3.12 -> 1.3.13, consent/download/restart and profile preservation; loopback feed, not public delivery' | Set-Content test-artifacts/v1313-transition.txt
+            Get-Process SYTER -ErrorAction SilentlyContinue | Stop-Process -Force
+          }
       - name: Save branded installer and update previews
+        # Optional diagnostic PNG export; native test failures and final EXE export remain blocking.
+        continue-on-error: true
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: SYTER-lifecycle-inspection
           path: |
             desktop/test-artifacts/lifecycle-*.png
+            desktop/test-artifacts/local-update-*
+            desktop/test-artifacts/v1313-transition.txt
+            desktop/update-test-pack/requests.log
             desktop/test-artifacts/branded-exe-*.png
             desktop/test-artifacts/installer-progress.json
             desktop/test-artifacts/native-installer-*.png
@@ -221,16 +277,25 @@ jobs:
             desktop/test-artifacts/native-installer-ui-test*.log
           if-no-files-found: warn
           retention-days: 14
+      - name: Verify release mode and optional publisher signatures
+        if: ${{ !inputs.check_only && !inputs.reuse_verified_update }}
+        env:
+          SYTER_PUBLISHER_NAME: ${{ vars.SYTER_PUBLISHER_NAME }}
+          SYTER_SIGNED_RELEASE: ${{ inputs.signed_release }}
+        run: |
+          ./scripts/verify-release-signatures.ps1
+          node scripts/verify-update-artifacts.js
+          if ($LASTEXITCODE -ne 0) { throw 'Updater integrity verification failed' }
       - name: Save verified installer
         if: ${{ !inputs.check_only }}
-        uses: actions/upload-artifact@v4
+        uses: actions/github-script@v8
         with:
-          name: SYTER-windows-release
-          path: desktop/release/*
-          if-no-files-found: error
-          retention-days: 14
-      - name: Publish all updater assets
-        if: ${{ inputs.publish && !inputs.check_only && github.ref == 'refs/heads/main' }}
+          script: |
+            const {persistPrivate}=require('./scripts/persist-private-ci.cjs');
+            const result=await persistPrivate({github,context,kind:'windows'});
+            await core.summary.addHeading('Verified Windows installer export').addLink('Private byte-verified build and evidence',result.url).write();
+      - name: Publish verified GitHub updater assets
+        if: ${{ inputs.publish && !inputs.check_only && !inputs.notes_only && !inputs.installer_only && !inputs.reuse_verified_update && github.ref == 'refs/heads/main' }}
         env:
           GH_TOKEN: ${{ secrets.SYTER_RELEASE_TOKEN }}
         run: |
@@ -259,7 +324,9 @@ jobs:
             $resumeDraft = $true
           }
           $notes | Set-Content release-notes.md -Encoding utf8
-          $expected = @("latest.yml", "SYTER-Setup-$version.exe", "SYTER-Setup-$version.exe.blockmap", "SYTER-Install-$version.exe", "installer-manifest.json")
+          # Preserve existing GitHub feed; SHA512 is integrity, not independent signing.
+          $signed = '${{ inputs.signed_release }}' -eq 'true'
+          $expected = @("SYTER-Install-$version.exe", "installer-manifest.json", "latest.yml", "SYTER-Setup-$version.exe", "SYTER-Setup-$version.exe.blockmap")
           $assets = @($expected | ForEach-Object {
             $file = Join-Path release $_
             if (!(Test-Path $file -PathType Leaf)) { throw "Missing updater asset: $_" }
@@ -272,5 +339,39 @@ jobs:
             gh release create $tag @assets --repo $repo --title "SYTER $version" --notes-file release-notes.md --draft
             if ($LASTEXITCODE -ne 0) { throw 'Could not create complete draft release' }
           }
-          gh release edit $tag --repo $repo --notes-file release-notes.md --draft=false --latest
+          # A resumed draft may contain updater artifacts from a different mode.
+          $draftAssets = gh release view $tag --repo $repo --json assets --jq '.assets[].name'
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect draft artifact set' }
+          foreach ($asset in $draftAssets) { if ($asset -notin $expected) { throw "Unexpected draft asset $asset; refusing to publish a mixed-mode release" } }
+          # Read the draft bytes back BEFORE making a public update discoverable.
+          $draftReadback = Join-Path $PWD 'verified-draft-readback'
+          New-Item $draftReadback -ItemType Directory -Force | Out-Null
+          gh release download $tag --repo $repo --dir $draftReadback
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot download the unpublished draft for integrity verification' }
+          foreach ($name in $expected) {
+            $original = Get-FileHash (Join-Path release $name) -Algorithm SHA256
+            $remote = Get-FileHash (Join-Path $draftReadback $name) -Algorithm SHA256
+            if ($original.Hash -cne $remote.Hash) { throw "Draft bytes differ from verified build: $name" }
+          }
+          $latestFlag = '--latest'
+          gh release edit $tag --repo $repo --notes-file release-notes.md --draft=false $latestFlag
           if ($LASTEXITCODE -ne 0) { throw 'Draft upload succeeded but publishing failed' }
+          # Verify actual public delivery, not just a successful upload response.
+          $publicReadback = Join-Path $PWD 'verified-public-readback'
+          New-Item $publicReadback -ItemType Directory -Force | Out-Null
+          gh release download $tag --repo $repo --dir $publicReadback
+          if ($LASTEXITCODE -ne 0) { throw 'Published release exists but public readback failed; do not overwrite or delete it' }
+          $proof = @()
+          foreach ($name in $expected) {
+            $original = Get-FileHash (Join-Path release $name) -Algorithm SHA256
+            $remoteFile = Join-Path $publicReadback $name
+            $remote = Get-FileHash $remoteFile -Algorithm SHA256
+            if ($original.Hash -cne $remote.Hash) { throw "Published asset differs from tested bytes: $name; do not overwrite a public version" }
+            $proof += @{name=$name;size=(Get-Item $remoteFile).Length;sha256=$remote.Hash.ToLower()}
+          }
+          $published = gh release view $tag --repo $repo --json isDraft,isPrerelease,tagName,url,assets | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $published.isDraft -or $published.isPrerelease -or $published.tagName -ne $tag -or $published.assets.Count -ne $expected.Count) { throw 'Published release metadata or complete asset set mismatch' }
+          $receipt = @{version=$version;sourceSha=$env:GITHUB_SHA;url=$published.url;assets=$proof}
+          'PUBLIC_RELEASE_VERIFIED_JSON=' + ($receipt | ConvertTo-Json -Depth 6 -Compress)
+          $receipt | ConvertTo-Json -Depth 6 | Set-Content test-artifacts/published-release.json -Encoding utf8
+          "## Public release verified: $($published.url)`nSource: $env:GITHUB_SHA`nAll five public asset SHA256 values match the tested and privately exported files." >> $env:GITHUB_STEP_SUMMARY

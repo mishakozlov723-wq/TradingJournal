@@ -5,8 +5,12 @@
 import { getHistoricalRates } from 'dukascopy-node';
 import fs from 'fs';
 import path from 'path';
-const OUT = path.resolve('../public/replay-data');
-fs.mkdirSync(OUT, { recursive: true });
+import {fileURLToPath} from 'url';
+const DEST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public/replay-data');
+fs.mkdirSync(path.dirname(DEST),{recursive:true});
+const OUT=fs.mkdtempSync(DEST+'.staging-');
+// No final output is touched until every requested download has succeeded.
+
 const M5_FROM_YEAR = 2013;
 const INST = {
   XAUUSD: { duka: 'xauusd', scale: 1000, dp: 2 },
@@ -18,7 +22,7 @@ const now = new Date();
 async function grab(duka, tf, from, to) {
   for (let a = 0; a < 4; a++) {
     try { return await getHistoricalRates({ instrument: duka, dates: { from, to }, timeframe: tf, format: 'json', priceType: 'bid', useCache: false }); }
-    catch (e) { if (a === 3) { console.error('FAIL', duka, tf, from.toISOString().slice(0, 10), e.message); return []; } }
+    catch (e) { if (a === 3) { console.error('FAIL', duka, tf, from.toISOString().slice(0, 10), e.message); throw e; } }
   }
 }
 function write(file, rows, scale) {
@@ -35,7 +39,7 @@ function write(file, rows, scale) {
   return { n, first: uniq[0]?.timestamp / 1000, last: uniq[n - 1]?.timestamp / 1000 };
 }
 const meta = { generated: now.toISOString(), instruments: {} };
-await Promise.all(Object.entries(INST).map(async ([name, cfg]) => {
+const results=await Promise.allSettled(Object.entries(INST).map(async ([name, cfg]) => {
   const h1 = [];
   for (let y = 2003; y <= now.getUTCFullYear(); y++) {
     const rows = await grab(cfg.duka, 'h1', new Date(Date.UTC(y, 0, 1)), new Date(Math.min(Date.UTC(y + 1, 0, 1), now.getTime())));
@@ -58,5 +62,12 @@ await Promise.all(Object.entries(INST).map(async ([name, cfg]) => {
   meta.instruments[name] = { scale: cfg.scale, dp: cfg.dp, h1: a, m5Years, m5First, m5Count };
   console.log(name, 'h1', a.n, 'm5 years', m5Years.join(','), 'm5 bars', m5Count);
 }));
+const failure=results.find(r=>r.status==='rejected');
+if(failure){fs.rmSync(OUT,{recursive:true,force:true});throw failure.reason;}
 fs.writeFileSync(path.join(OUT, 'meta.json'), JSON.stringify(meta, null, 1));
+const backup=DEST+'.previous-'+Date.now();
+const hadPrevious=fs.existsSync(DEST);
+if(hadPrevious)fs.renameSync(DEST,backup);
+try{fs.renameSync(OUT,DEST);}catch(error){if(hadPrevious)fs.renameSync(backup,DEST);throw error;}
+if(hadPrevious)fs.rmSync(backup,{recursive:true,force:true});
 console.log('done');

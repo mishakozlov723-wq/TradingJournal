@@ -1,7 +1,7 @@
 // SYTER desktop app (Electron).
 // The window simply opens the published site, so every `firebase deploy`
-// shows up on the next launch. The app itself updates through electron-updater
-// from GitHub Releases (see package.json -> build.publish).
+// shows up on the next launch. GitHub desktop auto-updates remain enabled without mandatory paid signing;
+// optional Authenticode adds installed publisher verification.
 //
 // Layout: the BrowserWindow itself shows a thin black title bar (titlebar.html,
 // native Windows buttons drawn over it by titleBarOverlay); the site lives in a
@@ -232,6 +232,13 @@ function openOutside(u) {
   }
   catch (e) { /* ignore bad links */ }
 }
+function isBundledOfflineUrl(url) {
+  try {
+    const parsed = new URL(url);
+    parsed.hash = '';
+    return parsed.href === require('node:url').pathToFileURL(path.join(__dirname, 'offline.html')).href;
+  } catch (_) { return false; }
+}
 function installLinkHandlers(wc) {
   // Shared Notes/model pages go to the system default browser. Ordinary journal
   // navigation stays inside; no new Electron window is ever created.
@@ -244,7 +251,7 @@ function installLinkHandlers(wc) {
     return { action: 'deny' };
   });
   wc.on('will-navigate', (e, url) => {
-    if (!isSharedNoteUrl(url) && (isAppUrl(url) || url.startsWith('file://'))) return;
+    if (!isSharedNoteUrl(url) && (isAppUrl(url) || isBundledOfflineUrl(url))) return;
     e.preventDefault();
     openOutside(url);
   });
@@ -480,8 +487,11 @@ function start() {
 
 // ── app self-update ──
 let updateController = null, updateWindow = null;
-function setupUpdates() {
+let updateTrustError = '';
+async function setupUpdates() {
   if (!app.isPackaged || updateController) return;
+  try { await require('./lifecycle/update-trust').requireUpdatePublisher(autoUpdater, require('./package.json').syterUpdatePolicy || 'github'); }
+  catch(error) { updateTrustError=error.message;console.error(error.message);return; }
   const { createUpdateController } = require('./lifecycle/controller');
   const { createLifecycleWindow, publishLifecycleState } = require('./lifecycle/window');
   const reveal = () => {

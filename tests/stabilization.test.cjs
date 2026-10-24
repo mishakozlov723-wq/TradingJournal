@@ -2,7 +2,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const source=fs.readFileSync(require('node:path').join(__dirname,'../public/app.js'),'utf8');
 const notes=fs.readFileSync(require('node:path').join(__dirname,'../public/notes-workspace.js'),'utf8');
-function fn(name,src=source){const a=src.indexOf('  function '+name+'(');assert.ok(a>=0,name);const tail=src.slice(a),b=tail.search(/^  }\r?$/m);assert.ok(b>=0,name+' end');return tail.slice(0,b+3);}
+function fn(name,src=source){const a=Math.max(src.indexOf('  function '+name+'('),src.indexOf('  async function '+name+'('));assert.ok(a>=0,name);const tail=src.slice(a),b=tail.search(/^  }\r?$/m);assert.ok(b>=0,name+' end');return tail.slice(0,b+3);}
 function storage(){const map=new Map();return {get length(){return map.size},key:i=>[...map.keys()][i],getItem:k=>map.get(k)||null,setItem(k,v){if(this.full)throw Error('quota');map.set(k,String(v));},removeItem:k=>map.delete(k)};}
 const clone=x=>JSON.parse(JSON.stringify(x));
 function fixture(store=storage()){
@@ -79,11 +79,11 @@ function notesFixture(liveRevision){
 }
 test('stale Notes root aborts every page/index write and preserves the local draft',async()=>{const h=notesFixture({updatedAt:2,revision:'new-device'});await h.c.notesSave();assert.equal(h.writes.length,0);assert.equal(h.c.conflict,true);assert.equal(h.c.notesDirty,true);assert.equal(h.c.shared,undefined);assert.equal(h.c.notesPages[0].title,'draft');});
 test('unchanged Notes revision commits page and new root atomically before publishing shares',async()=>{const h=notesFixture({updatedAt:1,revision:'old'});await h.c.notesSave();assert.equal(h.writes.length,2);assert.equal(h.writes[0][0].key,'A/p');assert.ok(h.writes[1][1].notesWorkspaceMeta.revision);assert.equal(h.c.notesDirty,false);assert.equal(h.c.shared,true);});
-test('private screenshot deletes share the same asset-trade transaction',()=>{const body=fn('tjChangeAssetTrades');assert.match(body,/trade\.images/);assert.match(body,/tx\.delete\(db\.collection\('tradeImages'\)/);assert.match(body,/tx\.delete\(ref\)/);});
-test('asset deletion removes each matching trade and image together, but not other assets',async()=>{
- const writes=[],records=[{id:'t1',uid:'u',asset:'EURUSD',images:[{id:'i1'},{id:'i2'}]},{id:'t2',uid:'u',asset:'GBPUSD',images:[{id:'keep'}]}];
- const c={Promise,db:{collection:name=>({doc:id=>({key:name+'/'+id}),where:()=>({get:()=>Promise.resolve({forEach:fn=>records.forEach(r=>fn({id:r.id,data:()=>r}))})})}),async runTransaction(fn){let wrote=false;const part=[];await fn({get:r=>{assert.equal(wrote,false);return Promise.resolve({exists:true,data:()=>records.find(t=>'trades/'+t.id===r.key)});},delete:r=>{wrote=true;part.push(r.key);}});writes.push(part);}}};
- vm.createContext(c);vm.runInContext(fn('tjChangeAssetTrades'),c);await c.tjChangeAssetTrades('u','EURUSD',null);assert.deepEqual(writes,[['tradeImages/i1','tradeImages/i2','trades/t1']]);
+test('private screenshot deletes and asset metadata share the fenced final transaction',async()=>{
+ const writes=[],store={'titles/tester':{assets:[],deletedAssets:[]},'trades/t1':{uid:'u',asset:'EURUSD',images:[{id:'i1'},{id:'i2'}]},'trades/t2':{uid:'u',asset:'GBPUSD',images:[{id:'keep'}]}};
+ const c={Promise,Date,Math,normalizeAssetDefinitions:x=>x||[],db:{collection:name=>({doc:id=>({key:name+'/'+id}),where:()=>({get:()=>Promise.resolve({forEach:cb=>Object.entries(store).filter(([key])=>key.startsWith('trades/')).forEach(([key,r])=>cb({id:key.slice(7),data:()=>r}))})})}),async runTransaction(fn){let wrote=false;const part=[],apply=[];const result=await fn({get:r=>{assert.equal(wrote,false);return Promise.resolve({exists:!!store[r.key],data:()=>clone(store[r.key])});},delete:r=>{wrote=true;part.push(r.key);apply.push(()=>delete store[r.key]);},set:(r,v)=>{wrote=true;part.push(r.key);apply.push(()=>store[r.key]={...store[r.key],...v});}});apply.forEach(f=>f());writes.push(part);return result;}}};
+ vm.createContext(c);vm.runInContext(fn('tjChangeAssetSettings'),c);await c.tjChangeAssetSettings('tester','u',()=>{},'EURUSD',null);
+ assert.deepEqual(writes,[['journalAssetGuards/u'],['tradeImages/i1','tradeImages/i2','trades/t1','titles/tester','journalAssetGuards/u']]);assert.ok(store['trades/t2']);assert.equal(store['journalAssetGuards/u'].locked,false);
 });
 test('backtest editor resolves persisted identity, never a synthetic/filtered chart row',()=>{assert.match(fn('openBacktestTradeEditor'),/allBacktestTrades\.filter/);assert.match(source,/editingBacktestTradeId \? allBacktestTrades\.filter/);assert.match(source,/editingBacktestTradeId&&!btTrade/);});
 

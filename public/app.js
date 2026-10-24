@@ -1807,12 +1807,15 @@
   var tjBacktestFlushes = Object.create(null), tjBacktestActiveLoads = Object.create(null), tjBacktestSequence=0;
   function tjBacktestOpPrefix(owner) { return 'syter_backtest_op_v1_'+encodeURIComponent(owner)+'_'; }
   function tjBacktestOutbox(owner) {
-    var prefix=tjBacktestOpPrefix(owner),queue=[];
+    var prefix=tjBacktestOpPrefix(owner),queue=[];queue.damaged=false;
     for(var i=0;i<localStorage.length;i++){
-      var key=localStorage.key(i);if(key.indexOf(prefix)!==0)continue;
-      var op=JSON.parse(localStorage.getItem(key));
-      if(!op||!Array.isArray(op.parts))throw Error('Backtest sync queue is damaged; local data was kept.');
-      queue.push(op);
+      var key=localStorage.key(i);if(!key||key.indexOf(prefix)!==0)continue;
+      try {
+        var op=JSON.parse(localStorage.getItem(key));
+        if(!op||typeof op.id!=='string'||key!==prefix+op.id||!Array.isArray(op.parts)||!Number.isInteger(op.index)||op.index<0||op.index>op.parts.length||typeof op.authUid!=='string'||typeof op.ownerUid!=='string')throw Error('Invalid outbox envelope');
+        op.parts.forEach(function(part){if(!Array.isArray(part))throw Error('Invalid part');part.forEach(function(w){if(!w||['backtests','backtestTrades','tradeImages'].indexOf(w.collection)<0||typeof w.id!=='string'||!w.id||(!w.remove&&(!w.data||typeof w.data!=='object')))throw Error('Invalid write');});});
+        queue.push(op);
+      } catch(err){queue.damaged=true;console.warn('Backtest queue entry kept for recovery:',key);showBacktestSyncError('A damaged Backtest queue entry was preserved on this device. Sync is paused to preserve operation ordering; other data remains available. Export local storage before recovery.');}
     }
     queue.sort(function(a,b){return a.id.localeCompare(b.id);});return queue;
   }
@@ -1839,6 +1842,7 @@
     if(tjBacktestFlushes[owner])return tjBacktestFlushes[owner];
     function next(){
       var queue=tjBacktestOutbox(owner);
+      if(queue.damaged)throw Error('Backtest sync paused: recover the damaged local queue before sending later operations.');
       if(!queue.length)return Promise.resolve();
       var op=queue[0], auth=firebase.auth().currentUser, profile=findUser(owner);
       if(!auth||auth.uid!==op.authUid||!profile||profile.uid!==op.ownerUid)throw Error('Backtest sync is waiting for its original account.');
@@ -2282,8 +2286,8 @@
   function parseRRList(text) {
     if (!text) return [];
     return String(text).split(/[,;\n]+/).map(function(s) { return s.trim(); }).filter(function(s) { return s.length; })
-      .map(function(s) { return parseFloat(s.replace(',', '.')); })
-      .filter(function(n) { return isFinite(n); });
+      .map(function(s) { return Number(s); })
+      .filter(function(n) { return Number.isFinite(n)&&Math.abs(n)<=1000000; });
   }
 
   function buildBacktestTradesFromRR(bt) {
@@ -2344,6 +2348,7 @@
   }
 
   function fmtR(n) {
+    if(!Number.isFinite(n))return 'Invalid R';
     var sign = n > 0 ? '+' : '';
     return sign + n.toFixed(2) + 'R';
   }
@@ -2354,10 +2359,13 @@
   }
 
   function tradeGainPercent(trade) {
-    return (Number(trade && trade.r) || 0) * tradeRiskPercent(trade);
+    var value=(Number(trade && trade.r)||0)*tradeRiskPercent(trade);
+    if(!Number.isFinite(value))return NaN;
+    return value;
   }
 
   function fmtPercent(n) {
+    if(!Number.isFinite(Number(n)))return 'Invalid %';
     var value = Number(n) || 0;
     var sign = value > 0 ? '+' : '';
     return sign + value.toFixed(2) + '%';
@@ -2436,7 +2444,9 @@
   }
 
   function computeStats(arr) {
-    var sorted = sortedAsc(arr);
+    var invalid=arr.filter(function(t){var rawRisk=t.riskPercent;return (rawRisk!=null&&rawRisk!==''&&(!Number.isFinite(Number(rawRisk))||Number(rawRisk)<0||Number(rawRisk)>100))||!Number.isFinite(Number(t.r))||Math.abs(Number(t.r))>1000000||!Number.isFinite(tradeGainPercent(t))||tradeRiskPercent(t)>100;});
+    if(invalid.length){var warning=document.getElementById('saveError');if(warning){warning.style.display='block';warning.textContent=invalid.length+' trade(s) exceed the supported numeric range and are excluded from statistics. Export and correct these trades; stored data was not removed.';}}
+    var sorted = sortedAsc(arr.filter(function(t){return invalid.indexOf(t)<0;}));
     var total = sorted.length;
     var wins = sorted.filter(function(t) { return Number(t.r) > 0; });
     var losses = sorted.filter(function(t) { return Number(t.r) < 0; });
@@ -3172,7 +3182,7 @@
   }());
   function directionBadge(dir) {
     var cls = dir === 'LONG' ? 'badge-long' : 'badge-short';
-    return '<span class="badge ' + cls + '">' + dir + '</span>';
+    return '<span class="badge ' + cls + '">' + escapeHtml(String(dir == null ? '' : dir)) + '</span>';
   }
   function tradeResultColor(trade) {
     var r = Number(trade && trade.r) || 0;
@@ -3398,13 +3408,13 @@
       inp.className = 'popup-input';
       inp.type = 'number';
       inp.step = '0.01';
-      inp.min = '0';
+      inp.min = '0';inp.max='1000000';
       inp.value = Math.abs(trade.r).toFixed(2);
       inp.placeholder = '1.0';
       popup.appendChild(inp);
       addConfirmButton(function() {
-        var val = parseFloat(inp.value.replace(',', '.'));
-        if (!isNaN(val) && val >= 0) {
+        var val = Number(inp.value.trim().replace(',', '.'));
+        if (inp.value.trim() && Number.isFinite(val) && val >= 0 && val <= 1000000) {
           trade.r = trade.r >= 0 ? val : -val;
           closeInlineEditPopup();
           saveAndRefresh();
@@ -3412,8 +3422,8 @@
       });
       inp.addEventListener('keydown', function(e) {
         if (e.key === 'Enter') {
-          var val = parseFloat(inp.value.replace(',', '.'));
-          if (!isNaN(val) && val >= 0) {
+          var val = Number(inp.value.trim().replace(',', '.'));
+          if (inp.value.trim() && Number.isFinite(val) && val >= 0 && val <= 1000000) {
             trade.r = trade.r >= 0 ? val : -val;
             closeInlineEditPopup();
             saveAndRefresh();
@@ -4244,6 +4254,7 @@
       '<div><div class="bt-key">Gain</div><div class="bt-val mono" style="color:' + bestPctColor(gain) + '">' + escapeHtml(fmtTradeResult(t)) + '</div></div>';
     document.getElementById('btNotes').value = t.notes || '';
     document.getElementById('btSaved').textContent = '';
+    try{var draft=localStorage.getItem(tjNoteDraftKey(viewingUser,t.id));if(draft!==null){document.getElementById('btNotes').value=draft;pendingBestNoteSave={id:t.id,user:viewingUser,text:draft};clearTimeout(bestNoteTimer);bestNoteTimer=setTimeout(flushBestNote,400);document.getElementById('btSaved').textContent='Recovered local draft';}}catch(_){}
     var shot = document.getElementById('btShot');
     shot.replaceChildren();
     if (t.chart) {
@@ -4272,9 +4283,16 @@
     var trade = trades.filter(function(x) { return x.id === pending.id; })[0];
     if (!trade) return false;
     var val = pending.text;
-    if ((trade.notes || '') === val) return false;
+    var hasDraft=true;try{hasDraft=localStorage.getItem(tjNoteDraftKey(pending.user,pending.id))!==null;}catch(_){}
+    if ((trade.notes || '') === val && !hasDraft) return false;
     trade.notes = val;
-    remoteSaveTrade(trade, ['notes']).then(function(saved) {
+    var writeKey=tjNoteDraftKey(pending.user,pending.id);
+    var record=Object.assign({},trade,{notes:pending.text});
+    var write=(tjNoteWrites[writeKey]||Promise.resolve()).catch(function(){}).then(function(){if(viewingUser!==pending.user)return false;return remoteSaveTrade(record,['notes']);});
+    tjNoteWrites[writeKey]=write;
+    write.then(function(saved) {
+      if(saved){try{if(localStorage.getItem(writeKey)===pending.text)localStorage.removeItem(writeKey);}catch(_){}}
+      else if(bestTradeId===pending.id&&viewingUser===pending.user)document.getElementById('btSaved').textContent='Not synced · draft kept on this device';
       if (saved && bestTradeId === pending.id && viewingUser === pending.user && !pendingBestNoteSave && document.getElementById('btNotes').value === val) document.getElementById('btSaved').textContent = 'Saved';
     });
     return true;
@@ -4282,6 +4300,7 @@
   document.getElementById('btNotes').addEventListener('input', function() {
     if (!bestTradeId) return;
     pendingBestNoteSave = { id: bestTradeId, user: viewingUser, text: this.value };
+    try{localStorage.setItem(tjNoteDraftKey(viewingUser,bestTradeId),this.value);}catch(_){document.getElementById('btSaved').textContent='Local storage unavailable · keep this editor open';return;}
     var savedEl = document.getElementById('btSaved');
     savedEl.textContent = '';
     clearTimeout(bestNoteTimer);
@@ -5614,6 +5633,11 @@
     document.getElementById('notePanelModel').innerHTML = '<span class="card-sub">Модель</span>' + tradeModelHTML(trade) + '<span class="mono">' + fmtTradeResult(trade) + '</span>';
     document.getElementById('notePanelText').value = trade.notes || '';
     document.getElementById('notePanelSaved').textContent = '';
+    try {var recovered=localStorage.getItem(tjNoteDraftKey(viewingUser,trade.id));if(recovered!==null){
+      document.getElementById('notePanelText').value=recovered;pendingNoteSave={id:trade.id,user:viewingUser,text:recovered};
+      document.getElementById('notePanelSaved').textContent='Recovered local draft · retrying sync';
+      clearTimeout(noteSaveTimer);noteSaveTimer=setTimeout(flushNotePanelSave,400);
+    }}catch(_){}
     if (window.TJPanels) TJPanels.anchorNote(anchor);
     document.getElementById('notePanel').classList.add('open');
   }
@@ -5634,6 +5658,8 @@
     if (e.target.closest && e.target.closest('.fullscreen-img-overlay')) return;
     closeNotePanel();
   });
+  var tjNoteWrites=Object.create(null);
+  function tjNoteDraftKey(owner,id){return 'tj_trade_note_draft_v1_'+encodeURIComponent(owner)+'_'+encodeURIComponent(id);}
   function flushNotePanelSave() {
     var pending = pendingNoteSave;
     pendingNoteSave = null;
@@ -5642,14 +5668,21 @@
     var trade = trades.filter(function(t) { return t.id === pending.id; })[0];
     if (!trade || viewingUser !== pending.user) return;
     trade.notes = pending.text;
-    remoteSaveTrade(trade, ['notes']).then(function(saved) {
+    var writeKey=tjNoteDraftKey(pending.user,pending.id);
+    var record=Object.assign({},trade,{notes:pending.text});
+    var write=(tjNoteWrites[writeKey]||Promise.resolve()).catch(function(){}).then(function(){if(viewingUser!==pending.user)return false;return remoteSaveTrade(record,['notes']);});
+    tjNoteWrites[writeKey]=write;
+    write.then(function(saved) {
+      if(saved){try{var k=tjNoteDraftKey(pending.user,pending.id);if(localStorage.getItem(k)===pending.text)localStorage.removeItem(k);}catch(_) {}}
+      else if(currentNoteTradeId===pending.id&&viewingUser===pending.user)document.getElementById('notePanelSaved').textContent='Not synced · draft kept on this device';
       if (saved && currentNoteTradeId === pending.id && viewingUser === pending.user && !pendingNoteSave && document.getElementById('notePanelText').value === pending.text) document.getElementById('notePanelSaved').textContent = 'Saved';
     });
   }
   document.getElementById('notePanelText').addEventListener('input', function() {
     if (!currentNoteTradeId) return;
     pendingNoteSave = { id: currentNoteTradeId, user: viewingUser, text: this.value };
-    document.getElementById('notePanelSaved').textContent = '';
+    try{localStorage.setItem(tjNoteDraftKey(viewingUser,currentNoteTradeId),this.value);}catch(_){document.getElementById('notePanelSaved').textContent='Local storage unavailable · keep this editor open';return;}
+    document.getElementById('notePanelSaved').textContent = 'Draft saved on this device';
     clearTimeout(noteSaveTimer);
     noteSaveTimer = setTimeout(flushNotePanelSave, 400);
   });
@@ -6082,57 +6115,78 @@
     requestAnimationFrame(function() { document.getElementById('assetDeleteAcknowledge').focus(); });
   }
   function closeAssetDeleteModal() { pendingAssetDeletion = null; document.getElementById('assetDeleteOverlay').classList.remove('open'); document.body.classList.remove('asset-delete-lock'); }
-  function tjChangeAssetSettings(user, uid, change) {
-    var ref = db.collection('titles').doc(user);
-    return db.runTransaction(function(tx) {
-      return tx.get(ref).then(function(doc) {
-        var data = doc.exists ? doc.data() : {};
-        var deleted = Array.isArray(data.deletedAssets) ? data.deletedAssets.slice() : [];
-        var settings = { assets: normalizeAssetDefinitions(data.assets, deleted), deletedAssets: deleted };
-        change(settings);
-        tx.set(ref, { assets: settings.assets, deletedAssets: settings.deletedAssets, uid: uid }, { merge: true });
-        return settings;
+  // One bounded atomic operation: settings, existing journal trades and images all commit or none do.
+  // Backtest/Replay instruments are independent market identities and are intentionally not renamed.
+  async function tjChangeAssetSettings(user, uid, change, fromName, toName) {
+    // A server-enforced per-journal fence closes the query/commit gap. Older
+    // clients are fenced by rules too; offline writes cannot resurrect a retired name.
+    var root=db.collection('titles').doc(user),guard=db.collection('journalAssetGuards').doc(uid);
+    var operation=null;
+    try {
+      var start=await db.runTransaction(async function(tx){
+        var docs=await Promise.all([tx.get(root),tx.get(guard)]),data=docs[0].exists?docs[0].data():{},g=docs[1].exists?docs[1].data():{};
+        if(g.locked){
+          if(!fromName||!g.operation||g.operation.from!==fromName||g.operation.to!==toName)throw Error('Unfinished asset operation: '+(g.operation?g.operation.from+' → '+(g.operation.to||'DELETE'):'unknown')+'. Retry that rename/delete first. No data changed.');
+          return {operation:g.operation}; // explicit retry also resumes after a process crash
+        }
+        var retired=Array.isArray(g.retired)?g.retired.slice():[];
+        var deleted=Array.isArray(data.deletedAssets)?data.deletedAssets.slice():[];
+        var settings={assets:normalizeAssetDefinitions(data.assets,deleted),deletedAssets:deleted};change(settings);
+        if(settings.assets.some(function(a){return retired.indexOf(a.name)>=0;}))throw Error('This asset name was retired by a completed migration. Use a new name; stale offline writes must not resurrect it.');
+        if(!fromName){tx.set(root,{assets:settings.assets,deletedAssets:settings.deletedAssets,uid:uid,assetRevision:(Number(data.assetRevision)||0)+1},{merge:true});return {settings:settings};}
+        if(retired.indexOf(fromName)>=0)throw Error('This asset was already migrated. Reload the journal.');
+        if(retired.length>=500)throw Error('Asset migration history is full. Export and contact support; no data changed.');
+        var op={id:Date.now().toString(36)+'_'+Math.random().toString(36).slice(2),from:fromName,to:toName,settings:settings};
+        tx.set(guard,{uid:uid,locked:true,retired:retired,operation:op},{merge:true});return {operation:op};
       });
-    });
-  }
-  function tjChangeAssetTrades(uid, fromName, toName) {
-    return db.collection('trades').where('uid', '==', uid).get().then(function(snapshot) {
-      var writes = [];
-      snapshot.forEach(function(d) {
-        if (d.data().asset !== fromName) return;
-        var ref = db.collection('trades').doc(d.id);
-        writes.push(db.runTransaction(function(tx) {
-          return tx.get(ref).then(function(doc) {
-            var trade = doc.exists ? doc.data() : null;
-            if (!trade || trade.uid !== uid || trade.asset !== fromName) return;
-            if (toName == null) { (trade.images||[]).forEach(function(image){tx.delete(db.collection('tradeImages').doc(image.id));}); tx.delete(ref); } else tx.update(ref, { asset: toName });
-          });
-        }));
+      if(!start.operation)return start.settings;
+      operation=start.operation;
+      // This strong server read starts AFTER the acknowledged fence. No journal
+      // trade/image mutations can commit until finalization/cancellation.
+      var snapshot=await db.collection('trades').where('uid','==',uid).get({source:'server'}),refs=[];
+      snapshot.forEach(function(d){if(d.data().asset===operation.from)refs.push(db.collection('trades').doc(d.id));});
+      if(refs.length>450)throw Error('Too many journal trades for one safe atomic asset change. No journal data changed.');
+      return await db.runTransaction(async function(tx){
+        var docs=await Promise.all([tx.get(guard),tx.get(root)].concat(refs.map(function(ref){return tx.get(ref);}))),g=docs[0].exists?docs[0].data():{};
+        if(!g.locked||!g.operation||g.operation.id!==operation.id){
+          if(g.lastOperation===operation.id)return operation.settings; // lost acknowledgement / concurrent retry
+          throw Error('Asset operation was cancelled or superseded. Reload and retry.');
+        }
+        var writes=[];
+        refs.forEach(function(ref,i){var doc=docs[i+2],trade=doc.exists?doc.data():null;
+          if(!trade||trade.uid!==uid||trade.asset!==operation.from)throw Error('Journal changed outside the asset fence. No migration was committed.');
+          if(operation.to==null){(trade.images||[]).forEach(function(image){writes.push({ref:db.collection('tradeImages').doc(image.id),remove:true});});writes.push({ref:ref,remove:true});}
+          else writes.push({ref:ref,data:{asset:operation.to}});
+        });
+        if(writes.length+2>490)throw Error('Too many trades/images for one safe atomic change. No journal data changed.');
+        writes.forEach(function(w){if(w.remove)tx.delete(w.ref);else tx.update(w.ref,w.data);});
+        tx.set(root,{assets:operation.settings.assets,deletedAssets:operation.settings.deletedAssets,uid:uid,assetRevision:(docs[1].exists?Number(docs[1].data().assetRevision)||0:0)+1},{merge:true});
+        var retired=(g.retired||[]).slice();if(retired.indexOf(operation.from)<0)retired.push(operation.from);
+        tx.set(guard,{uid:uid,locked:false,retired:retired,operation:null,lastOperation:operation.id},{merge:true});
+        return operation.settings;
       });
-      return Promise.all(writes);
-    });
+    } catch(error){
+      // If the final acknowledgement was lost, never undo its retirement. If it
+      // failed, cancellation is itself conditional/atomic and changes no trades.
+      if(operation){try{await db.runTransaction(async function(tx){var doc=await tx.get(guard),g=doc.exists?doc.data():{};if(g.locked&&g.operation&&g.operation.id===operation.id)tx.set(guard,{locked:false,operation:null},{merge:true});});}catch(cancelError){error.message+=' Recovery fence remains: reconnect and retry the same operation.';}}
+      throw error;
+    }
   }
   function deleteAssetData(name) {
-    var user = viewingUser, generation = tjDataGeneration, owner = findUser(user), uid = owner ? owner.uid : null;
-    if (!uid) return Promise.reject(new Error('Could not find the asset owner.'));
-    // Keep the existing confirmed-delete behavior for this asset's trades.
-    return tjChangeAssetTrades(uid, name, null).then(function() {
-      return tjChangeAssetSettings(user, uid, function(settings) {
-        settings.assets = settings.assets.filter(function(a) { return a.name !== name; });
-        if (DEFAULT_ASSETS.some(function(a) { return a.name === name; }) && settings.deletedAssets.indexOf(name) < 0) settings.deletedAssets.push(name);
-      });
-    }).then(function(settings) {
-      if (viewingUser !== user || generation !== tjDataGeneration) return;
-      assetDefinitions = settings.assets; deletedAssets = settings.deletedAssets;
-      trades = trades.filter(function(t) { return t.asset !== name; });
-      invalidateTradeNumbers();
-      if (assetFilter === name) assetFilter = 'ALL';
-      renderAssetControls(); render();
+    var user=viewingUser,generation=tjDataGeneration,owner=findUser(user),uid=owner&&owner.uid;
+    if(!uid)return Promise.reject(Error('Could not find the asset owner.'));
+    return tjChangeAssetSettings(user,uid,function(settings){
+      settings.assets=settings.assets.filter(function(a){return a.name!==name;});
+      if(DEFAULT_ASSETS.some(function(a){return a.name===name;})&&settings.deletedAssets.indexOf(name)<0)settings.deletedAssets.push(name);
+    },name,null).then(function(settings){
+      if(viewingUser!==user||generation!==tjDataGeneration)return;
+      assetDefinitions=settings.assets;deletedAssets=settings.deletedAssets;trades=trades.filter(function(t){return t.asset!==name;});invalidateTradeNumbers();
+      if(assetFilter===name)assetFilter='ALL';renderAssetControls();render();
     });
   }
 
   document.getElementById('assetDeleteAcknowledge').addEventListener('change', function() { document.getElementById('assetDeleteConfirmBtn').classList.toggle('ready', this.checked); });
-  document.getElementById('assetDeleteConfirmBtn').addEventListener('click', function() { if (!pendingAssetDeletion || !this.classList.contains('ready')) return; var name = pendingAssetDeletion; this.disabled = true; deleteAssetData(name).then(closeAssetDeleteModal).catch(function(err) { console.error(err); closeAssetDeleteModal(); }).then(function() { document.getElementById('assetDeleteConfirmBtn').disabled = false; }); });
+  document.getElementById('assetDeleteConfirmBtn').addEventListener('click', function() { if (!pendingAssetDeletion || !this.classList.contains('ready')) return; var name = pendingAssetDeletion; this.disabled = true; deleteAssetData(name).then(closeAssetDeleteModal).catch(function(err) { console.error(err); window.alert('Asset not deleted: '+(err.message||'Check your connection and retry.')); }).then(function() { document.getElementById('assetDeleteConfirmBtn').disabled = false; }); });
   document.getElementById('assetDeleteCancelBtn').addEventListener('click', closeAssetDeleteModal);
   document.getElementById('assetDeleteOverlay').addEventListener('click', function(e) { e.stopPropagation(); });
   document.addEventListener('keydown', function(e) { if (pendingAssetDeletion && (e.key === 'Escape' || e.key === ' ' || e.key === 'PageDown' || e.key === 'PageUp' || e.key === 'Home' || e.key === 'End')) e.preventDefault(); });
@@ -6158,10 +6212,7 @@
         if (oldName !== name && DEFAULT_ASSETS.some(function(a) { return a.name === oldName; }) && settings.deletedAssets.indexOf(oldName) < 0) settings.deletedAssets.push(oldName);
       } else settings.assets.push({ name: name, color: color });
       settings.deletedAssets = settings.deletedAssets.filter(function(a) { return a !== name; });
-    }).then(function(settings) {
-      if (!oldName || oldName === name) return settings;
-      return tjChangeAssetTrades(owner.uid, oldName, name).then(function() { return settings; });
-    }).then(function(settings) {
+    },oldName&&oldName!==name?oldName:null,name).then(function(settings) {
       if (viewingUser !== user || generation !== tjDataGeneration) return;
       assetDefinitions = settings.assets; deletedAssets = settings.deletedAssets;
       if (oldName) {
@@ -6223,6 +6274,7 @@
   document.getElementById('backToWeeks').addEventListener('click', function() { weeklySelected = null; render(); });
 
   function openModal(prefillMonth) {
+    if(document.getElementById('tradeForm').dataset.saving==='1')return;
     clearTradeFormError();
     delete document.getElementById('tradeForm').dataset.pendingId;
     selectedTradeModelId = '';
@@ -6259,6 +6311,7 @@
     }
   }
   function closeModal() {
+    if(document.getElementById('tradeForm').dataset.saving==='1')return;
     closeModelDeletePanel();
     closeModelCreatePanel();
     closeTradeModelMenu();
@@ -6373,10 +6426,11 @@
     if(window.TJMedia && TJMedia.busy)return;
     if(this.dataset.saving==='1')return;
     var submitForm=this,submitOwner=viewingUser;
-    var mag = parseFloat(document.getElementById('magnitudeInput').value.replace(',', '.'));
-    if (isNaN(mag) || mag < 0) return;
-    var riskPercent = parseFloat(document.getElementById('riskPercentInput').value.replace(',', '.'));
-    if (isNaN(riskPercent) || riskPercent < 0) return;
+    var mag = Number(document.getElementById('magnitudeInput').value.trim().replace(',', '.'));
+    var riskPercent = Number(document.getElementById('riskPercentInput').value.trim().replace(',', '.'));
+    if(!document.getElementById('magnitudeInput').value.trim()||!document.getElementById('riskPercentInput').value.trim()||!Number.isFinite(mag)||mag<0||mag>1000000||!Number.isFinite(riskPercent)||riskPercent<0||riskPercent>100){
+      var numError=document.getElementById('saveError');numError.style.display='block';numError.textContent='Use finite RR from 0 to 1,000,000 and risk from 0 to 100%.';return;
+    }
     var asset = document.getElementById('assetInput').value;
     var openDT = getDateTimeInputValue(document.getElementById('openInput'));
     var closeDT = getDateTimeInputValue(document.getElementById('closeInput'));
@@ -7095,7 +7149,7 @@
     try {
       var prefix=usagePendingPrefix(tracker);
       for(var i=0;i<localStorage.length;i++){
-        var key=localStorage.key(i);if(key.indexOf(prefix)!==0)continue;
+        var key=localStorage.key(i);if(!key||key.indexOf(prefix)!==0)continue;
         var record=JSON.parse(localStorage.getItem(key));
         if(record&&/^\d{4}-\d{2}-\d{2}$/.test(record.day)&&Number(record.ms)>0)records[key]=record;
       }
@@ -7420,7 +7474,10 @@
       Array.prototype.forEach.call(list.querySelectorAll('.del-btn'), function(btn) {
         btn.addEventListener('click', function() {
           var id = btn.getAttribute('data-id');
-          db.collection('diary').doc(id).delete().then(loadDiary).catch(function() {});
+          if(btn.disabled)return;btn.disabled=true;
+          db.collection('diary').doc(id).delete().then(loadDiary).catch(function() {
+            btn.disabled=false;var err=document.getElementById('diaryError');err.style.display='block';err.textContent='Could not delete note. Nothing was removed; retry.';
+          });
         });
       });
 
@@ -7449,11 +7506,17 @@
           ta.selectionStart = ta.selectionEnd = ta.value.length;
 
           function save() {
+            if(saveBtn.disabled)return;
             var newText = ta.value.trim();
             if (!newText || newText === current) { textEl.innerHTML = ''; textEl.textContent = current; return; }
+            saveBtn.disabled=true;ta.readOnly=true;
             db.collection('diary').doc(id).update({ text: newText }).then(function() {
               textEl.innerHTML = ''; textEl.textContent = newText;
-            }).catch(function() { textEl.innerHTML = ''; textEl.textContent = current; });
+              document.getElementById('diaryError').style.display='none';
+            }).catch(function() {
+              var err=document.getElementById('diaryError');err.style.display='block';err.textContent='Not saved. Your edit is kept below; retry Save.';
+              saveBtn.disabled=false;ta.readOnly=false;
+            });
           }
 
           saveBtn.addEventListener('mousedown', function(e) { e.preventDefault(); }); // prevent blur before click
@@ -7476,6 +7539,7 @@
   }
 
   document.getElementById('addDiaryBtn').addEventListener('click', function() {
+    if(this.disabled)return;var button=this,saveOwner=viewingUser;
     var textEl = document.getElementById('newDiaryText');
     var val = textEl.value.trim();
     var errEl = document.getElementById('diaryError');
@@ -7489,14 +7553,16 @@
       text: val,
       createdAt: new Date().toISOString()
     };
+    button.disabled=true;
     db.collection('diary').doc(entry.id).set(entry).then(function() {
-      textEl.value = '';
+      if(viewingUser!==saveOwner)return;
+      if(textEl.value.trim()===val)textEl.value = '';
       loadDiary();
     }).catch(function(err) {
       console.error(err);
       errEl.style.display = 'block';
-      errEl.textContent = 'Failed to save note.';
-    });
+      errEl.textContent = 'Failed to save note. Your draft was kept.';
+    }).finally(function(){button.disabled=false;});
   });
 
   var passModalOverlay = document.getElementById('passModalOverlay');
