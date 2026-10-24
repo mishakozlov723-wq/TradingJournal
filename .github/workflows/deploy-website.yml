@@ -153,7 +153,7 @@ jobs:
 
           const selected=requested.map(id=>{const a=rows.find(a=>a.id===id);if(!a)throw
           Error(''Unknown ID ''+id);if(pinned.has(id))throw Error(''Protected baseline
-          ''+id);if(Date.parse(a.created_at)>cutoff)throw Error(''Fresh artifact protected
+          ''+id);if(!Number.isFinite(Date.parse(a.created_at))||!(Date.parse(a.created_at)<=cutoff))throw Error(''Fresh artifact protected
           ''+id);return a;});
 
           console.log(''REVIEWED_DELETE_PLAN=''+JSON.stringify(selected.map(a=>({id:a.id,name:a.name,size_in_bytes:a.size_in_bytes}))));
