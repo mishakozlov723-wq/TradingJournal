@@ -45,6 +45,9 @@ jobs:
     if: ${{ inputs.local_update_test }}
     uses: ./.github/workflows/local-update-test.yml
   windows:
+    permissions:
+      contents: write
+      actions: read
     if: ${{ !inputs.local_update_test }}
     runs-on: windows-latest
     timeout-minutes: 45
@@ -275,12 +278,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Updater integrity verification failed' }
       - name: Save verified installer
         if: ${{ !inputs.check_only }}
-        uses: actions/upload-artifact@v4
+        uses: actions/github-script@v8
         with:
-          name: SYTER-windows-release
-          path: desktop/release/*
-          if-no-files-found: error
-          retention-days: 14
+          script: |
+            const {persistPrivate}=require('./scripts/persist-private-ci.cjs');
+            const result=await persistPrivate({github,context,kind:'windows'});
+            await core.summary.addHeading('Verified Windows installer export').addLink('Private byte-verified build and evidence',result.url).write();
       - name: Publish verified GitHub updater assets
         if: ${{ inputs.publish && !inputs.check_only && !inputs.notes_only && !inputs.installer_only && !inputs.reuse_verified_update && github.ref == 'refs/heads/main' }}
         env:

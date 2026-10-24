@@ -26,6 +26,8 @@ concurrency:
 
 jobs:
   preflight:
+    permissions:
+      contents: write
     if: ${{ !inputs.deploy_live && !inputs.artifact_maintenance }}
     runs-on: ubuntu-latest
     steps:
@@ -41,14 +43,16 @@ jobs:
           NODE_PATH: /tmp/syter-preflight/node_modules
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RETOCKER }}
         run: node scripts/firebase-release-preflight.cjs
-      - uses: actions/upload-artifact@v4
-        if: always()
+      - name: Persist and read back private rollback snapshot (no Actions quota)
+        uses: actions/github-script@v8
         with:
-          name: SYTER-rollout-preflight
-          path: rollout-backup/
-          if-no-files-found: warn
-          retention-days: 14
+          script: |
+            const {persistPrivate}=require('./scripts/persist-private-ci.cjs');
+            const result=await persistPrivate({github,context,kind:'rollback'});
+            await core.summary.addHeading('Read-only preflight backup').addLink('Verified private rollback export',result.url).write();
   deploy:
+    permissions:
+      contents: write
     if: ${{ inputs.deploy_live && !inputs.artifact_maintenance }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -86,12 +90,12 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RETOCKER }}
         run: node scripts/firebase-release-preflight.cjs
       - name: Persist rollback snapshot BEFORE any production write
-        uses: actions/upload-artifact@v4
+        uses: actions/github-script@v8
         with:
-          name: SYTER-production-rollback-${{ github.sha }}
-          path: rollout-backup/production.json
-          if-no-files-found: error
-          retention-days: 14
+          script: |
+            const {persistPrivate}=require('./scripts/persist-private-ci.cjs');
+            const result=await persistPrivate({github,context,kind:'rollback'});
+            await core.summary.addLink('Byte-verified private rollback export',result.url).write();
       - name: Activate compatible Firestore rules and verify readback
         env:
           NODE_PATH: /tmp/syter-preflight/node_modules
@@ -111,6 +115,7 @@ jobs:
           CONFIRM_LIVE: ${{ inputs.deploy_live }}
         run: node scripts/firebase-release-control.cjs verify-live
       - name: Save release verification and rollback references
+        continue-on-error: true
         if: always()
         uses: actions/upload-artifact@v4
         with:

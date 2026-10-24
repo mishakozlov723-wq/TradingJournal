@@ -66,3 +66,21 @@ Current constraints remain explicit: bounded asset operation450trades/490writes,
 500retirednames and no reuse; anonymous imports require user decision/archive;
 huge archives fail without truncation; previously lost data needs backups.
 Certificates are not purchased/generated; secrets stay in protected Actions.
+
+## Durable private CI export (Actions quota independent)
+
+Verified build files and rollback snapshots are stored in DRAFT releases of the
+PRIVATE source repository TradingJournal, tags ci-windows-RUN-ATTEMPT or
+ci-rollback-RUN-ATTEMPT. This is software build storage, not the public updater
+repository syter-releases and not v1.3.13 publication. Existing GITHUB_TOKEN is
+scoped contents:write only to required jobs; no new credential, purchase or
+public release is needed. The exporter checks exact private repository, source
+SHA, draft identity, complete rollback snapshot/no credential keys, then uploads
+and downloads every file and verifies its SHA256 byte-for-byte. An immutable
+verified-export.json receipt is saved last. Errors block the job; no clobber,
+delete or publish API exists in this exporter. Unrecognized/public releases or
+mismatched resumed assets fail closed. Existing optional PNG Actions exports
+may fail on quota; actual tests and final private installer/rollback export do
+not continue on failure. Normal public publication still requires main and all
+full Windows gates, after compatible production rollout. Previously published
+v1.3.12 and all pinned historical baseline artifacts remain unchanged.
