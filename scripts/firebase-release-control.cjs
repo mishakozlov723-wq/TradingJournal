@@ -22,7 +22,7 @@ async function authenticatedRequest(){
  const {GoogleAuth}=require('google-auth-library'),auth=new GoogleAuth({credentials:key,scopes:['https://www.googleapis.com/auth/cloud-platform']});
  return async(method,url,data)=>{try{return (await auth.request({method,url,data})).data;}catch(e){const error=e.response?.data?.error||{};throw Error('Firebase '+method+' failed HTTP '+(e.response?.status||'unknown')+'; '+(error.status||'unknown'));}};
 }
-async function verifyLive({request,source,readFile=fs.readFileSync,fetchFile=fetch}){
+async function verifyLive({request,source,readFile=fs.readFileSync,fetchFile=fetch,attempts=8,delayMs=3000,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))}){
  const active=await request('GET',rulesBase+releaseName),rules=await request('GET',rulesBase+active.rulesetName);
  if(rules.source?.files?.length!==1||normalize(rules.source.files[0].content)!==normalize(source))throw Error('Live rules do not match this source');
  const index=readFile('public/index.html'),checks=['index.html'];
@@ -31,7 +31,17 @@ async function verifyLive({request,source,readFile=fs.readFileSync,fetchFile=fet
   if(!index.toString().includes(name+'?v='+hash))throw Error('Source asset hash mismatch '+name);
   checks.push(name+'?v='+hash);
  }
- for(const name of checks){const response=await fetchFile('https://retocker.web.app/'+name,{redirect:'error',headers:{'Cache-Control':'no-cache'}});if(!response.ok)throw Error('Live Hosting status '+response.status);const actual=Buffer.from(await response.arrayBuffer()),expected=readFile('public/'+name.split('?')[0]);if(!actual.equals(expected))throw Error('Live Hosting bytes mismatch '+name);}
+ if(!Number.isInteger(attempts)||attempts<1||attempts>20)throw Error('Invalid readback retry bound');
+ for(const name of checks){
+  const expected=readFile('public/'+name.split('?')[0]);let failure;
+  // A successful Hosting deploy may precede CDN convergence. Repeat READS only;
+  // every file must still match exact source bytes within a finite bound.
+  for(let attempt=0;attempt<attempts;attempt++){
+   try{const response=await fetchFile('https://retocker.web.app/'+name,{redirect:'error',headers:{'Cache-Control':'no-cache'},signal:AbortSignal.timeout(15000)});if(!response.ok)throw Error('Live Hosting status '+response.status);const actual=Buffer.from(await response.arrayBuffer());if(!actual.equals(expected))throw Error('Live Hosting bytes mismatch '+name);failure=null;break;}
+   catch(error){failure=error;if(attempt+1<attempts)await sleep(delayMs);}
+  }
+  if(failure)throw failure;
+ }
  return {ruleset:active.rulesetName,files:checks,sourceSha:process.env.GITHUB_SHA};
 }
 async function cli(){

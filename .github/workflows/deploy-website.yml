@@ -3,6 +3,10 @@ name: Deploy website
 on:
   workflow_dispatch:
     inputs:
+      verify_live_only:
+        description: Read-only verification of already deployed main rules and frontend, no deployment
+        type: boolean
+        default: false
       artifact_maintenance:
         description: 'Inventory or delete explicitly reviewed old CI artifacts; no deployment'
         type: boolean
@@ -28,7 +32,7 @@ jobs:
   preflight:
     permissions:
       contents: write
-    if: ${{ !inputs.deploy_live && !inputs.artifact_maintenance }}
+    if: ${{ !inputs.deploy_live && !inputs.artifact_maintenance && !inputs.verify_live_only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -57,7 +61,7 @@ jobs:
   deploy:
     permissions:
       contents: write
-    if: ${{ inputs.deploy_live && !inputs.artifact_maintenance }}
+    if: ${{ inputs.deploy_live && !inputs.artifact_maintenance && !inputs.verify_live_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -136,6 +140,30 @@ jobs:
             echo '- Scope: compatible Firestore rules + Firebase Hosting, verified readback. No user-data migration or desktop publication.'
           } >> "$GITHUB_STEP_SUMMARY"
 
+  verify-live:
+    permissions:
+      contents: read
+    if: ${{ inputs.verify_live_only && !inputs.deploy_live && !inputs.artifact_maintenance }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: npm install --prefix /tmp/syter-preflight --no-save google-auth-library@9.15.1
+      - name: Verify deployed rules and all five frontend files using GET only
+        env:
+          NODE_PATH: /tmp/syter-preflight/node_modules
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RETOCKER }}
+          CONFIRM_LIVE: 'true'
+        run: |
+          mkdir -p rollout-backup
+          node scripts/firebase-release-control.cjs verify-live
+          echo '## Existing live rules and frontend verified byte-for-byte; no deployment or user-data writes' >> "$GITHUB_STEP_SUMMARY"
+
   artifact_inventory:
     runs-on: ubuntu-latest
     steps:
@@ -182,7 +210,7 @@ jobs:
           be delayed. No release assets touched.'').write();
 
           '
-    if: ${{ inputs.artifact_maintenance }}
+    if: ${{ inputs.artifact_maintenance && !inputs.verify_live_only }}
     permissions:
       contents: read
       actions: write
