@@ -53,10 +53,10 @@ jobs:
         working-directory: desktop
         shell: pwsh
     steps:
+      - uses: actions/checkout@v5
       - name: Reject incomplete publication checks
         run: |
           if ('${{ inputs.publish }}' -eq 'true' -and ('${{ github.ref }}' -ne 'refs/heads/main' -or '${{ inputs.notes_only }}' -eq 'true' -or '${{ inputs.installer_only }}' -eq 'true' -or '${{ inputs.reuse_verified_update }}' -eq 'true' -or '${{ inputs.check_only }}' -eq 'true')) { throw 'Publishing requires main and every full verification gate; reduced or reused builds cannot publish' }
-      - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: '22'

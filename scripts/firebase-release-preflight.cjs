@@ -7,7 +7,7 @@ async function main(){
  let key;try{key=JSON.parse(value);}catch{throw Error('Invalid service-account JSON');}
  if(key.type!=='service_account'||key.project_id!=='retocker'||!key.client_email||!key.private_key)throw Error('Expected retocker service account');
  const {GoogleAuth}=require('google-auth-library'),auth=new GoogleAuth({credentials:key,scopes:['https://www.googleapis.com/auth/cloud-platform']});
- async function get(url){try{return (await auth.request({url})).data;}catch(e){throw Error('Production preflight API failed HTTP '+(e.response?.status||e.code||'unknown')+' for '+new URL(url).hostname);}}
+ async function get(url){try{return (await auth.request({url})).data;}catch(e){const api=e.response?.data?.error||{};const reasons=(api.details||[]).map(d=>[d.reason,d.metadata?.permission,d.metadata?.service].filter(Boolean).join(':')).filter(Boolean).join(',');throw Error('Production preflight API failed HTTP '+(e.response?.status||e.code||'unknown')+' for '+new URL(url).hostname+'; status='+(api.status||'unknown')+'; reason='+reasons);}}
  const release=await get('https://firebaserules.googleapis.com/v1/projects/retocker/releases/cloud.firestore');
  const rules=await get('https://firebaserules.googleapis.com/v1/'+release.rulesetName);
  const hosting=await get('https://firebasehosting.googleapis.com/v1beta1/sites/retocker/channels/live/releases?pageSize=1');
