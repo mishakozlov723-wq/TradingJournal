@@ -38,6 +38,10 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --prefix /tmp/syter-preflight --no-save google-auth-library@9.15.1
+      - name: Verify existing release credential without writes
+        env:
+          SYTER_RELEASE_TOKEN: ${{ secrets.SYTER_RELEASE_TOKEN }}
+        run: node scripts/release-access-preflight.cjs
       - name: Read current production rules and Hosting release without changes
         env:
           NODE_PATH: /tmp/syter-preflight/node_modules

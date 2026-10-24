@@ -333,6 +333,35 @@ jobs:
           $draftAssets = gh release view $tag --repo $repo --json assets --jq '.assets[].name'
           if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect draft artifact set' }
           foreach ($asset in $draftAssets) { if ($asset -notin $expected) { throw "Unexpected draft asset $asset; refusing to publish a mixed-mode release" } }
+          # Read the draft bytes back BEFORE making a public update discoverable.
+          $draftReadback = Join-Path $PWD 'verified-draft-readback'
+          New-Item $draftReadback -ItemType Directory -Force | Out-Null
+          gh release download $tag --repo $repo --dir $draftReadback
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot download the unpublished draft for integrity verification' }
+          foreach ($name in $expected) {
+            $original = Get-FileHash (Join-Path release $name) -Algorithm SHA256
+            $remote = Get-FileHash (Join-Path $draftReadback $name) -Algorithm SHA256
+            if ($original.Hash -cne $remote.Hash) { throw "Draft bytes differ from verified build: $name" }
+          }
           $latestFlag = '--latest'
           gh release edit $tag --repo $repo --notes-file release-notes.md --draft=false $latestFlag
           if ($LASTEXITCODE -ne 0) { throw 'Draft upload succeeded but publishing failed' }
+          # Verify actual public delivery, not just a successful upload response.
+          $publicReadback = Join-Path $PWD 'verified-public-readback'
+          New-Item $publicReadback -ItemType Directory -Force | Out-Null
+          gh release download $tag --repo $repo --dir $publicReadback
+          if ($LASTEXITCODE -ne 0) { throw 'Published release exists but public readback failed; do not overwrite or delete it' }
+          $proof = @()
+          foreach ($name in $expected) {
+            $original = Get-FileHash (Join-Path release $name) -Algorithm SHA256
+            $remoteFile = Join-Path $publicReadback $name
+            $remote = Get-FileHash $remoteFile -Algorithm SHA256
+            if ($original.Hash -cne $remote.Hash) { throw "Published asset differs from tested bytes: $name; do not overwrite a public version" }
+            $proof += @{name=$name;size=(Get-Item $remoteFile).Length;sha256=$remote.Hash.ToLower()}
+          }
+          $published = gh release view $tag --repo $repo --json isDraft,isPrerelease,tagName,url,assets | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $published.isDraft -or $published.isPrerelease -or $published.tagName -ne $tag -or $published.assets.Count -ne $expected.Count) { throw 'Published release metadata or complete asset set mismatch' }
+          $receipt = @{version=$version;sourceSha=$env:GITHUB_SHA;url=$published.url;assets=$proof}
+          'PUBLIC_RELEASE_VERIFIED_JSON=' + ($receipt | ConvertTo-Json -Depth 6 -Compress)
+          $receipt | ConvertTo-Json -Depth 6 | Set-Content test-artifacts/published-release.json -Encoding utf8
+          "## Public release verified: $($published.url)`nSource: $env:GITHUB_SHA`nAll five public asset SHA256 values match the tested and privately exported files." >> $env:GITHUB_STEP_SUMMARY
