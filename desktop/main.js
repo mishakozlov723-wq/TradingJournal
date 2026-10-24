@@ -244,7 +244,7 @@ function installLinkHandlers(wc) {
     return { action: 'deny' };
   });
   wc.on('will-navigate', (e, url) => {
-    if (!isSharedNoteUrl(url) && (isAppUrl(url) || url.startsWith('file://'))) return;
+    if (!isSharedNoteUrl(url) && isAppUrl(url)) return;
     e.preventDefault();
     openOutside(url);
   });
@@ -480,8 +480,10 @@ function start() {
 
 // ── app self-update ──
 let updateController = null, updateWindow = null;
-function setupUpdates() {
+async function setupUpdates() {
   if (!app.isPackaged || updateController) return;
+  try { await require('./lifecycle/update-trust').requireUpdatePublisher(autoUpdater); }
+  catch(error) { console.error(error.message);return; }
   const { createUpdateController } = require('./lifecycle/controller');
   const { createLifecycleWindow, publishLifecycleState } = require('./lifecycle/window');
   const reveal = () => {

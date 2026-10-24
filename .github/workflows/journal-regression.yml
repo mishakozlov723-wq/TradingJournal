@@ -16,7 +16,7 @@ jobs:
         with:
           node-version: '22'
       - name: Install isolated browser test dependency
-        run: npm install --prefix /tmp/tj-browser --no-save playwright@1.63.0
+        run: npm install --prefix /tmp/tj-browser --no-save playwright@1.63.0 acorn@8.15.0
       - name: Syntax and unit/browser regression suite
         env:
           NODE_PATH: /tmp/tj-browser/node_modules
@@ -36,6 +36,27 @@ jobs:
         run: |
           export CHROME_PATH="$(command -v google-chrome || command -v chromium)"
           mkdir -p verification
-          for scenario in models-recovery notes-empty notes-admin-status notes-share usage-stats notes-database stabilization; do
+          for scenario in models-recovery notes-empty notes-admin-status notes-share usage-stats notes-database stabilization audit-remediation; do
             node "public/tests/$scenario.browser.cjs"
           done
+
+  firestore-rules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install isolated local emulator tools
+        run: npm install --prefix /tmp/tj-rules --no-save firebase-tools@14.22.0 @firebase/rules-unit-testing@5.0.0 firebase@12.4.0
+      - name: Test repository rules on loopback emulator only
+        env:
+          NODE_PATH: /tmp/tj-rules/node_modules
+        run: /tmp/tj-rules/node_modules/.bin/firebase emulators:exec --only firestore --project demo-tradingjournal-audit --config firebase.audit.json 'node --test verification/firestore-audit.rules.test.cjs'

@@ -60,7 +60,8 @@
         "nsis"
       ],
       "icon": "build/icon.ico",
-      "artifactName": "SYTER-Setup-${version}.${ext}"
+      "artifactName": "SYTER-Setup-${version}.${ext}",
+      "verifyUpdateCodeSignature": true
     },
     "nsis": {
       "oneClick": true,
@@ -79,6 +80,7 @@
         "repo": "syter-releases",
         "releaseType": "release"
       }
-    ]
+    ],
+    "forceCodeSigning": true
   }
 }

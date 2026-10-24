@@ -902,7 +902,7 @@
     if (block.type === 'table') {
       if (!Array.isArray(block.rows) || !block.rows.length) block.rows = [['Column 1','Column 2'],['','']];
       var width = Math.max(1, Math.min(10, block.rows.reduce(function(m,r){ return Math.max(m, Array.isArray(r) ? r.length : 0); }, 0) || 2));
-      block.rows = block.rows.slice(0, 120).map(function(row) {
+      block.rows = block.rows.map(function(row) {
         row = Array.isArray(row) ? row.slice(0, width) : [];
         while (row.length < width) row.push('');
         return row.map(function(cell){ return notesClampText(cell, 5000); });
@@ -935,7 +935,7 @@
 
   function notesNormalizeComments(value) {
     if (!Array.isArray(value)) return [];
-    return value.slice(-100).map(function(c){
+    return value.map(function(c){
       c = c && typeof c === 'object' ? c : {};
       return { id:c.id || notesId('c'), text:notesClampText(c.text,600), createdAt:Number(c.createdAt)||Date.now(), author:notesClampText(c.author||'',60) };
     }).filter(function(c){return c.text.trim();});
@@ -1295,7 +1295,7 @@
   })();
   function notesNormalizePages(value) {
     if (!Array.isArray(value)) return [];
-    var pages = value.slice(0, 180).map(function(page, i) {
+    var pages = value.map(function(page, i) {
       page = page && typeof page === 'object' ? page : {};
       return {
         id: page.id || notesId('p'),
@@ -1311,7 +1311,7 @@
         order: Number.isFinite(Number(page.order)) ? Number(page.order) : i,
         comments: notesNormalizeComments(page.comments),
         shareToken: typeof page.shareToken === 'string' && /^[A-Za-z0-9]{16,64}$/.test(page.shareToken) ? page.shareToken : '',
-        blocks: Array.isArray(page.blocks) ? page.blocks.slice(0, 350).map(notesNormalizeBlock) : [notesDefaultBlock('text')]
+        blocks: Array.isArray(page.blocks) ? page.blocks.map(notesNormalizeBlock) : [notesDefaultBlock('text')]
       };
     });
     var byId = {};
@@ -1496,7 +1496,11 @@
 
   function notesSaveLocal(ownerKey, snapshot) {
     snapshot=Object.assign({},snapshot);
-    if(ownerKey===notesLoadedFor&&notesLoadedRemote){snapshot.cloudBase=notesCloudRevision;snapshot.conflict=notesCloudConflict;}
+    var previous={};
+    if(ownerKey && (!notesLoadedRemote || ownerKey!==notesLoadedFor)){try{previous=JSON.parse(localStorage.getItem(notesStorageKey(ownerKey))||'{}')||{};}catch(_){}}
+    if(snapshot.cloudBase===undefined)snapshot.cloudBase=ownerKey===notesLoadedFor&&notesLoadedRemote?notesCloudRevision:previous.cloudBase;
+    if(snapshot.conflict===undefined)snapshot.conflict=ownerKey===notesLoadedFor&&notesLoadedRemote?notesCloudConflict:previous.conflict;
+    if(snapshot.pending===undefined)snapshot.pending=ownerKey===notesLoadedFor&&typeof notesDirty!=='undefined'?!!notesDirty:previous.pending;
     // Reuse the mobile cache JSON without delaying the durable local write.
     var serialized = ownerKey ? notesMobileCachePut(ownerKey,snapshot) : undefined;
     try { localStorage.setItem(notesStorageKey(ownerKey), serialized === undefined ? JSON.stringify(snapshot) : serialized); return true; }
@@ -1681,7 +1685,7 @@
         notesCloudPageHashes = nextHashes;
         notesCloudPageIds = currentIds.slice();
         notesCloudRevision=notesRevision(meta);notesCloudConflict=false;
-        if(!notesDirty)notesSaveLocal(ownerKey,Object.assign({},snapshot,{cloudBase:notesCloudRevision}));
+        if(!notesDirty)notesSaveLocal(ownerKey,Object.assign({},snapshot,{cloudBase:notesCloudRevision,pending:false,conflict:false}));
         notesSyncShares(ownerKey);
       }
       notesRemoteSaveInFlight = false; notesRemoteSaveOwner = null;
@@ -1751,7 +1755,7 @@
       var raw = localStorage.getItem(notesStorageKey(ownerKey));
       if (!raw) return { pages:[], groups:notesDefaultGroups(), updatedAt:0 };
       var parsed = JSON.parse(raw);
-      return { pages:notesNormalizePages(parsed && parsed.pages), groups:notesNormalizeGroups(parsed && parsed.groups), updatedAt:Number(parsed && parsed.updatedAt) || 0, cloudBase:parsed&&parsed.cloudBase, conflict:!!(parsed&&parsed.conflict) };
+      return { pages:notesNormalizePages(parsed && parsed.pages), groups:notesNormalizeGroups(parsed && parsed.groups), updatedAt:Number(parsed && parsed.updatedAt) || 0, pending:parsed&&parsed.pending, cloudBase:parsed&&parsed.cloudBase, conflict:!!(parsed&&parsed.conflict) };
     } catch (e) { return { pages:[], groups:notesDefaultGroups(), updatedAt:0 }; }
   }
 
@@ -1862,9 +1866,15 @@
     var cloudAt=Number(meta.updatedAt)||0,localIds={};
     local.pages.forEach(function(page){localIds[page.id]=true;});
     var localCanRepair=!!(missing.length&&local.pages.length&&ids.every(function(id){return localIds[id];}));
-    var staleDraft=local.pages.length&&(local.conflict||(local.updatedAt>cloudAt&&local.cloudBase!==cloudRevision));
-    var useLocal=local.pages.length&&(local.updatedAt>cloudAt||localCanRepair);
-    return {cloudPages:cloudPages,hashes:hashes,missing:missing,cloudAt:cloudAt,localCanRepair:localCanRepair,staleDraft:staleDraft,useLocal:useLocal,pages:useLocal?local.pages:cloudPages,groups:useLocal?local.groups:notesNormalizeGroups(meta.groups),payloadChars:payloadChars};
+    var pending=local.pending===true || (local.pending!==false && (local.pages.length>0 || local.updatedAt>0));
+    var staleDraft=!!(local.conflict || (pending && local.cloudBase!==cloudRevision));
+    var useLocal=!!(pending && !staleDraft);
+    var pages=useLocal?local.pages:cloudPages;
+    if(localCanRepair&&!useLocal){
+      var byId={};local.pages.forEach(function(p){byId[p.id]=p;});
+      pages=ids.map(function(id){return cloudPages.find(function(p){return p.id===id;})||byId[id];}).filter(Boolean);
+    }
+    return {cloudPages:cloudPages,hashes:hashes,missing:missing,cloudAt:cloudAt,localCanRepair:localCanRepair,staleDraft:staleDraft,useLocal:useLocal,pages:pages,groups:useLocal?local.groups:notesNormalizeGroups(meta.groups),payloadChars:payloadChars};
   }
 
   function notesLoad(force) {
@@ -1872,7 +1882,7 @@
     var perf=notesPerfStart(force,!force&&notesLoadedFor===key);
     // Cross-account owner maintenance is deferred until the current workspace has
     // finished loading so an admin fan-out cannot compete with this cold path.
-    if (!force && notesLoadedFor === key) { notesPerfFinish(perf,'warm-memory'); if(typeof notesScheduleKnownOwnerRepair==='function')notesScheduleKnownOwnerRepair(); return Promise.resolve(); }
+    if (!force && notesLoadedFor === key && notesLoadedRemote && !notesCloudIncomplete) { notesPerfFinish(perf,'warm-memory'); if(typeof notesScheduleKnownOwnerRepair==='function')notesScheduleKnownOwnerRepair(); return Promise.resolve(); }
     if (notesDirty) notesSave();
     var seq = ++notesLoadSeq;
     notesLoadedFor = null;
@@ -1896,7 +1906,7 @@
       if(seq!==notesLoadSeq||key!==(notesOwner()||'local'))return;
       var cached=value&&value.data;
       if(cached&&Array.isArray(cached.pages)&&(!local.pages.length||Number(cached.updatedAt)>local.updatedAt)){
-        local={pages:notesNormalizePages(cached.pages),groups:notesNormalizeGroups(cached.groups),updatedAt:Number(cached.updatedAt)||0,cloudBase:cached.cloudBase,conflict:!!cached.conflict};
+        local={pages:notesNormalizePages(cached.pages),groups:notesNormalizeGroups(cached.groups),updatedAt:Number(cached.updatedAt)||0,pending:cached.pending,cloudBase:cached.cloudBase,conflict:!!cached.conflict};
         notesMobilePreview(local.pages,local.groups);
       }
     })]).then(function(values){return values[0];});}
@@ -1913,7 +1923,7 @@
       // A changed root also protects empty indexes and legacy/recovery paths. Never
       // auto-publish a stale draft merely because its device clock is ahead.
       var rootAt=Number(meta&&meta.updatedAt)||Number(legacy&&legacy.updatedAt)||0;
-      if(local.conflict || (local.pages.length && local.cloudBase!==undefined && local.cloudBase!==notesCloudRevision && local.updatedAt>rootAt)){
+      if(local.conflict || ((local.pending===true || (local.pending!==false && local.pages.length>0)) && local.cloudBase!==notesCloudRevision)){
         notesPages=local.pages;notesGroups=local.groups;notesEnsurePageGroups();notesLoadedFor=key;notesLoadedRemote=true;notesMobileBusy(false);
         notesPickActivePage();notesHistoryReset();notesRender();notesShowConflict(key);return;
       }
@@ -1975,7 +1985,7 @@
           notesCloudPageHashes = hashes; notesCloudPageIds = ids.slice();
           notesLoadedFor = key; notesLoadedRemote = true; notesMobileBusy(false);
           notesCloudIncomplete = missing.length > 0 && !localCanRepair;
-          if(!useLocal||notesIsMobile())notesSaveLocal(key,{version:3,pages:notesPages,groups:notesGroups,updatedAt:useLocal?local.updatedAt:cloudAt});
+          if(!useLocal||notesIsMobile())notesSaveLocal(key,{version:3,pages:notesPages,groups:notesGroups,updatedAt:useLocal?local.updatedAt:cloudAt,pending:!!useLocal});
           notesPickActivePage(); notesHistoryReset(); notesRender();notesPerfPhase(perf,'apply',applyStarted);
 
           if (localCanRepair) {
@@ -2128,7 +2138,7 @@
     var tree=[page].concat(notesDescendantIds(pageId).map(notesPageById).filter(Boolean));
     var map={}; tree.forEach(function(p){ map[p.id]=notesId('p'); });
     var copies=tree.map(function(p){
-      var c=notesClone(p); c.id=map[p.id];
+      var c=notesClone(p); c.id=map[p.id]; c.shareToken=''; // A duplicate is private, including every descendant.
       if(p.id===pageId){ c.title=notesClampText((p.title||'Untitled')+' copy',160); c.order=p.order+1; c.collapsed=false; }
       else c.parentId=map[p.parentId]||c.parentId;
       c.comments=(c.comments||[]).map(function(x){ x.id=notesId('c'); return x; });
@@ -3389,6 +3399,9 @@
     notesWs.addEventListener('drop',function(e){if((notesDraggedPageId||notesDraggedBlockId)&&e.target.closest&&e.target.closest('[contenteditable="true"],textarea,input'))e.preventDefault();},true);
   }
   // Flush on tab hide/close so the last keystrokes reach the cloud.
+  window.addEventListener('online',function(){
+    if(notesLoadedFor && !notesLoadedRemote && !notesCloudConflict)notesLoad(false);
+  });
   window.addEventListener('pagehide',function(){notesSave();});
   window.addEventListener('resize',function(){if(notesWorkspaceMode)notesPositionActivePill();});
   document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')notesSave();});
@@ -3642,6 +3655,7 @@
   function notesWriteShare(page,ownerKey,force,candidate){
     var uid=notesAuthUid(),owner=ownerKey||notesLoadedFor,token=candidate||(page&&page.shareToken);
     if(!page||!token||typeof db==='undefined'||!notesShareContextValid(page,owner,uid)||notesShareRevoking[token])return Promise.resolve(false);
+    if(!candidate&&notesPages.filter(function(p){return p.shareToken===token;}).length>1){notesShareErrors[token]='This legacy link is assigned to multiple pages. Automatic publication is paused; explicitly disable and recreate sharing for the intended page.';notesToast(notesShareErrors[token]);return Promise.resolve(false);}
     var pages=notesShareSubtree(page),json=JSON.stringify(pages);
     var payload={uid:uid,owner:owner,rootId:page.id,title:page.title||'Untitled',pages:pages,updatedAt:Date.now()};
     if(notesJsonBytes(payload)>NOTES_CLOUD_LIMIT){notesShareErrors[token]='Shared page is too large to publish. Reduce its size and retry.';notesToast('Shared page is too large to publish');return Promise.resolve(false);}

@@ -83,15 +83,13 @@
   var ACCOUNTS_API_URL_KEY='tjAccountsApiUrl';
   function accEndpoint(){
     var configured=window.TJ_ACCOUNTS_CONFIG && window.TJ_ACCOUNTS_CONFIG.apiUrl;
-    var saved='';
-    try { saved=localStorage.getItem(ACCOUNTS_API_URL_KEY)||''; } catch(_) {}
-    var endpoint=String(saved||configured||'').trim().replace(/\/+$/,'');
+    var endpoint=String(configured||'').trim().replace(/\/+$/,''); // Deployment configuration is authoritative; localStorage cannot redirect credentials.
     if(endpoint && !/^https:\/\//i.test(endpoint)) return '';
     return endpoint;
   }
   function accSaveEndpoint(value){
     var endpoint=String(value||'').trim().replace(/\/+$/,'');
-    if(endpoint && !/^https:\/\//i.test(endpoint)) throw new Error('Use the full HTTPS endpoint URL.');
+    if(endpoint && endpoint!==accEndpoint())throw new Error('Accounts endpoint must match the trusted deployment configuration.');
     try { if(endpoint)localStorage.setItem(ACCOUNTS_API_URL_KEY,endpoint); else localStorage.removeItem(ACCOUNTS_API_URL_KEY); } catch(_) {}
     return endpoint;
   }
@@ -243,16 +241,22 @@
 
   function accHistoryKey(accountId,uid){ return 'tjMyfxHistoryV'+ACCOUNTS_CACHE_VERSION+':'+String(uid||accCurrentUid()||'')+':'+String(accountId); }
   function accHistoryFingerprint(accountId,t){
-    var raw=[accountId,t.openTime,t.closeTime,t.symbol,t.action,t.sizing&&t.sizing.value,t.openPrice,t.closePrice,t.profit,t.pips,t.commission,t.interest].join('|');
-    var h=2166136261;
-    for(var i=0;i<raw.length;i++){ h^=raw.charCodeAt(i); h=Math.imul(h,16777619); }
-    return 'mfb_'+String(accountId)+'_'+(h>>>0).toString(16);
+    // Provider IDs are preferred. Without one, preserve per-snapshot multiplicity
+    // using execution fields only; mutable profit/fees must not append a correction.
+    return 'mfb_'+String(accountId)+'_anonymous_'+encodeURIComponent(JSON.stringify([t.openTime,t.closeTime,t.symbol,t.action,t.sizing&&t.sizing.value,t.openPrice,t.closePrice]));
   }
   function accCompactHistory(accountId,list){
     function clean(v){ return v===undefined?null:v; }
+    var occurrences=Object.create(null);
     return (list||[]).map(function(t){
       return {
-        _id:accHistoryFingerprint(accountId,t),openTime:t.openTime||'',closeTime:t.closeTime||'',symbol:t.symbol||'',action:t.action||'',
+        _id:(function(){
+          var sourceId=t.id!=null?t.id:t.ticket!=null?t.ticket:t.orderId!=null?t.orderId:t.tradeId;
+          if(sourceId!=null&&String(sourceId)!=='')return 'mfb_'+accountId+'_source_'+encodeURIComponent(String(sourceId));
+          if(t._id&&String(t._id).indexOf('mfb_'+accountId+'_source_')===0)return t._id;
+          var key=accHistoryFingerprint(accountId,t);occurrences[key]=(occurrences[key]||0)+1;
+          return key+'_occ_'+occurrences[key];
+        })(),openTime:t.openTime||'',closeTime:t.closeTime||'',symbol:t.symbol||'',action:t.action||'',
         sizing:t.sizing&&typeof t.sizing==='object'?{type:t.sizing.type||'lots',value:clean(t.sizing.value)}:null,
         openPrice:clean(t.openPrice),closePrice:clean(t.closePrice),tp:clean(t.tp),sl:clean(t.sl),pips:clean(t.pips),profit:clean(t.profit),interest:clean(t.interest),commission:clean(t.commission),swap:clean(t.swap),comment:t.comment||''
       };
@@ -260,9 +264,9 @@
   }
   function accMergeHistory(accountId,a,b){
     var map=Object.create(null), out=[];
-    accCompactHistory(accountId,(a||[]).concat(b||[])).forEach(function(t){
-      var id=t._id||accHistoryFingerprint(accountId,t); if(map[id])return; map[id]=true; t._id=id; out.push(t);
-    });
+    [accCompactHistory(accountId,a||[]),accCompactHistory(accountId,b||[])].forEach(function(list){list.forEach(function(t){
+      var id=t._id;if(map[id]!==undefined)out[map[id]]=t;else {map[id]=out.length;out.push(t);}
+    });});
     out.sort(function(x,y){ return (accParseMyfxDate(x.closeTime)||accParseMyfxDate(x.openTime)||0)-(accParseMyfxDate(y.closeTime)||accParseMyfxDate(y.openTime)||0); });
     return out;
   }

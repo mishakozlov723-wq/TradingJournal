@@ -63,14 +63,15 @@ service cloud.firestore {
       allow read: if isRetocker()
         || owns(resource.data.uid);
 
-      allow create: if isRetocker()
-        || owns(request.resource.data.uid);
+      allow create: if (isRetocker() || owns(request.resource.data.uid))
+        && request.resource.data.direction in ['LONG','SHORT'];
 
-      allow update: if isRetocker()
+      allow update: if (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['direction']) || request.resource.data.direction in ['LONG','SHORT'])
+        && (isRetocker()
         || (
           owns(resource.data.uid)
           && request.resource.data.uid == resource.data.uid
-        );
+        ));
 
       allow delete: if isRetocker()
         || owns(resource.data.uid);
@@ -189,14 +190,15 @@ service cloud.firestore {
       allow read: if isRetocker()
         || owns(resource.data.uid);
 
-      allow create: if isRetocker()
-        || owns(request.resource.data.uid);
+      allow create: if (isRetocker() || owns(request.resource.data.uid))
+        && request.resource.data.direction in ['LONG','SHORT'];
 
-      allow update: if isRetocker()
+      allow update: if (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['direction']) || request.resource.data.direction in ['LONG','SHORT'])
+        && (isRetocker()
         || (
           owns(resource.data.uid)
           && request.resource.data.uid == resource.data.uid
-        );
+        ));
 
       allow delete: if isRetocker()
         || owns(resource.data.uid);
