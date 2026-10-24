@@ -79,11 +79,11 @@ function notesFixture(liveRevision){
 }
 test('stale Notes root aborts every page/index write and preserves the local draft',async()=>{const h=notesFixture({updatedAt:2,revision:'new-device'});await h.c.notesSave();assert.equal(h.writes.length,0);assert.equal(h.c.conflict,true);assert.equal(h.c.notesDirty,true);assert.equal(h.c.shared,undefined);assert.equal(h.c.notesPages[0].title,'draft');});
 test('unchanged Notes revision commits page and new root atomically before publishing shares',async()=>{const h=notesFixture({updatedAt:1,revision:'old'});await h.c.notesSave();assert.equal(h.writes.length,2);assert.equal(h.writes[0][0].key,'A/p');assert.ok(h.writes[1][1].notesWorkspaceMeta.revision);assert.equal(h.c.notesDirty,false);assert.equal(h.c.shared,true);});
-test('private screenshot deletes share the same asset-trade transaction',()=>{const body=fn('tjChangeAssetTrades');assert.match(body,/trade\.images/);assert.match(body,/tx\.delete\(db\.collection\('tradeImages'\)/);assert.match(body,/tx\.delete\(ref\)/);});
-test('asset deletion removes each matching trade and image together, but not other assets',async()=>{
+test('private screenshot deletes and asset metadata share one atomic transaction',async()=>{
  const writes=[],records=[{id:'t1',uid:'u',asset:'EURUSD',images:[{id:'i1'},{id:'i2'}]},{id:'t2',uid:'u',asset:'GBPUSD',images:[{id:'keep'}]}];
- const c={Promise,db:{collection:name=>({doc:id=>({key:name+'/'+id}),where:()=>({get:()=>Promise.resolve({forEach:fn=>records.forEach(r=>fn({id:r.id,data:()=>r}))})})}),async runTransaction(fn){let wrote=false;const part=[];await fn({get:r=>{assert.equal(wrote,false);return Promise.resolve({exists:true,data:()=>records.find(t=>'trades/'+t.id===r.key)});},delete:r=>{wrote=true;part.push(r.key);}});writes.push(part);}}};
- vm.createContext(c);vm.runInContext(fn('tjChangeAssetTrades'),c);await c.tjChangeAssetTrades('u','EURUSD',null);assert.deepEqual(writes,[['tradeImages/i1','tradeImages/i2','trades/t1']]);
+ const c={Promise,normalizeAssetDefinitions:x=>x||[],db:{collection:name=>({doc:id=>({key:name+'/'+id}),where:()=>({get:()=>Promise.resolve({forEach:fn=>records.forEach(r=>fn({id:r.id,data:()=>r}))})})}),async runTransaction(fn){let wrote=false;const part=[];const result=await fn({get:r=>{assert.equal(wrote,false);return Promise.resolve({exists:true,data:()=>r.key==='titles/tester'?{assets:[],deletedAssets:[]}:records.find(t=>'trades/'+t.id===r.key)});},delete:r=>{wrote=true;part.push(r.key);},set:r=>{wrote=true;part.push(r.key);}});writes.push(part);return result;}}};
+ vm.createContext(c);vm.runInContext(fn('tjChangeAssetSettings'),c);await c.tjChangeAssetSettings('tester','u',()=>{},'EURUSD',null);
+ assert.deepEqual(writes,[['tradeImages/i1','tradeImages/i2','trades/t1','titles/tester']]);
 });
 test('backtest editor resolves persisted identity, never a synthetic/filtered chart row',()=>{assert.match(fn('openBacktestTradeEditor'),/allBacktestTrades\.filter/);assert.match(source,/editingBacktestTradeId \? allBacktestTrades\.filter/);assert.match(source,/editingBacktestTradeId&&!btTrade/);});
 

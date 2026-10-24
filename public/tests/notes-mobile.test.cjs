@@ -71,7 +71,7 @@ test('empty root index recovers orphan split-page documents and rebuilds cloud m
 });
 test('stale local snapshot cannot hide orphan cloud pages during index recovery',async()=>{
  const h=harness();
- h.c.notesLoadLocal=()=>({pages:[{id:'local-only',title:'Local backup',blocks:[]}],groups:[],updatedAt:3});
+ h.c.notesLoadLocal=()=>({pages:[{id:'local-only',title:'Local backup',blocks:[]}],groups:[],updatedAt:3,pending:false});
  h.c.db={collection(){return {
    doc(){return {get:()=>h.root.promise};},
    where(){return {get:()=>Promise.resolve({forEach(cb){cb({id:'alice__np__cloud',data:()=>({notesPageOwner:'alice',updatedAt:6,notesPage:{id:'cloud',title:'Cloud page',blocks:[]}})});}})};}
@@ -86,7 +86,7 @@ test('stale local snapshot cannot hide orphan cloud pages during index recovery'
 });
 test('failed orphan recovery query is treated as cloud failure, never as an empty workspace',async()=>{
  const h=harness();
- h.c.notesLoadLocal=()=>({pages:[{id:'safe-local',title:'Safe local',blocks:[]}],groups:[],updatedAt:2});
+ h.c.notesLoadLocal=()=>({pages:[{id:'safe-local',title:'Safe local',blocks:[]}],groups:[],updatedAt:2,pending:false});
  h.c.db={collection(){return {
    doc(){return {get:()=>h.root.promise};},
    where(){return {get:()=>Promise.reject(Error('offline recovery scan'))};}
