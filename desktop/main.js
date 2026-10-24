@@ -281,7 +281,6 @@ function createTray() {
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Открыть журнал', click: () => requestMode(false) },
     { label: 'Мини-журнал · ' + MINI_SHORTCUT_LABEL, click: () => requestMode(true) },
-    { label: 'Обновления и безопасность', click: showUpdateHelp },
     { type: 'separator' },
     { label: 'Выход', click: () => { isQuitting = true; app.quit(); } },
   ]));
@@ -489,12 +488,6 @@ function start() {
 // ── app self-update ──
 let updateController = null, updateWindow = null;
 let updateTrustError = '';
-async function showUpdateHelp() {
-  const result = await dialog.showMessageBox(win || undefined, {type:'info',title:'Обновления SYTER',buttons:['Закрыть','Открыть страницу релизов'],defaultId:0,cancelId:0,
-    message: updateTrustError || (require('./package.json').syterUpdatePolicy === 'authenticode' ? 'Автообновления проверяют подпись настроенного издателя.' : 'GitHub-обновления включены: приложение предлагает загрузку и перезапуск с вашим согласием.'),
-    detail:'Источник обновлений — GitHub mishakozlov723-wq/syter-releases через HTTPS. SHA512 проверяет целостность загрузки, но не защищает от компрометации владельца релизов. Без Authenticode Windows может показывать неизвестного издателя. Установка требует вашего подтверждения.'});
-  if (result.response === 1) await shell.openExternal('https://github.com/mishakozlov723-wq/syter-releases/releases');
-}
 async function setupUpdates() {
   if (!app.isPackaged || updateController) return;
   try { await require('./lifecycle/update-trust').requireUpdatePublisher(autoUpdater, require('./package.json').syterUpdatePolicy || 'github'); }

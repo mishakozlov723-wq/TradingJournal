@@ -130,6 +130,8 @@ jobs:
           if ($test.ExitCode -ne 0) { throw "Lifecycle test failed: $($test.ExitCode)" }
           if (!(Select-String -Path lifecycle-test.log -Pattern "PASS: isolated native lifecycle windows" -Quiet)) { throw "Lifecycle test did not reach completion" }
       - name: Save native transition inspection frames
+        # Optional diagnostic PNG export; native test failures and final EXE export remain blocking.
+        continue-on-error: true
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -182,6 +184,8 @@ jobs:
           Get-Content icon-test-error.log
           if ($test.ExitCode -ne 0) { throw "Packaged icon test failed: $($test.ExitCode)" }
       - name: Save verified icon previews
+        # Optional diagnostic PNG export; native test failures and final EXE export remain blocking.
+        continue-on-error: true
         if: ${{ always() && !inputs.check_only && !inputs.notes_only }}
         uses: actions/upload-artifact@v4
         with:
@@ -241,6 +245,8 @@ jobs:
             Get-Process SYTER -ErrorAction SilentlyContinue | Stop-Process -Force
           }
       - name: Save branded installer and update previews
+        # Optional diagnostic PNG export; native test failures and final EXE export remain blocking.
+        continue-on-error: true
         if: always()
         uses: actions/upload-artifact@v4
         with:
