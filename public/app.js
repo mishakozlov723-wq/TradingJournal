@@ -6117,30 +6117,60 @@
   function closeAssetDeleteModal() { pendingAssetDeletion = null; document.getElementById('assetDeleteOverlay').classList.remove('open'); document.body.classList.remove('asset-delete-lock'); }
   // One bounded atomic operation: settings, existing journal trades and images all commit or none do.
   // Backtest/Replay instruments are independent market identities and are intentionally not renamed.
-  function tjChangeAssetSettings(user, uid, change, fromName, toName) {
-    var root=db.collection('titles').doc(user);
-    var query=fromName?db.collection('trades').where('uid','==',uid).get({source:'server'}):Promise.resolve(null);
-    return query.then(function(snapshot){
-      var refs=[];if(snapshot)snapshot.forEach(function(d){if(d.data().asset===fromName)refs.push(db.collection('trades').doc(d.id));});
-      if(refs.length>450)throw Error('Too many journal trades for one safe atomic asset change. No data was changed. Export the journal and contact support.');
-      return db.runTransaction(function(tx){
-        return Promise.all([tx.get(root)].concat(refs.map(function(ref){return tx.get(ref);}))).then(function(docs){
-          var data=docs[0].exists?docs[0].data():{};
-          var deleted=Array.isArray(data.deletedAssets)?data.deletedAssets.slice():[];
-          var settings={assets:normalizeAssetDefinitions(data.assets,deleted),deletedAssets:deleted};change(settings);
-          var writes=[];
-          refs.forEach(function(ref,i){var doc=docs[i+1],trade=doc.exists?doc.data():null;
-            if(!trade||trade.uid!==uid||trade.asset!==fromName)return;
-            if(toName==null){(trade.images||[]).forEach(function(image){writes.push({ref:db.collection('tradeImages').doc(image.id),remove:true});});writes.push({ref:ref,remove:true});}
-            else writes.push({ref:ref,data:{asset:toName}});
-          });
-          if(writes.length+1>490)throw Error('Too many trades/images for one safe atomic change. No data was changed.');
-          writes.forEach(function(w){if(w.remove)tx.delete(w.ref);else tx.update(w.ref,w.data);});
-          tx.set(root,{assets:settings.assets,deletedAssets:settings.deletedAssets,uid:uid},{merge:true});
-          return settings;
-        });
+  async function tjChangeAssetSettings(user, uid, change, fromName, toName) {
+    // A server-enforced per-journal fence closes the query/commit gap. Older
+    // clients are fenced by rules too; offline writes cannot resurrect a retired name.
+    var root=db.collection('titles').doc(user),guard=db.collection('journalAssetGuards').doc(uid);
+    var operation=null;
+    try {
+      var start=await db.runTransaction(async function(tx){
+        var docs=await Promise.all([tx.get(root),tx.get(guard)]),data=docs[0].exists?docs[0].data():{},g=docs[1].exists?docs[1].data():{};
+        if(g.locked){
+          if(!fromName||!g.operation||g.operation.from!==fromName||g.operation.to!==toName)throw Error('Unfinished asset operation: '+(g.operation?g.operation.from+' → '+(g.operation.to||'DELETE'):'unknown')+'. Retry that rename/delete first. No data changed.');
+          return {operation:g.operation}; // explicit retry also resumes after a process crash
+        }
+        var retired=Array.isArray(g.retired)?g.retired.slice():[];
+        var deleted=Array.isArray(data.deletedAssets)?data.deletedAssets.slice():[];
+        var settings={assets:normalizeAssetDefinitions(data.assets,deleted),deletedAssets:deleted};change(settings);
+        if(settings.assets.some(function(a){return retired.indexOf(a.name)>=0;}))throw Error('This asset name was retired by a completed migration. Use a new name; stale offline writes must not resurrect it.');
+        if(!fromName){tx.set(root,{assets:settings.assets,deletedAssets:settings.deletedAssets,uid:uid,assetRevision:(Number(data.assetRevision)||0)+1},{merge:true});return {settings:settings};}
+        if(retired.indexOf(fromName)>=0)throw Error('This asset was already migrated. Reload the journal.');
+        if(retired.length>=500)throw Error('Asset migration history is full. Export and contact support; no data changed.');
+        var op={id:Date.now().toString(36)+'_'+Math.random().toString(36).slice(2),from:fromName,to:toName,settings:settings};
+        tx.set(guard,{uid:uid,locked:true,retired:retired,operation:op},{merge:true});return {operation:op};
       });
-    });
+      if(!start.operation)return start.settings;
+      operation=start.operation;
+      // This strong server read starts AFTER the acknowledged fence. No journal
+      // trade/image mutations can commit until finalization/cancellation.
+      var snapshot=await db.collection('trades').where('uid','==',uid).get({source:'server'}),refs=[];
+      snapshot.forEach(function(d){if(d.data().asset===operation.from)refs.push(db.collection('trades').doc(d.id));});
+      if(refs.length>450)throw Error('Too many journal trades for one safe atomic asset change. No journal data changed.');
+      return await db.runTransaction(async function(tx){
+        var docs=await Promise.all([tx.get(guard),tx.get(root)].concat(refs.map(function(ref){return tx.get(ref);}))),g=docs[0].exists?docs[0].data():{};
+        if(!g.locked||!g.operation||g.operation.id!==operation.id){
+          if(g.lastOperation===operation.id)return operation.settings; // lost acknowledgement / concurrent retry
+          throw Error('Asset operation was cancelled or superseded. Reload and retry.');
+        }
+        var writes=[];
+        refs.forEach(function(ref,i){var doc=docs[i+2],trade=doc.exists?doc.data():null;
+          if(!trade||trade.uid!==uid||trade.asset!==operation.from)throw Error('Journal changed outside the asset fence. No migration was committed.');
+          if(operation.to==null){(trade.images||[]).forEach(function(image){writes.push({ref:db.collection('tradeImages').doc(image.id),remove:true});});writes.push({ref:ref,remove:true});}
+          else writes.push({ref:ref,data:{asset:operation.to}});
+        });
+        if(writes.length+2>490)throw Error('Too many trades/images for one safe atomic change. No journal data changed.');
+        writes.forEach(function(w){if(w.remove)tx.delete(w.ref);else tx.update(w.ref,w.data);});
+        tx.set(root,{assets:operation.settings.assets,deletedAssets:operation.settings.deletedAssets,uid:uid,assetRevision:(docs[1].exists?Number(docs[1].data().assetRevision)||0:0)+1},{merge:true});
+        var retired=(g.retired||[]).slice();if(retired.indexOf(operation.from)<0)retired.push(operation.from);
+        tx.set(guard,{uid:uid,locked:false,retired:retired,operation:null,lastOperation:operation.id},{merge:true});
+        return operation.settings;
+      });
+    } catch(error){
+      // If the final acknowledgement was lost, never undo its retirement. If it
+      // failed, cancellation is itself conditional/atomic and changes no trades.
+      if(operation){try{await db.runTransaction(async function(tx){var doc=await tx.get(guard),g=doc.exists?doc.data():{};if(g.locked&&g.operation&&g.operation.id===operation.id)tx.set(guard,{locked:false,operation:null},{merge:true});});}catch(cancelError){error.message+=' Recovery fence remains: reconnect and retry the same operation.';}}
+      throw error;
+    }
   }
   function deleteAssetData(name) {
     var user=viewingUser,generation=tjDataGeneration,owner=findUser(user),uid=owner&&owner.uid;

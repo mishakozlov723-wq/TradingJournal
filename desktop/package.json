@@ -81,6 +81,7 @@
         "releaseType": "release"
       }
     ],
-    "forceCodeSigning": true
-  }
+    "forceCodeSigning": false
+  },
+  "syterUpdatePolicy": "manual"
 }

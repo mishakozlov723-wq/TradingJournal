@@ -1,6 +1,5 @@
-// After a build: puts the 3 files every update needs into desktop/release/.
-// Upload them to a new GitHub release in mishakozlov723-wq/syter-releases
-// and every installed SYTER picks the update up by itself.
+// Prepare local artifacts only. Free/manual mode emits no updater feed.
+// Actual publication is a separately approved, fully gated workflow action.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -10,7 +9,9 @@ const dist = path.join(root, 'dist');
 const out = path.join(root, 'release');
 const version = require(path.join(root, 'package.json')).version;
 const exe = 'SYTER-Setup-' + version + '.exe';
-const need = ['latest.yml', exe, exe + '.blockmap'];
+const policy = require('./signing-policy').signingConfiguration();
+const signed = policy.extraMetadata.syterUpdatePolicy === 'authenticode';
+const need = signed ? ['latest.yml', exe, exe + '.blockmap'] : [exe];
 
 for (const f of need) {
   if (!fs.existsSync(path.join(dist, f))) {
@@ -27,4 +28,4 @@ console.log('SYTER ' + version + ' is ready.');
 console.log('  Installer: desktop/release/' + exe);
 console.log('  To publish the update: https://github.com/mishakozlov723-wq/syter-releases/releases/new');
 console.log('    Tag: v' + version + '   Title: SYTER ' + version);
-console.log('    Attach all 3 files from desktop/release/ and click "Publish release".');
+console.log(signed ? '    Signed updater feed prepared; publication requires full release gates.' : '    MANUAL ONLY: no updater feed. Do not upload latest.yml or mark this release latest. Windows may warn about the unknown publisher.');

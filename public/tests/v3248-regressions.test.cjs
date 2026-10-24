@@ -33,7 +33,7 @@ test('Accounts list/detail async responses are bound to the Firebase user that s
   assert.match(accounts, /requestUid=accCurrentUid\(\)/);
   assert.match(accounts, /accCurrentUid\(\)!==requestUid/);
   assert.match(accounts, /accLoadCachedHistory\(id,requestUid\)/);
-  assert.match(accounts, /accSaveCachedHistory\(id,merged,requestUid\)/);
+  assert.match(accounts, /accSaveCachedHistory\(id,merged,requestUid,cached\.remote\)/);
   assert.match(accounts, /accConnectionToken\(requestUid\)/);
 });
 

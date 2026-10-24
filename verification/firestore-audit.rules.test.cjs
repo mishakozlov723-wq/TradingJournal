@@ -40,6 +40,6 @@ for(const collection of ['trades','backtestTrades']){
 test('atomic metadata and multi-trade mutation rejects as a whole when one write is denied',async()=>{
  await env.withSecurityRulesDisabled(async c=>{const db=c.firestore();await setDoc(doc(db,'users','owner-a'),{login:'atomic-owner'});await setDoc(doc(db,'titles','atomic-owner'),{uid:'owner-a',assets:[{name:'OLD'}]});for(const id of ['atomic-one','atomic-two'])await setDoc(doc(db,'trades',id),{uid:'owner-a',asset:'OLD',direction:'LONG'});});
  const db=env.authenticatedContext('owner-a').firestore(),batch=writeBatch(db);
- batch.update(doc(db,'titles','atomic-owner'),{assets:[{name:'NEW'}]});batch.update(doc(db,'trades','atomic-one'),{asset:'NEW'});batch.update(doc(db,'trades','atomic-two'),{asset:'NEW',direction:'INVALID'});await assertFails(batch.commit());
+ batch.update(doc(db,'titles','atomic-owner'),{assets:[{name:'NEW'}],assetRevision:1});batch.update(doc(db,'trades','atomic-one'),{asset:'NEW'});batch.update(doc(db,'trades','atomic-two'),{asset:'NEW',direction:'INVALID'});await assertFails(batch.commit());
  assert.equal((await getDoc(doc(db,'titles','atomic-owner'))).data().assets[0].name,'OLD');for(const id of ['atomic-one','atomic-two'])assert.equal((await getDoc(doc(db,'trades',id))).data().asset,'OLD');
 });

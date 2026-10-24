@@ -1,5 +1,10 @@
 param([Parameter(Mandatory=$true)][string]$Path)
 $ErrorActionPreference = 'Stop'
+if (!$env:SYTER_SIGNED_RELEASE -or $env:SYTER_SIGNED_RELEASE -eq 'false') {
+  Write-Host 'MANUAL BUILD: no Authenticode identity; automatic updates disabled. Windows may warn about the unknown publisher.'
+  return
+}
+if ($env:SYTER_SIGNED_RELEASE -ne 'true') { throw 'Invalid signing mode' }
 if (!$env:CSC_LINK -or !$env:SYTER_PUBLISHER_NAME) { throw 'Native installer signing requires CSC_LINK and SYTER_PUBLISHER_NAME; unsigned fallback is forbidden' }
 $certificate = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
 try {

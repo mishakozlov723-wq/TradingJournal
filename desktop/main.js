@@ -1,7 +1,7 @@
 // SYTER desktop app (Electron).
 // The window simply opens the published site, so every `firebase deploy`
-// shows up on the next launch. The app itself updates through electron-updater
-// from GitHub Releases (see package.json -> build.publish).
+// shows up on the next launch. Free builds use manual desktop installation;
+// optional Authenticode builds use the verified electron-updater path.
 //
 // Layout: the BrowserWindow itself shows a thin black title bar (titlebar.html,
 // native Windows buttons drawn over it by titleBarOverlay); the site lives in a
@@ -281,6 +281,7 @@ function createTray() {
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Открыть журнал', click: () => requestMode(false) },
     { label: 'Мини-журнал · ' + MINI_SHORTCUT_LABEL, click: () => requestMode(true) },
+    { label: 'Обновления и безопасность', click: showUpdateHelp },
     { type: 'separator' },
     { label: 'Выход', click: () => { isQuitting = true; app.quit(); } },
   ]));
@@ -487,10 +488,17 @@ function start() {
 
 // ── app self-update ──
 let updateController = null, updateWindow = null;
+let updateTrustError = '';
+async function showUpdateHelp() {
+  const result = await dialog.showMessageBox(win || undefined, {type:'info',title:'Обновления SYTER',buttons:['Закрыть','Открыть страницу релизов'],defaultId:0,cancelId:0,
+    message: updateTrustError || (require('./package.json').syterUpdatePolicy === 'authenticode' ? 'Автообновления проверяют подпись настроенного издателя.' : 'Бесплатная сборка: автоматические загрузка и установка обновлений отключены.'),
+    detail:'Ручная установка — отдельное решение пользователя. HTTPS и хеш из того же релиза не доказывают независимую подлинность. Сверьте источник и, если доступна, подпись по независимому доверенному каналу. Неподписанный EXE может вызывать предупреждения Windows. Приложение не скачает и не запустит установщик.'});
+  if (result.response === 1) await shell.openExternal('https://github.com/mishakozlov723-wq/syter-releases/releases');
+}
 async function setupUpdates() {
   if (!app.isPackaged || updateController) return;
-  try { await require('./lifecycle/update-trust').requireUpdatePublisher(autoUpdater); }
-  catch(error) { console.error(error.message);return; }
+  try { await require('./lifecycle/update-trust').requireUpdatePublisher(autoUpdater, require('./package.json').syterUpdatePolicy || 'manual'); }
+  catch(error) { updateTrustError=error.message;console.error(error.message);return; }
   const { createUpdateController } = require('./lifecycle/controller');
   const { createLifecycleWindow, publishLifecycleState } = require('./lifecycle/window');
   const reveal = () => {

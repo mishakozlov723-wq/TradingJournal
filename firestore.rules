@@ -58,39 +58,70 @@ service cloud.firestore {
       allow write: if isRetocker();
     }
 
+    // A persistent per-owner fence serializes bounded asset migrations against
+    // ALL journal writers, including old clients and queued offline writes.
+    function journalUnlocked(uid) {
+      return !existsAfter(/databases/$(database)/documents/journalAssetGuards/$(uid))
+        || getAfter(/databases/$(database)/documents/journalAssetGuards/$(uid)).data.locked == false;
+    }
+    function journalTargetAllowed(data) {
+      let uid = data.uid;
+      return journalUnlocked(uid)
+        && (!existsAfter(/databases/$(database)/documents/journalAssetGuards/$(uid))
+          || !(data.get('asset', '') in getAfter(/databases/$(database)/documents/journalAssetGuards/$(uid)).data.get('retired', [])));
+    }
+    match /journalAssetGuards/{uid} {
+      allow read: if isRetocker() || owns(uid);
+      allow create: if (isRetocker() || owns(uid))
+        && request.resource.data.uid == uid
+        && request.resource.data.locked is bool
+        && request.resource.data.retired is list
+        && request.resource.data.retired.size() <= 500;
+      allow update: if (isRetocker() || owns(uid))
+        && request.resource.data.uid == uid
+        && request.resource.data.locked is bool
+        && request.resource.data.retired is list
+        && request.resource.data.retired.size() <= 500
+        && request.resource.data.retired.hasAll(resource.data.retired);
+      // Tombstones must survive every client/version and cannot be erased.
+      allow delete: if false;
+    }
+
     // Trades are owned by the UID stored in the document.
     match /trades/{tradeId} {
       allow read: if isRetocker()
         || owns(resource.data.uid);
 
       allow create: if (isRetocker() || owns(request.resource.data.uid))
-        && request.resource.data.direction in ['LONG','SHORT'];
+        && request.resource.data.direction in ['LONG','SHORT']
+        && journalTargetAllowed(request.resource.data);
 
-      allow update: if (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['direction']) || request.resource.data.direction in ['LONG','SHORT'])
+      allow update: if journalUnlocked(resource.data.uid) && journalTargetAllowed(request.resource.data)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['direction']) || request.resource.data.direction in ['LONG','SHORT'])
         && (isRetocker()
         || (
           owns(resource.data.uid)
           && request.resource.data.uid == resource.data.uid
         ));
 
-      allow delete: if isRetocker()
-        || owns(resource.data.uid);
+      allow delete: if journalUnlocked(resource.data.uid)
+        && (isRetocker() || owns(resource.data.uid));
     }
 
     // Private chart images. Saved atomically together with their trade.
     match /tradeImages/{imageId} {
       allow read: if isRetocker() || owns(resource.data.uid);
-      allow create: if (isRetocker() || owns(request.resource.data.uid))
+      allow create: if journalUnlocked(request.resource.data.uid) && (isRetocker() || owns(request.resource.data.uid))
         && request.resource.data.keys().hasOnly(['id','uid','tradeId','data'])
         && request.resource.data.data is string
         && request.resource.data.data.size() < 650000;
-      allow update: if (isRetocker() || owns(resource.data.uid))
+      allow update: if journalUnlocked(resource.data.uid) && (isRetocker() || owns(resource.data.uid))
         && request.resource.data.uid == resource.data.uid
         && request.resource.data.tradeId == resource.data.tradeId
         && request.resource.data.keys().hasOnly(['id','uid','tradeId','data'])
         && request.resource.data.data is string
         && request.resource.data.data.size() < 650000;
-      allow delete: if isRetocker() || owns(resource.data.uid);
+      allow delete: if journalUnlocked(resource.data.uid) && (isRetocker() || owns(resource.data.uid));
     }
 
     // Diary entries follow the same ownership model as trades.
@@ -128,7 +159,8 @@ service cloud.firestore {
       allow list: if isRetocker()
         || ownsLogin(resource.data.notesPageOwner);
 
-      allow create: if isRetocker()
+      allow create: if (!request.resource.data.keys().hasAny(['assets','deletedAssets']) || journalUnlocked(request.resource.data.get('uid', request.auth.uid)))
+        && (isRetocker()
         || (
           ownsLogin(titleId)
           && owns(request.resource.data.get('uid', null))
@@ -140,9 +172,10 @@ service cloud.firestore {
             !request.resource.data.keys().hasAny(['uid'])
             || owns(request.resource.data.uid)
           )
-        );
+        ));
 
-      allow update: if isRetocker()
+      allow update: if (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['assets','deletedAssets','assetRevision']) || (journalUnlocked(resource.data.get('uid', request.auth.uid)) && request.resource.data.assetRevision is int && request.resource.data.assetRevision == resource.data.get('assetRevision', 0) + 1))
+        && (isRetocker()
         || (
           ownsLogin(titleId)
           && owns(resource.data.get('uid', null))
@@ -154,7 +187,7 @@ service cloud.firestore {
           && request.resource.data.get('notesPageOwner', null)
             == resource.data.notesPageOwner
           && notesUidUnchangedOrOwned()
-        );
+        ));
 
       allow delete: if isRetocker()
         || (ownsLogin(titleId) && owns(resource.data.get('uid', null)))
@@ -202,6 +235,17 @@ service cloud.firestore {
 
       allow delete: if isRetocker()
         || owns(resource.data.uid);
+    }
+
+    // Immutable snapshots of an explicitly resolved ambiguous account import.
+    match /accountHistoryBackups/{backupId} {
+      allow read: if isRetocker() || owns(resource.data.uid);
+      allow create: if (isRetocker() || owns(request.resource.data.uid))
+        && request.resource.data.keys().hasOnly(['uid','accountId','previous','incoming','cloudBefore','chosen','createdAt'])
+        && request.resource.data.accountId is string
+        && request.resource.data.previous is list && request.resource.data.incoming is list
+        && request.resource.data.cloudBefore is list && request.resource.data.chosen is list;
+      allow update, delete: if false;
     }
 
     // NEW: Replay Space chart style templates (profiles).
@@ -280,15 +324,19 @@ service cloud.firestore {
           )
         );
 
-      allow create: if isRetocker()
-        || (ownSnapshotId() && owns(request.resource.data.get('uid', null)));
+      allow create: if request.resource.data.get('historyRevision', 0) == 1
+        && request.resource.data.history is list
+        && (isRetocker() || (ownSnapshotId() && owns(request.resource.data.get('uid', null))));
 
-      allow update: if isRetocker()
+      allow update: if request.resource.data.historyRevision is int
+        && request.resource.data.historyRevision == resource.data.get('historyRevision', 0) + 1
+        && request.resource.data.history is list
+        && (isRetocker()
         || (
           ownSnapshotId()
           && owns(resource.data.get('uid', null))
           && request.resource.data.get('uid', null) == resource.data.uid
-        );
+        ));
 
       allow delete: if isRetocker()
         || (ownSnapshotId() && owns(resource.data.get('uid', null)));

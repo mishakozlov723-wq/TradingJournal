@@ -55,8 +55,8 @@ jobs:
           distribution: temurin
           java-version: '21'
       - name: Install isolated local emulator tools
-        run: npm install --prefix /tmp/tj-rules --no-save firebase-tools@14.22.0 @firebase/rules-unit-testing@5.0.0 firebase@12.4.0
+        run: npm install --prefix /tmp/tj-rules --no-save firebase-tools@14.22.0 @firebase/rules-unit-testing@5.0.0 firebase@12.4.0 acorn@8.15.0
       - name: Test repository rules on loopback emulator only
         env:
           NODE_PATH: /tmp/tj-rules/node_modules
-        run: /tmp/tj-rules/node_modules/.bin/firebase emulators:exec --only firestore --project demo-tradingjournal-audit --config firebase.audit.json 'node --test verification/firestore-audit.rules.test.cjs'
+        run: /tmp/tj-rules/node_modules/.bin/firebase emulators:exec --only firestore --project demo-tradingjournal-audit --config firebase.audit.json 'node --test --test-concurrency=1 verification/*.rules.test.cjs'

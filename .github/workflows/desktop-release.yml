@@ -3,6 +3,10 @@ name: Verify and build SYTER desktop
 on:
   workflow_dispatch:
     inputs:
+      signed_release:
+        description: Optional trusted Authenticode signing; false builds a free manual installer with auto-update disabled
+        type: boolean
+        default: false
       notes_only:
         description: Focus checks on update notes and scrollbar styling; no mini animation or installer redesign checks
         type: boolean
@@ -136,6 +140,7 @@ jobs:
       - name: Build installer and updater files
         if: ${{ !inputs.check_only && !inputs.reuse_verified_update }}
         env:
+          SYTER_SIGNED_RELEASE: ${{ inputs.signed_release }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
           CSC_LINK: ${{ secrets.SYTER_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.SYTER_CSC_KEY_PASSWORD }}
@@ -235,12 +240,13 @@ jobs:
           path: desktop/release/*
           if-no-files-found: error
           retention-days: 14
-      - name: Verify publisher signatures before publication
+      - name: Verify release mode and optional publisher signatures
         if: ${{ inputs.publish && !inputs.check_only }}
         env:
           SYTER_PUBLISHER_NAME: ${{ vars.SYTER_PUBLISHER_NAME }}
+          SYTER_SIGNED_RELEASE: ${{ inputs.signed_release }}
         run: ./scripts/verify-release-signatures.ps1
-      - name: Publish all updater assets
+      - name: Publish approved manual installer or signed updater assets
         if: ${{ inputs.publish && !inputs.check_only && !inputs.notes_only && !inputs.installer_only && !inputs.reuse_verified_update && github.ref == 'refs/heads/main' }}
         env:
           GH_TOKEN: ${{ secrets.SYTER_RELEASE_TOKEN }}
@@ -270,7 +276,11 @@ jobs:
             $resumeDraft = $true
           }
           $notes | Set-Content release-notes.md -Encoding utf8
-          $expected = @("latest.yml", "SYTER-Setup-$version.exe", "SYTER-Setup-$version.exe.blockmap", "SYTER-Install-$version.exe", "installer-manifest.json")
+          # Free/manual releases deliberately expose no latest.yml or Setup feed.
+          # This is not a signature substitute; old installed clients are NOT repaired.
+          $signed = '${{ inputs.signed_release }}' -eq 'true'
+          $expected = @("SYTER-Install-$version.exe", "installer-manifest.json")
+          if ($signed) { $expected += @("latest.yml", "SYTER-Setup-$version.exe", "SYTER-Setup-$version.exe.blockmap") }
           $assets = @($expected | ForEach-Object {
             $file = Join-Path release $_
             if (!(Test-Path $file -PathType Leaf)) { throw "Missing updater asset: $_" }
@@ -283,5 +293,10 @@ jobs:
             gh release create $tag @assets --repo $repo --title "SYTER $version" --notes-file release-notes.md --draft
             if ($LASTEXITCODE -ne 0) { throw 'Could not create complete draft release' }
           }
-          gh release edit $tag --repo $repo --notes-file release-notes.md --draft=false --latest
+          # A resumed draft may contain updater artifacts from a different mode.
+          $draftAssets = gh release view $tag --repo $repo --json assets --jq '.assets[].name'
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect draft artifact set' }
+          foreach ($asset in $draftAssets) { if ($asset -notin $expected) { throw "Unexpected draft asset $asset; refusing to publish a mixed-mode release" } }
+          $latestFlag = if ($signed) { '--latest' } else { '--latest=false' }
+          gh release edit $tag --repo $repo --notes-file release-notes.md --draft=false $latestFlag
           if ($LASTEXITCODE -ne 0) { throw 'Draft upload succeeded but publishing failed' }

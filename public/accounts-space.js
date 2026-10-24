@@ -262,31 +262,101 @@
       };
     });
   }
+  function accHistorySignature(accountId,list){
+    return JSON.stringify(accCompactHistory(accountId,list||[]).map(function(t){return JSON.stringify(t);}).sort());
+  }
+  function accHistoryConflict(accountId,previous,incoming,message){
+    var error=new Error(message||'История без ID изменилась. Автоматическое объединение остановлено: невозможно отличить исправление от новой сделки.');
+    error.code='HISTORY_CONFLICT';error.accountId=String(accountId);error.previous=accCompactHistory(accountId,previous);error.incoming=accCompactHistory(accountId,incoming);return error;
+  }
+  function accHistoryIdentified(accountId,t){return String(t._id||'').indexOf('mfb_'+accountId+'_source_')===0;}
+  function accHistoryProposal(accountId,a,b,replaceAnonymous){
+    var left=accCompactHistory(accountId,a||[]),right=accCompactHistory(accountId,b||[]),map=Object.create(null),out=[];
+    [left,right].forEach(function(list){
+      var seen=Object.create(null);list.forEach(function(t){if(accHistoryIdentified(accountId,t)){
+        var text=JSON.stringify(t);if(seen[t._id]&&seen[t._id]!==text)throw accHistoryConflict(accountId,a,b,'Один provider ID содержит разные сделки. Исправьте исходный экспорт; автоматическое решение запрещено.');seen[t._id]=text;
+        if(map[t._id]!==undefined)out[map[t._id]]=t;else{map[t._id]=out.length;out.push(t);}
+      }});
+    });
+    (replaceAnonymous?right:left).forEach(function(t){if(!accHistoryIdentified(accountId,t))out.push(t);});
+    out.sort(function(x,y){return (accParseMyfxDate(x.closeTime)||accParseMyfxDate(x.openTime)||0)-(accParseMyfxDate(y.closeTime)||accParseMyfxDate(y.openTime)||0);});return out;
+  }
   function accMergeHistory(accountId,a,b){
-    var map=Object.create(null), out=[];
-    [accCompactHistory(accountId,a||[]),accCompactHistory(accountId,b||[])].forEach(function(list){list.forEach(function(t){
-      var id=t._id;if(map[id]!==undefined)out[map[id]]=t;else {map[id]=out.length;out.push(t);}
-    });});
-    out.sort(function(x,y){ return (accParseMyfxDate(x.closeTime)||accParseMyfxDate(x.openTime)||0)-(accParseMyfxDate(y.closeTime)||accParseMyfxDate(y.openTime)||0); });
-    return out;
+    var left=accCompactHistory(accountId,a||[]),right=accCompactHistory(accountId,b||[]);
+    var anonA=left.filter(function(t){return !accHistoryIdentified(accountId,t);}),anonB=right.filter(function(t){return !accHistoryIdentified(accountId,t);});
+    // No fuzzy identity inference, even for a profit correction or an increased
+    // count of identical executions. Quarantine BOTH snapshots before any write.
+    if(left.length&&right.length&&(anonA.length||anonB.length)&&accHistorySignature(accountId,left)!==accHistorySignature(accountId,right))throw accHistoryConflict(accountId,left,right);
+    return accHistoryProposal(accountId,left,right,!left.length);
   }
   async function accLoadCachedHistory(accountId,uid){
-    var local=[]; uid=uid||accCurrentUid();
-    try { var raw=JSON.parse(localStorage.getItem(accHistoryKey(accountId,uid))||'[]'); if(Array.isArray(raw))local=raw; } catch(_) {}
-    if(!uid || typeof db==='undefined')return local;
-    try {
-      var doc=await db.collection(ACCOUNTS_REMOTE_COLLECTION).doc('mfb_'+uid+'_'+String(accountId)).get();
-      if(doc.exists && Array.isArray(doc.data().history)) local=accMergeHistory(accountId,local,doc.data().history);
-    } catch(err){ console.warn('Accounts history cache read failed:',err); }
-    return local;
+    var local=[];uid=uid||accCurrentUid();
+    try{var raw=JSON.parse(localStorage.getItem(accHistoryKey(accountId,uid))||'[]');if(Array.isArray(raw))local=raw;}catch(_){}
+    if(!uid||typeof db==='undefined')throw Error('Для безопасного импорта нужно подключение к облачному снимку.');
+    // A failed cloud read is NOT an empty baseline that may overwrite history.
+    var pending;
+    try{pending=JSON.parse(localStorage.getItem(accHistoryKey(accountId,uid)+':conflict')||'null');}catch(_){}
+    if(pending&&pending.status!=='dismissed'&&pending.status!=='resolved'&&Array.isArray(pending.previous)&&Array.isArray(pending.incoming)){
+      var preserved=accHistoryConflict(accountId,pending.previous,pending.incoming,'Остался неразрешённый импорт. Оба снимка восстановлены из локального архива.');preserved.remoteExpected=pending.remoteExpected||[];throw preserved;
+    }
+    var doc=await db.collection(ACCOUNTS_REMOTE_COLLECTION).doc('mfb_'+uid+'_'+String(accountId)).get({source:'server'});
+    var remote=doc.exists&&Array.isArray(doc.data().history)?doc.data().history:[];
+    try{return {history:accMergeHistory(accountId,local,remote),remote:remote};}
+    catch(error){error.remoteExpected=remote;throw error;}
   }
-  function accSaveCachedHistory(accountId,history,uid){
-    var compact=accCompactHistory(accountId,history); uid=uid||accCurrentUid();
-    try { localStorage.setItem(accHistoryKey(accountId,uid),JSON.stringify(compact)); } catch(_) {}
-    if(!uid || typeof db==='undefined')return Promise.resolve(false);
-    return db.collection(ACCOUNTS_REMOTE_COLLECTION).doc('mfb_'+uid+'_'+String(accountId)).set({
-      uid:uid,accountId:String(accountId),source:'myfxbook',history:compact,updatedAt:firebase.firestore.FieldValue.serverTimestamp()
-    },{merge:true}).then(function(){ return true; }).catch(function(err){ console.warn('Accounts history cache write failed:',err); return false; });
+  async function accSaveCachedHistory(accountId,history,uid,expected,backup){
+    var compact=accCompactHistory(accountId,history);uid=uid||accCurrentUid();
+    if(!uid||accCurrentUid()!==uid||typeof db==='undefined')throw Error('Account changed; import cancelled.');
+    var ref=db.collection(ACCOUNTS_REMOTE_COLLECTION).doc('mfb_'+uid+'_'+String(accountId));
+    var archive=backup?db.collection('accountHistoryBackups').doc():null;
+    await db.runTransaction(async function(tx){
+      var doc=await tx.get(ref),remote=doc.exists&&Array.isArray(doc.data().history)?doc.data().history:[];
+      if(accCurrentUid()!==uid)throw Error('Account changed while reading history; no import written.');
+      if(accHistorySignature(accountId,remote)!==accHistorySignature(accountId,expected||[])){
+        var conflict=accHistoryConflict(accountId,remote,compact,'Другой клиент изменил историю. Обновите снимки и выберите решение заново.');conflict.remoteExpected=remote;throw conflict;
+      }
+      if(archive)tx.set(archive,{uid:uid,accountId:String(accountId),previous:backup.previous,incoming:backup.incoming,cloudBefore:remote,chosen:compact,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+      tx.set(ref,{uid:uid,accountId:String(accountId),source:'myfxbook',history:compact,historyRevision:(doc.exists?Number(doc.data().historyRevision)||0:0)+1,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+    });
+    try{localStorage.setItem(accHistoryKey(accountId,uid),JSON.stringify(compact));}catch(error){accSetWarning('Облако сохранило историю, локальный кэш недоступен: '+error.message);}
+    return compact;
+  }
+  function accShowHistoryConflict(error,uid){
+    var host=accEl('accountsDetailContent');if(!host)return;
+    var old=accEl('accountsHistoryConflict');if(old)old.remove();
+    var panel=document.createElement('section');panel.id='accountsHistoryConflict';panel.className='card';panel.setAttribute('role','alert');
+    var heading=document.createElement('h3');heading.textContent='История требует решения — импорт не сохранён';panel.appendChild(heading);
+    var description=document.createElement('p');description.textContent=error.message+' Сохранено: '+error.previous.length+', входящий снимок: '+error.incoming.length+'. Новые/изменённые строки не участвуют в статистике до решения.';panel.appendChild(description);
+    var payload={accountId:error.accountId,previous:error.previous,incoming:error.incoming,remoteExpected:error.remoteExpected||[]};
+    var pendingKey=accHistoryKey(error.accountId,uid)+':conflict';
+    try{localStorage.setItem(pendingKey,JSON.stringify(payload));}catch(_){description.textContent+=' Локальный архив недоступен: скачайте оба снимка до закрытия окна.';}
+    var preview=document.createElement('details'),summary=document.createElement('summary'),pre=document.createElement('pre');summary.textContent='Сравнить оба снимка (JSON)';pre.textContent=JSON.stringify(payload,null,2);pre.style.cssText='max-height:300px;overflow:auto;white-space:pre-wrap';preview.append(summary,pre);panel.appendChild(preview);
+    var exported=false;
+    function button(label,action){var el=document.createElement('button');el.type='button';el.textContent=label;el.addEventListener('click',action);panel.appendChild(el);return el;}
+    button('Скачать оба снимка',function(){var url=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='myfxbook-history-conflict-'+error.accountId+'.json';a.click();setTimeout(function(){URL.revokeObjectURL(url);},1000);exported=true;});
+    button('Оставить сохранённую историю (без записи)',function(){try{localStorage.setItem(pendingKey,JSON.stringify(Object.assign({},payload,{status:'dismissed'})));}catch(_){}panel.remove();accSetWarning('Импорт отклонён. Сохранённая история не изменена; снимки доступны в локальном архиве/скачанном файле.');});
+    var accept=button('Принять входящий снимок с архивом',async function(){
+      if(!exported){accSetError('Сначала скачайте оба снимка для сравнения и резервной копии.');return;}
+      if(accCurrentUid()!==uid||String(accountsState.selectedId)!==error.accountId){accSetError('Аккаунт изменён. Откройте конфликт заново.');return;}
+      if(!window.confirm('Входящий снимок может быть неполным. Заменить ВСЕ строки без provider ID входящим набором, а совпадающие provider ID обновить входящими значениями? Остальные provider ID сохранятся. Обе версии будут атомарно архивированы в облаке. Это явное решение, не автоматическое сопоставление сделок.'))return;
+      Array.prototype.forEach.call(panel.querySelectorAll('button'),function(b){b.disabled=true;});
+      try{
+        var chosen=accHistoryProposal(error.accountId,error.previous,error.incoming,true);
+        await accSaveCachedHistory(error.accountId,chosen,uid,error.remoteExpected||[],payload);
+        if(accCurrentUid()!==uid||String(accountsState.selectedId)!==error.accountId)return;
+        try{if(JSON.stringify(JSON.parse(localStorage.getItem(pendingKey)||'null'))===JSON.stringify(payload))localStorage.setItem(pendingKey,JSON.stringify(Object.assign({},payload,{status:'resolved'})));}catch(_){}
+        if(!panel.isConnected)return;
+        panel.remove();if(accountsState.details){accountsState.details.mergedHistory=chosen;accRenderDetail(accountsState.details);}else accRenderHistory(chosen,'USD');
+        accSyncCopy('Решение сохранено; обе исходные версии в архиве');
+      }catch(failure){
+        if(accCurrentUid()!==uid||String(accountsState.selectedId)!==error.accountId||!panel.isConnected)return;
+        if(failure.code==='HISTORY_CONFLICT')accShowHistoryConflict(failure,uid);
+        accSetError(failure.message||'Не сохранено. Оба снимка сохранены, повторите загрузку.');
+      }
+      finally{Array.prototype.forEach.call(panel.querySelectorAll('button'),function(b){b.disabled=false;});}
+    });
+    accountsState.details={account:accFindAccount(error.accountId)||{currency:'USD',name:'Account '+error.accountId},mergedHistory:error.previous,openTrades:[],daily:[]};accRenderDetail(accountsState.details);
+    host.prepend(panel);
   }
 
   function accIsTrade(t){ return !!(t && String(t.symbol||'').trim() && /buy|sell/i.test(String(t.action||''))); }
@@ -533,6 +603,7 @@
   }
 
   function accPrepareDetailSwitch(id){
+    var conflict=accEl('accountsHistoryConflict');if(conflict)conflict.remove();
     var account=accFindAccount(id), content=accEl('accountsDetailContent'), loading=accEl('accountsDetailLoading');
     accountsState.details=null; accountsState.chartSignature=null;
     if(content){ content.classList.remove('is-loading'); content.classList.add('is-account-switch'); }
@@ -555,7 +626,9 @@
       if(requestSeq!==accountsState.detailRequestSeq || accCurrentUid()!==requestUid || accountsState.selectedId!==id || !accountsState.mode)return;
       var data=await accApi('details',id);
       if(requestSeq!==accountsState.detailRequestSeq || accCurrentUid()!==requestUid || accountsState.selectedId!==id || !accountsState.mode)return;
-      var fresh=accFlatten(data.history||[]), merged=accMergeHistory(id,cached,fresh); await accSaveCachedHistory(id,merged,requestUid);
+      var fresh=accFlatten(data.history||[]),merged;
+      try{merged=accMergeHistory(id,cached.history,fresh);}catch(conflict){conflict.remoteExpected=cached.remote;throw conflict;}
+      try{await accSaveCachedHistory(id,merged,requestUid,cached.remote);}catch(failure){if(failure.code==='HISTORY_CONFLICT')throw failure;var unsaved=accHistoryConflict(id,cached.history,fresh,'Сервер не подтвердил импорт: '+failure.message);unsaved.remoteExpected=cached.remote;throw unsaved;}
       if(requestSeq!==accountsState.detailRequestSeq || accCurrentUid()!==requestUid || accountsState.selectedId!==id || !accountsState.mode)return;
       var details={account:data.account||account,history:fresh,mergedHistory:merged,openTrades:accFlatten(data.openTrades||[]),daily:accFlatten(data.daily||[]),partialErrors:data.partialErrors||[]};
       accountsState.details=details; accRenderDetail(details); accountsState.lastLocalRefresh=new Date();
@@ -568,6 +641,7 @@
         accSaveConnectionToken(''); accountsState.accounts=[];accountsState.listLoaded=false;accountsState.selectedId=null;accountsState.details=null;accountsState.connectionPanelOpen=true;
         accBackToList();accRenderAccounts();accRenderSetup(true);accPopulateSetup();
       } else if(content)content.classList.remove('is-account-switch');
+      if(err&&err.code==='HISTORY_CONFLICT')accShowHistoryConflict(err,requestUid);
       accSetError(err.message||'Could not load account statistics.'); accSyncCopy('Не удалось обновить');
     }
     finally {
@@ -638,6 +712,7 @@
     if(statOverlay)statOverlay.addEventListener('click',function(e){if(e.target===statOverlay)accCloseStatInfo(true);});
     document.addEventListener('keydown',function(e){ if(e.key!=='Escape'||!accountsState.mode)return; if(accStatInfoOpen()){e.preventDefault();accCloseStatInfo(true);return;} if(accountsState.selectedId)accBackToList(); else accExitWorkspace(); });
     if(typeof firebase!=='undefined'&&firebase.auth&&firebase.auth().onAuthStateChanged)firebase.auth().onAuthStateChanged(function(){
+      var conflict=accEl('accountsHistoryConflict');if(conflict)conflict.remove();
       accountsState.listRequestSeq++; accountsState.detailRequestSeq++; accountsState.loadingList=false; accountsState.loadingDetail=false; accountsState.loadingDetailId=null; accountsState.connecting=false;
       accountsState.accounts=[];accountsState.listLoaded=false;accountsState.selectedId=null;accountsState.details=null;accountsState.connectionPanelOpen=false;
       accSetRefreshBusy(false); accSyncMenuVisibility(); if(accountsState.mode)accRefreshAccounts(false);

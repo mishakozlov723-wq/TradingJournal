@@ -3,6 +3,10 @@
 // Preserve upstream two-pass uninstaller generation/signing. Adapt only the
 // final installer section in memory; no dependency files are modified.
 const signing=require('./signing-policy').signingConfiguration();
+if (signing.extraMetadata.syterUpdatePolicy === 'manual') {
+  delete process.env.CSC_LINK; delete process.env.CSC_KEY_PASSWORD;
+  process.env.CSC_IDENTITY_AUTO_DISCOVERY = 'false';
+}
 const { build, Platform, Arch } = require('electron-builder');
 const { NsisTarget } = require('app-builder-lib/out/targets/nsis/NsisTarget');
 const original = NsisTarget.prototype.computeScriptAndSignUninstaller;
