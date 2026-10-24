@@ -174,7 +174,7 @@ service cloud.firestore {
           )
         ));
 
-      allow update: if (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['assets','deletedAssets','assetRevision']) || (journalUnlocked(resource.data.get('uid', request.auth.uid)) && ((request.resource.data.assetRevision is int && request.resource.data.assetRevision == resource.data.get('assetRevision', 0) + 1) || (resource.data.get('assetRevision', 0) == 0 && !request.resource.data.keys().hasAny(['assetRevision']) && !existsAfter(/databases/$(database)/documents/journalAssetGuards/$(resource.data.get('uid', request.auth.uid)))))))
+      allow update: if (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['assets','deletedAssets','assetRevision']) || (journalUnlocked(resource.data.get('uid', request.resource.data.get('uid', request.auth.uid))) && journalUnlocked(request.resource.data.get('uid', resource.data.get('uid', request.auth.uid))) && ((request.resource.data.assetRevision is int && request.resource.data.assetRevision == resource.data.get('assetRevision', 0) + 1) || (resource.data.get('assetRevision', 0) == 0 && !request.resource.data.keys().hasAny(['assetRevision']) && !existsAfter(/databases/$(database)/documents/journalAssetGuards/$(resource.data.get('uid', request.resource.data.get('uid', request.auth.uid))))))))
         && (isRetocker()
         || (
           ownsLogin(titleId)

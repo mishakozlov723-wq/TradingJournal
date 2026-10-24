@@ -86,3 +86,5 @@ full Windows gates, after compatible production rollout. Previously published
 v1.3.12 and all pinned historical baseline artifacts remain unchanged.
 
 Private storage draft metadata anchors to existing `main` rather than creating a feature-SHA tag (which can require workflows-write). Exact tested source SHA is in the draft body and byte-verified receipt; no workflow-write permission is granted and these drafts are never published.
+
+Final TJ-05 review additionally reproduced two legacy admin clients racing an old uidless root: lock checks must resolve the incoming owner UID, not the administrator UID. Rules now fence both existing and incoming owner for asset metadata. A real SDK/emulator regression fails on prior rules and passes with the fix; full local rules suite23/23. No production data was accessed by this test.
