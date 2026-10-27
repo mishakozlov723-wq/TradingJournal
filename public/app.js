@@ -351,6 +351,7 @@
   var weeklySelected = null; // { month, week } or null
   var calendarYear = new Date().getFullYear();
   var calendarMonth = new Date().getMonth();
+  var calendarBrowse = { year: calendarYear, month: calendarMonth, level: 'days' };
   var datetimePickerState = {
     target: null,
     year: new Date().getFullYear(),
@@ -375,6 +376,7 @@
     wheelDelay: { hour: 190, minute: 190 },
     lastWheelAt: { hour: 0, minute: 0 },
     calendarAnimation: null,
+    level: 'days',
     minDate: null,
     maxDate: null,
     title: null,
@@ -399,7 +401,7 @@
     if (!applyButton) return;
     var dayAllowed = pickerDayAllowed(datetimePickerState.year, datetimePickerState.month, datetimePickerState.day);
     var futureTime = pickerDateTimeIsFuture();
-    applyButton.disabled = !dayAllowed || futureTime;
+    applyButton.disabled = datetimePickerState.level !== 'days' || !dayAllowed || futureTime;
     applyButton.title = futureTime ? 'Trade dates cannot be in the future.' : '';
   }
   function pickerDayAllowed(year, month, day) {
@@ -644,6 +646,18 @@
     var title = document.getElementById('datetimePickerTitle');
     var calendarAnimation = datetimePickerState.calendarAnimation;
     datetimePickerState.calendarAnimation = null;
+    var nav = window.TJCalendarNav;
+    nav.header(datetimePickerState, label, document.getElementById('dtPrevMonthBtn'), document.getElementById('dtNextMonthBtn'), datetimePickerState.minDate, datetimePickerState.maxDate);
+    document.getElementById('datetimePickerWeekdays').hidden = datetimePickerState.level !== 'days';
+    if (nav.render(datetimePickerState, grid, datetimePickerState.minDate, datetimePickerState.maxDate, function() {
+      datetimePickerState.calendarAnimation = 'zoom'; renderDateTimePicker();
+    })) {
+      title.textContent = datetimePickerState.title || 'Select date and time';
+      grid.classList.remove('is-month-transition');
+      if (calendarAnimation) nav.animate(grid);
+      syncPickerTime(); return;
+    }
+    grid.classList.remove('calendar-zoom-enter');
     var first = new Date(datetimePickerState.year, datetimePickerState.month, 1);
     var daysInMonth = new Date(datetimePickerState.year, datetimePickerState.month + 1, 0).getDate();
     var firstDow = first.getDay();
@@ -654,8 +668,8 @@
     for (var i = 0; i < leadBlanks; i++) html += '<button type="button" class="datetime-picker-day is-muted" disabled></button>';
     for (var day = 1; day <= daysInMonth; day++) {
       var active = day === datetimePickerState.day ? ' is-active' : '';
-      var disabled = pickerDayAllowed(datetimePickerState.year, datetimePickerState.month, day) ? '' : ' disabled is-muted';
-      html += '<button type="button" class="datetime-picker-day' + active + disabled + '" data-day="' + day + '">' + day + '</button>';
+      var allowed = pickerDayAllowed(datetimePickerState.year, datetimePickerState.month, day);
+      html += '<button type="button" class="datetime-picker-day' + active + (allowed ? '' : ' is-muted') + '" data-day="' + day + '"' + (allowed ? '' : ' disabled') + '>' + day + '</button>';
     }
     for (var tail = leadBlanks + daysInMonth; tail < 42; tail++) {
       html += '<button type="button" class="datetime-picker-day is-muted" disabled></button>';
@@ -666,6 +680,7 @@
       void grid.offsetWidth;
       grid.classList.add('is-month-transition');
     }
+    if (calendarAnimation === 'zoom') nav.animate(grid);
     if (calendarAnimation === 'day') {
       var todayButton = grid.querySelector('.datetime-picker-day.is-active');
       if (todayButton) todayButton.classList.add('is-today-selection');
@@ -684,6 +699,7 @@
     var parsed = parseDateTimeValue(getDateTimeInputValue(input));
     var now = new Date();
     datetimePickerState.target = input;
+    datetimePickerState.level = 'days';
     datetimePickerState.year = parsed ? parsed.year : now.getFullYear();
     datetimePickerState.month = parsed ? parsed.month : now.getMonth();
     datetimePickerState.day = parsed ? parsed.day : now.getDate();
@@ -4027,6 +4043,19 @@
   }
 
   function renderCalendar() {
+    calendarBrowse.year = calendarYear; calendarBrowse.month = calendarMonth;
+    var nav = window.TJCalendarNav, coarse = calendarBrowse.level !== 'days';
+    var zoomGrid = document.getElementById('calZoomGrid');
+    nav.header(calendarBrowse, document.getElementById('calLabel'), document.getElementById('calPrevBtn'), document.getElementById('calNextBtn'));
+    zoomGrid.hidden = !coarse;
+    document.querySelector('#calendarTab .cal-scroll-inner').hidden = coarse;
+    document.querySelector('#calendarTab .cal-legend').hidden = coarse;
+    document.getElementById('calTotalLabel').style.visibility = coarse ? 'hidden' : '';
+    if (nav.render(calendarBrowse, zoomGrid, null, null, function() {
+      calendarYear = calendarBrowse.year; calendarMonth = calendarBrowse.month;
+      renderCalendar();
+      if (calendarBrowse.level === 'days') document.getElementById('calLabel').focus({ preventScroll:true });
+    })) { nav.animate(zoomGrid); return; }
     var filtered = assetFiltered(trades);
     document.getElementById('calLabel').textContent = EN_MONTHS_FULL[calendarMonth] + ' ' + calendarYear;
 
@@ -4152,16 +4181,16 @@
   document.getElementById('calDayModal').addEventListener('click', function(e) {
     if (e.target === document.getElementById('calDayModal')) closeCalDayModal();
   });
-  document.getElementById('calPrevBtn').addEventListener('click', function() {
-    calendarMonth--;
-    if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; }
-    renderCalendar();
+  document.getElementById('calLabel').addEventListener('click', function() {
+    window.TJCalendarNav.up(calendarBrowse); renderCalendar();
   });
-  document.getElementById('calNextBtn').addEventListener('click', function() {
-    calendarMonth++;
-    if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; }
-    renderCalendar();
-  });
+  function movePnlPeriod(dir) {
+    if (window.TJCalendarNav.move(calendarBrowse, dir)) {
+      calendarYear = calendarBrowse.year; calendarMonth = calendarBrowse.month; renderCalendar();
+    }
+  }
+  document.getElementById('calPrevBtn').addEventListener('click', function() { movePnlPeriod(-1); });
+  document.getElementById('calNextBtn').addEventListener('click', function() { movePnlPeriod(1); });
 
   // ── Best trade / best asset cards (month, quarter, year) ──
   function bestTradeOf(arr) {
@@ -6596,38 +6625,37 @@
   document.addEventListener('mouseleave', function() {
     if (datetimePickerState.dragPart) endTimeDrag();
   });
-  document.getElementById('dtPrevMonthBtn').addEventListener('click', function() {
-    datetimePickerState.month--;
-    if (datetimePickerState.month < 0) { datetimePickerState.month = 11; datetimePickerState.year--; }
-    var days = new Date(datetimePickerState.year, datetimePickerState.month + 1, 0).getDate();
-    if (datetimePickerState.day > days) datetimePickerState.day = days;
-    renderDateTimePicker();
+  document.getElementById('dtMonthLabel').addEventListener('click', function() {
+    window.TJCalendarNav.up(datetimePickerState);
+    datetimePickerState.calendarAnimation = 'zoom'; renderDateTimePicker();
   });
-  document.getElementById('dtNextMonthBtn').addEventListener('click', function() {
-    datetimePickerState.month++;
-    if (datetimePickerState.month > 11) { datetimePickerState.month = 0; datetimePickerState.year++; }
-    var days = new Date(datetimePickerState.year, datetimePickerState.month + 1, 0).getDate();
-    if (datetimePickerState.day > days) datetimePickerState.day = days;
-    renderDateTimePicker();
-  });
+  function movePickerPeriod(dir) {
+    if (window.TJCalendarNav.move(datetimePickerState, dir, datetimePickerState.minDate, datetimePickerState.maxDate)) {
+      datetimePickerState.calendarAnimation = 'zoom'; renderDateTimePicker();
+    }
+  }
+  document.getElementById('dtPrevMonthBtn').addEventListener('click', function() { movePickerPeriod(-1); });
+  document.getElementById('dtNextMonthBtn').addEventListener('click', function() { movePickerPeriod(1); });
   document.getElementById('datetimePickerTodayBtn').addEventListener('click', function() {
     var now = new Date();
     var sameMonth = datetimePickerState.year === now.getFullYear() && datetimePickerState.month === now.getMonth();
     var sameDay = sameMonth && datetimePickerState.day === now.getDate();
     var sameTime = sameDay && datetimePickerState.hour === pad2(now.getHours()) && datetimePickerState.minute === pad2(now.getMinutes());
-    if (sameTime) return;
+    if (sameTime && datetimePickerState.level === 'days') return;
+    var wasZoomed = datetimePickerState.level !== 'days';
+    datetimePickerState.level = 'days';
     datetimePickerState.calendarAnimation = sameMonth ? (sameDay ? null : 'day') : 'month';
     datetimePickerState.year = now.getFullYear();
     datetimePickerState.month = now.getMonth();
     datetimePickerState.day = now.getDate();
     datetimePickerState.hour = pad2(now.getHours());
     datetimePickerState.minute = pad2(now.getMinutes());
-    if (sameDay) syncPickerTime();
+    if (sameDay && !wasZoomed) syncPickerTime();
     else renderDateTimePicker();
   });
   document.getElementById('datetimePickerApplyBtn').addEventListener('click', function(e) {
     e.stopPropagation();
-    if (!datetimePickerState.target) return;
+    if (!datetimePickerState.target || datetimePickerState.level !== 'days') return;
     var value = buildDateTimeValue(datetimePickerState.year, datetimePickerState.month, datetimePickerState.day, datetimePickerState.hour, datetimePickerState.minute);
     if (!pickerDayAllowed(datetimePickerState.year, datetimePickerState.month, datetimePickerState.day)) return;
     if (!datetimePickerState.dateOnly && value > currentLocalDateTimeKey()) return;
