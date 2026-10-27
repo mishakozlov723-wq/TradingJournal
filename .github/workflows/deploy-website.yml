@@ -90,9 +90,10 @@ jobs:
           node-version: '22'
       - name: Verify website syntax and targeted regression tests
         run: |
+          node --check public/calendar-navigation.js
           node --check public/app.js
           node --check public/replay-space.js
-          node --test tests/backtest-model-filter.test.cjs tests/chart-resize.test.cjs tests/release-rollout.test.cjs
+          node --test tests/backtest-model-filter.test.cjs tests/chart-resize.test.cjs tests/release-rollout.test.cjs tests/calendar-navigation.test.cjs
           test -s public/index.html
           test -s public/app.css
       - name: Install isolated Firebase API authentication helper

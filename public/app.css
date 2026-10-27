@@ -5109,3 +5109,64 @@ body.mobile-mode #secondaryActions #settingsBtn .settings-icon {
 body.mobile-mode #secondaryActions .settings-wrap.open #settingsBtn .settings-icon {
   transform: translate3d(0, 0, 0) rotate(45deg);
 }
+
+/* Calendar drill-down: shared by date/time inputs, Notes and PnL. */
+.calendar-zoom-label,
+.ndb-calendar-head .ndb-button.calendar-zoom-label {
+  appearance: none;
+  width: auto;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--textMain, #e5e7eb);
+  font-family: inherit;
+  line-height: 1.3;
+  text-align: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background .18s ease, border-color .18s ease;
+}
+.calendar-zoom-label:hover:not(:disabled) { background: rgba(255,255,255,.055); }
+.calendar-zoom-label:disabled { opacity: 1; cursor: default; }
+.calendar-zoom-label:focus-visible,
+.calendar-zoom-cell:focus-visible { outline: 2px solid var(--blue, #60a5fa); outline-offset: 2px; }
+.calendar-zoom-grid,
+.ndb-calendar.calendar-zoom-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+#datetimePickerGrid.calendar-zoom-grid { grid-template-rows: repeat(4, minmax(0, 1fr)); aspect-ratio: 1.06; }
+.ndb-calendar.calendar-zoom-grid { min-height: 208px; gap: 6px; }
+#calZoomGrid { min-height: 320px; padding: 4px; }
+.calendar-zoom-cell {
+  appearance: none;
+  min-height: 40px;
+  min-width: 0;
+  padding: 10px 4px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: rgba(255,255,255,.03);
+  color: var(--textMain, #e5e7eb);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .18s ease, border-color .18s ease, color .18s ease;
+}
+.calendar-zoom-cell:hover:not(:disabled) { background: rgba(255,255,255,.075); border-color: rgba(255,255,255,.10); }
+.calendar-zoom-cell.is-muted { color: var(--textMuted, #87909f); }
+.calendar-zoom-cell.is-active { color: var(--blue, #60a5fa); background: var(--blueBg, rgba(96,165,250,.12)); border-color: rgba(96,165,250,.4); font-weight: 700; }
+.calendar-zoom-cell:disabled { opacity: .25; cursor: default; background: transparent; border-color: transparent; }
+.year-nav-btn:disabled { opacity: .25; pointer-events: none; }
+#datetimePickerWeekdays[hidden], #calZoomGrid[hidden],
+#calendarTab .cal-scroll-inner[hidden], #calendarTab .cal-legend[hidden] { display: none !important; }
+.calendar-zoom-enter { animation: calendarZoomIn .22s cubic-bezier(.22,.61,.36,1) both; }
+@keyframes calendarZoomIn { from { opacity: .25; transform: translateY(5px) scale(.985); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .calendar-zoom-enter { animation: none; }
+  .calendar-zoom-label, .calendar-zoom-cell { transition: none; }
+}

@@ -46,7 +46,7 @@
     } catch (e) {}
   })();
 </script>
-<link rel="stylesheet" href="app.css?v=f854f8ab2a">
+<link rel="stylesheet" href="app.css?v=5744c89882">
 
 
 
@@ -684,10 +684,11 @@ separated by commas or new lines"></textarea>
     <div class="card">
       <div class="year-nav" style="margin-bottom:16px;">
         <button class="year-nav-btn" id="calPrevBtn"><svg class="tj-ui-icon" data-icon="chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
-        <div class="year-label" id="calLabel">January 2026</div>
+        <button type="button" class="year-label calendar-zoom-label" id="calLabel">January 2026</button>
         <button class="year-nav-btn" id="calNextBtn"><svg class="tj-ui-icon" data-icon="chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
       </div>
       <div class="cal-scroll-frame">
+        <div id="calZoomGrid" hidden></div>
         <div class="cal-scroll-inner">
           <div class="cal-weekdays">
             <div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div><div class="cal-weekdays-week">Week</div>
@@ -1360,7 +1361,7 @@ separated by commas or new lines"></textarea>
     <div class="datetime-picker-head" style="margin-bottom:10px;">
        <div class="year-nav datetime-month-nav" style="margin:0;">
         <button type="button" class="year-nav-btn" id="dtPrevMonthBtn"><svg class="tj-ui-icon" data-icon="chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
-        <div class="year-label" id="dtMonthLabel">January 2026</div>
+        <button type="button" class="year-label calendar-zoom-label" id="dtMonthLabel">January 2026</button>
         <button type="button" class="year-nav-btn" id="dtNextMonthBtn"><svg class="tj-ui-icon" data-icon="chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
       </div>
     </div>
@@ -1472,7 +1473,8 @@ separated by commas or new lines"></textarea>
   firebase.initializeApp(firebaseConfig);
   var db = firebase.firestore();
 </script>
-<script src="app.js?v=9ae71dd525"></script>
+<script src="calendar-navigation.js?v=c24a235c35"></script>
+<script src="app.js?v=c19f587d77"></script>
 <script src="trade-media.js?v=703d21b514"></script>
 <script src="desktop-autologin.js?v=8c2de5be35"></script>
 
@@ -1596,7 +1598,7 @@ separated by commas or new lines"></textarea>
 </script>
 
 <!-- Notes v3.20.3: database runtime and styles are embedded; no additional asset request. -->
-<script src="notes-workspace.js?v=6f9210b947"></script>
+<script src="notes-workspace.js?v=5ed37d7d67"></script>
 
 
 
