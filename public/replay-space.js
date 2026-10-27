@@ -1008,7 +1008,7 @@
   function posSt(dir){ return S.style.pos[dir>0?'long':'short']; }
   /* Match the chart's minimum price increment; ticks are distances from entry, not pips. */
   function posTicks(entry,price){
-    return Math.round(Math.abs(price-entry)*Math.pow(10,S.sess.d.dp))+' ticks';
+    return Math.round(Math.abs(price-entry)*Math.pow(10,S.sess.d.dp));
   }
   function mulAlpha(css,k){ var c=parseColor(css); if(!c) return css; c.a=Math.max(0,Math.min(1,c.a*k)); return colorCss(c); }
   function opaque(css){ var c=parseColor(css); if(!c) return css; c.a=1; return colorCss(c); }
@@ -1040,8 +1040,8 @@
     var lx=(x0+x1)/2, tc=st.text.color, ts=st.text.size, R=function(price){ return o.risk>0?o.dir*(price-o.entry)/o.risk:0; };
     var tag=(o.dir>0?'LONG':'SHORT')+((o.state==='pending'||(o.state==='draft'&&o.kind))?(o.kind==='stop'?' STOP':' LIMIT'):'')+(o.state==='open'?'  '+sgnR(r2(R(o.price))):'');
     drawLabel(ctx,hr,vr,tag,lx,yE,o.state==='open'?(R(o.price)>=0?'rgba(52,211,153,.92)':'rgba(248,113,113,.92)'):'#c9ced8',tc,W,ts);
-    drawLabel(ctx,hr,vr,'SL '+fp(o.sl)+' · '+sgnR(r2(R(o.sl)))+(st.ticks?' · '+posTicks(o.entry,o.sl):''),lx,ySL,mulAlpha(opaque(st.stop),0.92),tc,W,ts);
-    if(yTP!=null) drawLabel(ctx,hr,vr,'TP '+fp(o.tp)+' · '+sgnR(r2(R(o.tp)))+(st.ticks?' · '+posTicks(o.entry,o.tp):''),lx,yTP,mulAlpha(opaque(st.target),0.92),tc,W,ts);
+    drawLabel(ctx,hr,vr,sgnR(r2(R(o.sl)))+(st.ticks?' · '+posTicks(o.entry,o.sl):''),lx,ySL,mulAlpha(opaque(st.stop),0.92),tc,W,ts);
+    if(yTP!=null) drawLabel(ctx,hr,vr,sgnR(r2(R(o.tp)))+(st.ticks?' · '+posTicks(o.entry,o.tp):''),lx,yTP,mulAlpha(opaque(st.target),0.92),tc,W,ts);
     if(o.live){
       if(o.entryDrag) S.hits.push({ kind:'entry', ref:o.ref, y:yE, x0:x0, x1:x1 });
       S.hits.push({ kind:'sl', ref:o.ref, y:ySL, x0:x0, x1:x1 }); if(yTP!=null) S.hits.push({ kind:'tp', ref:o.ref, y:yTP, x0:x0, x1:x1 });
