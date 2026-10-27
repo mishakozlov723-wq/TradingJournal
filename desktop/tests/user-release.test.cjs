@@ -48,7 +48,7 @@ test('1.3.14 transition pack pins versions, hashes bytes and preserves the produ
     fs.mkdirSync(path.join(tmp, 'update-test'));
     fs.mkdirSync(path.join(tmp, 'release'));
     fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify({version: '1.3.14'}));
-    for (const name of ['package-1314.cjs', 'Test-Update.ps1', 'verify-update.ps1'])
+    for (const name of ['package-1314.cjs', 'Test-Update.ps1', 'verify-update.ps1', 'Start-TestApp.ps1'])
       fs.copyFileSync(path.join(root, 'update-test', name), path.join(tmp, 'update-test', name));
     const names = ['latest.yml', 'SYTER-Setup-1.3.14.exe', 'SYTER-Setup-1.3.14.exe.blockmap'];
     for (const name of names) fs.writeFileSync(path.join(tmp, 'release', name), 'fixture:'+name);
@@ -65,6 +65,10 @@ test('1.3.14 transition pack pins versions, hashes bytes and preserves the produ
       assert.match(text, /1\.3\.13/); assert.match(text, /1\.3\.14/);
       assert.equal(fs.readFileSync(path.join(tmp, 'update-test', name), 'utf8'), fs.readFileSync(path.join(root, 'update-test', name), 'utf8'));
     }
+    const launcher = fs.readFileSync(path.join(out, 'Test-Update.ps1'), 'utf8');
+    assert.doesNotMatch(launcher, /provider: generic|WriteAllBytes\(\$config/);
+    assert.match(launcher, /Start-TestApp \$exe/);
+    assert.match(fs.readFileSync(path.join(out, 'Start-TestApp.ps1'), 'utf8'), /requireUpdatePublisher/);
     assert.match(fs.readFileSync(path.join(out, 'Test-Update.ps1'), 'utf8'), /1\\\.3\\\.14/);
   } finally { fs.rmSync(tmp, {recursive:true, force:true}); }
 });
