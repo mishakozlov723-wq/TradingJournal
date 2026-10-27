@@ -15,6 +15,10 @@ on:
         description: 'Explicit reviewed obsolete artifact IDs; empty means inventory only'
         type: string
         default: ''
+      deploy_rules:
+        description: 'Also publish Firestore rules (off for interface-only changes)'
+        type: boolean
+        default: false
       deploy_live:
         description: 'Publish main to the live website retocker.web.app'
         type: boolean
@@ -50,6 +54,7 @@ jobs:
         env:
           NODE_PATH: /tmp/syter-preflight/node_modules
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RETOCKER }}
+          HOSTING_ONLY: ${{ !inputs.deploy_rules }}
         run: node scripts/firebase-release-preflight.cjs
       - name: Persist and read back private rollback snapshot (no Actions quota)
         uses: actions/github-script@v8
@@ -87,7 +92,7 @@ jobs:
         run: |
           node --check public/app.js
           node --check public/replay-space.js
-          node --test tests/backtest-model-filter.test.cjs tests/chart-resize.test.cjs
+          node --test tests/backtest-model-filter.test.cjs tests/chart-resize.test.cjs tests/release-rollout.test.cjs
           test -s public/index.html
           test -s public/app.css
       - name: Install isolated Firebase API authentication helper
@@ -96,6 +101,7 @@ jobs:
         env:
           NODE_PATH: /tmp/syter-preflight/node_modules
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RETOCKER }}
+          HOSTING_ONLY: ${{ !inputs.deploy_rules }}
         run: node scripts/firebase-release-preflight.cjs
       - name: Persist rollback snapshot BEFORE any production write
         uses: actions/github-script@v8
@@ -105,11 +111,19 @@ jobs:
             const result=await persistPrivate({github,context,kind:'rollback'});
             await core.summary.addLink('Byte-verified private rollback export',result.url).write();
       - name: Activate compatible Firestore rules and verify readback
+        if: ${{ inputs.deploy_rules }}
         env:
           NODE_PATH: /tmp/syter-preflight/node_modules
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RETOCKER }}
           CONFIRM_LIVE: ${{ inputs.deploy_live }}
         run: node scripts/firebase-release-control.cjs publish-rules
+      - name: Confirm existing Firestore rules are unchanged before Hosting-only deploy
+        if: ${{ !inputs.deploy_rules }}
+        env:
+          NODE_PATH: /tmp/syter-preflight/node_modules
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RETOCKER }}
+          CONFIRM_LIVE: ${{ inputs.deploy_live }}
+        run: node scripts/firebase-release-control.cjs verify-unchanged-rules
       - name: Deploy verified frontend Hosting after compatible rules
         uses: FirebaseExtended/action-hosting-deploy@500ac625ca2dd40cbd15f7659af953801858032a # v0, pinned
         with:
@@ -121,6 +135,7 @@ jobs:
           NODE_PATH: /tmp/syter-preflight/node_modules
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RETOCKER }}
           CONFIRM_LIVE: ${{ inputs.deploy_live }}
+          HOSTING_ONLY: ${{ !inputs.deploy_rules }}
         run: node scripts/firebase-release-control.cjs verify-live
       - name: Save release verification and rollback references
         continue-on-error: true
@@ -137,7 +152,7 @@ jobs:
             echo '## Website deployed'
             echo '- Website: https://retocker.web.app/'
             echo "- Source commit: $GITHUB_SHA"
-            echo '- Scope: compatible Firestore rules + Firebase Hosting, verified readback. No user-data migration or desktop publication.'
+            echo '- Scope: Firebase Hosting with verified readback; Firestore rules publish explicitly selected: ${{ inputs.deploy_rules }}. No user-data migration or desktop publication.'
           } >> "$GITHUB_STEP_SUMMARY"
 
   verify-live:

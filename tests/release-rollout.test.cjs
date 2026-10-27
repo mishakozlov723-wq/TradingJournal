@@ -11,3 +11,30 @@ test('read-only live verification waits for transient CDN bytes then verifies ev
 test('read-only live verification fails after finite bound for persistent mismatch; never redeploys',async()=>{const f=liveFixture();let reads=0,delays=0;await assert.rejects(verifyLive({...f,source:'candidate',attempts:3,sleep:async()=>delays++,fetchFile:async()=>{reads++;return {ok:true,arrayBuffer:async()=>Buffer.from('wrong bytes')};}}),/bytes mismatch/);assert.equal(reads,3);assert.equal(delays,2);assert.ok(f.calls.every(x=>x.method==='GET'));});
 test('read-only live verification refuses unknown rules before accessing frontend',async()=>{const f=liveFixture();await assert.rejects(verifyLive({...f,source:'unexpected',fetchFile:async()=>{throw Error('must not fetch');}}),/Live rules do not match/);});
 test('verification-only workflow cannot run deployment or private export jobs',()=>{const s=fs.readFileSync(path.join(__dirname,'../.github/workflows/deploy-website.yml'),'utf8'),job=s.split('  verify-live:\n')[1].split('  artifact_inventory:')[0];assert.match(s,/inputs.deploy_live && !inputs.artifact_maintenance && !inputs.verify_live_only/);assert.match(s,/!inputs.deploy_live && !inputs.artifact_maintenance && !inputs.verify_live_only/);assert.match(job,/contents: read/);assert.match(job,/firebase-release-control.cjs verify-live/);assert.doesNotMatch(job,/publish-rules|persistPrivate|hosting-deploy|contents: write/);});
+
+const {verifyRulesUnchanged}=require('../scripts/firebase-release-control.cjs');
+test('Hosting-only guard performs GET only and requires complete rollback snapshot',async()=>{
+ const calls=[];
+ assert.equal(await verifyRulesUnchanged({backup,request:async(method,url)=>{calls.push(method);assert.ok(url.endsWith('cloud.firestore'));return {rulesetName:old};}}),old);
+ assert.deepEqual(calls,['GET']);
+ await assert.rejects(verifyRulesUnchanged({backup:{},request:async()=>{throw Error('must not request');}}),/snapshot/);
+ await assert.rejects(verifyRulesUnchanged({backup,request:async method=>{assert.equal(method,'GET');return {rulesetName:next};}}),/changed/);
+});
+test('Hosting-only readback refuses concurrent rules replacement even with identical rule content',async()=>{
+ const f=liveFixture();
+ await assert.rejects(verifyLive({...f,source:'candidate',expectedRuleset:old,fetchFile:async()=>{throw Error('must not fetch');}}),/changed during Hosting-only/);
+});
+test('Hosting-only readback verifies exact frontend bytes with existing ruleset',async()=>{
+ const f=liveFixture();const result=await verifyLive({...f,source:'candidate',expectedRuleset:next,fetchFile:async url=>({ok:true,arrayBuffer:async()=>f.files['public/'+new URL(url).pathname.slice(1)]})});
+ assert.equal(result.ruleset,next);assert.equal(result.files.length,5);assert.ok(f.calls.every(x=>x.method==='GET'));
+});
+test('workflow defaults to Hosting-only, keeps durable backup and explicit rules-write gate',()=>{
+ const s=fs.readFileSync(path.join(__dirname,'../.github/workflows/deploy-website.yml'),'utf8');
+ assert.match(s,/deploy_rules:\n[\s\S]*?default: false/);
+ assert.match(s,/Activate compatible Firestore rules and verify readback\n\s+if: \$\{\{ inputs.deploy_rules \}\}/);
+ assert.match(s,/HOSTING_ONLY: \$\{\{ !inputs.deploy_rules \}\}/);
+ assert.ok(s.indexOf('Persist rollback snapshot BEFORE any production write')<s.indexOf('Deploy verified frontend Hosting'));
+ assert.match(s,/verify-unchanged-rules/);
+ const p=fs.readFileSync(path.join(__dirname,'../scripts/firebase-release-preflight.cjs'),'utf8');
+ assert.match(p,/hostingOnly\?'firestore.rules':'verification\/production-rules-baseline.rules'/);
+});
