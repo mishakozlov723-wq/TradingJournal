@@ -274,8 +274,7 @@
               '<div class="rp-draft-title" id="rpDraftTitle"></div>'+
               '<div class="rp-draft-grid"><label>Entry<input class="rp-input" id="rpInEntry" type="text" inputmode="decimal" autocomplete="off"></label><label>SL<input class="rp-input" id="rpInSL" type="text" inputmode="decimal" autocomplete="off"></label><label>TP<input class="rp-input" id="rpInTP" type="text" inputmode="decimal" autocomplete="off"></label></div>'+
               '<div class="rp-muted rp-draft-info" id="rpDraftInfo"></div>'+
-              '<div class="rp-draft-hint">Drag the entry / SL / TP lines on the chart</div><div class="rp-draft-hint" title="OHLC candles do not reveal the intrabar price sequence. A pending entry and its exit may use the same candle range.">OHLC simulation · SL wins if SL and TP touch in one candle · entry candle uses its full range</div>'+
-              '<div class="rp-draft-actions"><button class="rp-primary" id="rpDraftOk" type="button">Open</button><button class="rp-btn" id="rpDraftCancel" type="button">Cancel</button></div>'+
+              '<div class="rp-draft-actions"><button class="rp-primary" id="rpDraftOk" type="button" aria-keyshortcuts="Control+ArrowUp" title="Open (Ctrl+↑)">Open</button><button class="rp-btn" id="rpDraftCancel" type="button">Cancel</button></div>'+
             '</div></div></div>'+
             '<div class="rp-trade-row"><label for="rpRisk">Risk, %</label><input class="rp-input" id="rpRisk" type="text" inputmode="decimal" autocomplete="off" value="1"></div>'+
             '<div class="rp-trade-row" id="rpModelRow"><label for="rpModel">Model</label><button class="rp-input rp-dd" id="rpModelBtn" type="button"><span></span>'+ICON_CHEV+'</button><input type="hidden" id="rpModel" value=""></div>'+
@@ -760,7 +759,16 @@
   }
   function onKey(e){
     if(!S.mode||S.set||S.save) return;
-    var tag=(e.target&&e.target.tagName)||''; if(/INPUT|SELECT|TEXTAREA/.test(tag)) return;
+    var target=e.target, tag=(target&&target.tagName)||'';
+    if(e.ctrlKey&&!e.altKey&&!e.metaKey&&!e.shiftKey&&e.key==='ArrowUp'){
+      if(e.defaultPrevented||e.isComposing||!S.sess||!S.sess.draft||S.menuFor||S.rewind||S.drag||(S.dr&&(S.dr.op||S.dr.place||S.dr.pop))) return;
+      // Allow confirmation from the draft's price fields, not from unrelated editors.
+      if((/INPUT|SELECT|TEXTAREA/.test(tag)||(target&&target.isContentEditable))&&!/^rpIn(Entry|SL|TP)$/.test(target&&target.id||'')) return;
+      e.preventDefault();
+      if(!e.repeat) confirmDraft();
+      return;
+    }
+    if(/INPUT|SELECT|TEXTAREA/.test(tag)||(target&&target.isContentEditable)) return;
     if(e.key==='Escape'){ if(S.menuFor) closeMenu(); else if(S.rewind) setRewind(false); else if(S.sess&&drEsc()){} else if(S.sess) cancelDraft(); else exitWorkspace(false); return; }
     if(!S.sess) return;
     if(drKey(e)) return;
