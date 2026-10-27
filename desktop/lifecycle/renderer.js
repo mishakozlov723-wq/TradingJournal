@@ -5,12 +5,12 @@ let primaryAction = '', state;
 function render(s) {
   state = s;
   const install = s.mode === 'install';
-  const titles = { welcome: 'Your journal, on desktop.', available: 'A new version is ready.', checking: 'Checking for updates…', verifying: 'Preparing SYTER…', finalizing: 'Finishing setup…', installing: 'Installing SYTER…', downloading: 'Downloading update…', ready: install ? 'SYTER is installed.' : 'Ready to restart.', restarting: 'Restarting SYTER…', launching: 'Opening SYTER…', error: 'Let’s try that again.' };
+  const titles = { welcome: 'Your journal, on desktop.', available: 'A new version is ready.', checking: 'Checking for updates…', current: 'SYTER is up to date.', verifying: 'Preparing SYTER…', finalizing: 'Finishing setup…', installing: 'Installing SYTER…', downloading: 'Downloading update…', ready: install ? 'SYTER is installed.' : 'Ready to restart.', restarting: 'Restarting SYTER…', launching: 'Opening SYTER…', error: 'Let’s try that again.' };
   el('eyebrow').textContent = install ? 'DESKTOP INSTALLER' : 'SYTER UPDATE';
   el('title').textContent = titles[s.phase] || 'SYTER';
-  el('subtitle').textContent = install ? (s.phase === 'ready' ? 'Everything is ready. Open your journal.' : 'The same SYTER. A dedicated desktop app.') : (s.phase === 'ready' ? 'Restart to finish installing the update.' : 'Your journal and settings stay with you.');
-  el('version-label').textContent = install ? 'Version' : 'Version update';
-  el('version').textContent = install ? s.version : `${s.currentVersion} → ${s.version || '…'}`;
+  el('subtitle').textContent = install ? (s.phase === 'ready' ? 'Everything is ready. Open your journal.' : 'The same SYTER. A dedicated desktop app.') : (s.phase === 'current' ? 'You are using the latest version.' : s.phase === 'ready' ? 'Restart to finish installing the update.' : 'Your journal and settings stay with you.');
+  el('version-label').textContent = install || s.phase === 'current' ? 'Version' : 'Version update';
+  el('version').textContent = install ? s.version : s.phase === 'current' ? s.currentVersion : `${s.currentVersion} → ${s.version || '…'}`;
   el('notes').hidden = s.phase !== 'available' || !s.notes; el('notes-text').textContent = s.notes || '';
   const busy = ['verifying','installing','finalizing','downloading','restarting','launching','checking'].includes(s.phase);
   el('subtitle').hidden = install && busy;
@@ -24,10 +24,10 @@ function render(s) {
   el('location').hidden = !s.location; el('location').textContent = s.location || '';
   el('platform').hidden = !install;
   el('error').hidden = s.phase !== 'error'; el('error').textContent = s.error || '';
-  primaryAction = s.phase === 'welcome' ? 'install' : s.phase === 'available' ? 'download' : s.phase === 'ready' ? (install ? 'launch' : 'restart') : s.phase === 'error' ? 'retry' : '';
-  el('primary').textContent = ({install:'Install SYTER →',download:'Update now →',launch:'Launch SYTER →',restart:'Restart and install →',retry:'Try again →'})[primaryAction] || 'Please wait…';
+  primaryAction = s.phase === 'welcome' ? 'install' : s.phase === 'available' ? 'download' : s.phase === 'ready' ? (install ? 'launch' : 'restart') : s.phase === 'error' ? 'retry' : s.phase === 'current' ? 'close' : '';
+  el('primary').textContent = ({install:'Install SYTER →',download:'Update now →',launch:'Launch SYTER →',restart:'Restart and install →',retry:'Try again →',close:'Done'})[primaryAction] || 'Please wait…';
   el('primary').disabled = !primaryAction;
-  el('secondary').hidden = install || busy; el('secondary').textContent = 'Later';
+  el('secondary').hidden = install || busy || s.phase === 'current'; el('secondary').textContent = 'Later';
   el('close').disabled = install && busy || s.phase === 'restarting';
 }
 el('primary').addEventListener('click', () => { if (primaryAction) bridge?.action(primaryAction); });

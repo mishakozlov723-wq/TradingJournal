@@ -177,13 +177,13 @@
   form.addEventListener('submit', async function (e) {
     if (backtestTradeMode) return;
     e.preventDefault(); e.stopImmediatePropagation();
-    if (switching || saving || imageBusy || (window.TJMedia&&TJMedia.busy) || !signedIn()) return;
+    if (switching || saving || form.dataset.saving === '1' || imageBusy || (window.TJMedia&&TJMedia.busy) || !signedIn()) return;
     clearTradeFormError(); status.textContent = '';
     var owner = findUser(viewingUser);
     if (!owner || !owner.uid || (managedDraft && draftOwner !== viewingUser)) { error('Аккаунт изменился. Откройте новую сделку.'); return; }
     var mag = Number($('magnitudeInput').value.replace(',', '.'));
     var risk = Number($('riskPercentInput').value.replace(',', '.'));
-    if (!$('magnitudeInput').value || !Number.isFinite(mag) || mag < 0 || !$('riskPercentInput').value || !Number.isFinite(risk) || risk < 0) { error('Укажите корректные RR и Risk %.'); return; }
+    if (!$('magnitudeInput').value.trim() || !Number.isFinite(mag) || mag < 0 || mag > 1000000 || !$('riskPercentInput').value.trim() || !Number.isFinite(risk) || risk < 0 || risk > 100) { error('Укажите корректные RR и Risk %.'); return; }
     var open = getDateTimeInputValue($('openInput')), close = getDateTimeInputValue($('closeInput'));
     if (!open || !close || open > currentLocalDateTimeKey() || close > currentLocalDateTimeKey()) { error('Дата сделки не может быть в будущем.'); return; }
     if (!validateTradeDateOrder(open, close)) return;
@@ -192,7 +192,7 @@
       asset: $('assetInput').value, direction: isLong ? 'LONG' : 'SHORT', openDT: open, closeDT: close,
       r: isWin ? mag : -mag, riskPercent: risk, chart: currentScreenshot, _images: window.TJMedia?TJMedia.snapshot():(currentScreenshot?[currentScreenshot]:[]), uid: owner.uid, notes: $('syterTradeNotes').value.trim() };
     applyTradeModel(record, selectedTradeModelId); pendingTrade = record;
-    saving = true; form.inert = true; $('tradeModalSubmitBtn').disabled = true;
+    saving = true; form.dataset.saving = '1'; form.inert = true; $('tradeModalSubmitBtn').disabled = true;
     status.textContent = 'Сохранение на сервер…';
     try {
       var ok = await remoteSaveTrade(record, null, true);
@@ -204,11 +204,14 @@
       currentScreenshot = null; imageRevision++; if(window.TJMedia)TJMedia.reset();
       $('screenshotInput').value = ''; $('screenshotPreview').src = '';
       $('screenshotPreviewWrap').style.display = 'none'; $('screenshotFileName').textContent = 'No file chosen';
+      // Release the shared guard only for our own completed save. Until now
+      // openModal/closeModal must not replace the draft while the request is pending.
+      delete form.dataset.saving;
       if (mini) { openModal(null); managedDraft = true; draftOwner = user; }
       else closeModal();
       render(); status.textContent = 'Сделка сохранена ✓';
     } catch (err) { if (user === viewingUser && generation === tjDataGeneration) { error('Не удалось сохранить сделку. Черновик оставлен для повтора.'); status.textContent = ''; } }
-    finally { saving = false; form.inert = false; $('tradeModalSubmitBtn').disabled = imageBusy; drainCapture(); }
+    finally { saving = false; delete form.dataset.saving; form.inert = false; $('tradeModalSubmitBtn').disabled = imageBusy; drainCapture(); }
   }, true);
   document.addEventListener('tj:images-changed',function(){$('tradeModalSubmitBtn').disabled=saving||TJMedia.busy;});
   api.miniReady();

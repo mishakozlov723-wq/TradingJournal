@@ -54,9 +54,8 @@ async function mfb(method,params){
   let response;
   try {
     response=await budget.request(MYFXBOOK_API+'/'+method+'.json?'+qs.toString(),{
-      headers:{'Accept':'application/json','User-Agent':'TradingJournal-Accounts/2.0'},cache:'no-store',
-      signal:AbortSignal.timeout(12000)
-    });
+      headers:{'Accept':'application/json','User-Agent':'TradingJournal-Accounts/2.0'},cache:'no-store'
+    },12000);
   } catch(err){
     // Fail fast with a readable message instead of hanging until the browser gives up.
     throw Object.assign(new Error('Myfxbook did not answer within its time budget ('+method+'). Try again in a minute.'),{status:504,code:'MYFXBOOK_TIMEOUT'});

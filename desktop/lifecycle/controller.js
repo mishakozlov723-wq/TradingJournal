@@ -6,7 +6,7 @@ function notesText(notes) {
 }
 function createUpdateController({ updater, currentVersion, publish, reveal, dismiss, prepareQuit, restoreQuit = () => {}, log = () => {} }) {
   let state = { mode: 'update', phase: 'checking', currentVersion, version: '', notes: '', percent: null };
-  let stopped = false, downloadPromise = null, reminder = null;
+  let stopped = false, downloadPromise = null, checkPromise = null, reminder = null;
   const handlers = [];
   const send = patch => { state = { ...state, ...patch }; publish({ ...state }); };
   const on = (name, fn) => { updater.on(name, fn); handlers.push([name, fn]); };
@@ -25,6 +25,10 @@ function createUpdateController({ updater, currentVersion, publish, reveal, dism
     send({ phase: 'available', version: String(info.version), notes: notesText(info.releaseNotes), percent: null });
     reveal();
   });
+  on('update-not-available', () => {
+    if (stopped || state.phase !== 'checking') return;
+    send({ phase: 'current', version: currentVersion, notes: '', percent: null, error: '', retry: '' });
+  });
   on('download-progress', p => {
     if (state.phase !== 'downloading') return;
     send({ percent: Math.max(0, Math.min(100, Number(p.percent) || 0)), transferred: p.transferred, total: p.total, bytesPerSecond: p.bytesPerSecond });
@@ -42,8 +46,11 @@ function createUpdateController({ updater, currentVersion, publish, reveal, dism
   }
   async function check() {
     if (stopped || ['available', 'downloading', 'ready', 'restarting'].includes(state.phase)) return;
+    if (checkPromise) return checkPromise;
     send({ phase: 'checking', error: '' });
-    try { await updater.checkForUpdates(); } catch (error) { if (state.phase !== 'error') fail(error); }
+    checkPromise = Promise.resolve().then(() => updater.checkForUpdates());
+    try { await checkPromise; } catch (error) { if (state.phase !== 'error') fail(error); }
+    finally { checkPromise = null; }
   }
   function restart() {
     if (state.phase !== 'ready' && !(state.phase === 'error' && state.retry === 'restart')) return;

@@ -15,14 +15,14 @@ PUBLIC = os.path.join(HERE, '..', 'public')
 INDEX = os.path.join(PUBLIC, 'index.html')
 
 PLACEHOLDERS = {
-    'APPCSS': 'app.css', 'APPJS': 'app.js', 'NOTESWORKSPACEJS': 'notes-workspace.js',
+    'APPCSS': 'app.css', 'APPJS': 'app.js', 'CALNAV': 'calendar-navigation.js', 'TRADEMEDIAJS': 'trade-media.js', 'TRADEMEDIACSS': 'trade-media.css', 'FLOATINGPANELS': 'floating-panels.js', 'NOTESWORKSPACEJS': 'notes-workspace.js',
     'ACCCFG': 'accounts-config.js', 'ACCSPACE': 'accounts-space.js', 'LWC': 'vendor/lightweight-charts.js',
     'RPCFG': 'replay-data-config.js', 'RPSPACE': 'replay-space.js', 'ACCCSS': 'accounts-space.css', 'RPCSS': 'replay-space.css', 'DESKTOPAUTO': 'desktop-autologin.js',
 }
 
 def fingerprint(rel):
     with open(os.path.join(PUBLIC, rel), 'rb') as f:
-        return hashlib.md5(f.read()).hexdigest()[:10]
+        return hashlib.sha256(f.read()).hexdigest()[:10]
 
 def main():
     with open(INDEX, encoding='utf-8') as f:
@@ -31,7 +31,7 @@ def main():
         s = s.replace('@@' + key + '@@', fingerprint(rel))
     # Re-stamp already stamped references.
     for rel in PLACEHOLDERS.values():
-        s = re.sub(r'(' + re.escape(rel) + r')\?v=[0-9a-f]{10}', lambda m: m.group(1) + '?v=' + fingerprint(rel), s)
+        s = re.sub(r'(' + re.escape(rel) + r')\?v=[0-9A-Za-z._-]+', lambda m: m.group(1) + '?v=' + fingerprint(rel), s)
     left = re.findall(r'@@[A-Z]+@@', s)
     if left:
         raise SystemExit('Unknown placeholders: ' + ', '.join(sorted(set(left))))
