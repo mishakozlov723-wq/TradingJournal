@@ -14,6 +14,17 @@ $flags=[Reflection.BindingFlags]'Instance,NonPublic'
 function Field($form,$name){$type.GetField($name,$flags).GetValue($form)}
 function Invoke($form,$method,[object[]]$values){$type.GetMethod($method,$flags).Invoke($form,$values)}
 function Pump([int]$milliseconds){$watch=[Diagnostics.Stopwatch]::StartNew();while($watch.ElapsedMilliseconds -lt $milliseconds){[Windows.Forms.Application]::DoEvents();Start-Sleep -Milliseconds 10}}
+# Freeze only this disposable render fixture's production Stopwatch fields.
+# Rendering/PNG encoding may outlast a 180ms animation on a shared runner;
+# exact elapsed samples separate opacity from the independently moving gradient.
+function Set-ClockElapsed($clock,[int]$milliseconds){
+ $clock.Reset()
+ $elapsed=$clock.GetType().GetField('elapsed',$flags)
+ if(!$elapsed){$elapsed=$clock.GetType().GetField('_elapsed',$flags)}
+ if(!$elapsed){throw 'Stopwatch internals changed; review deterministic render fixture'}
+ $elapsed.SetValue($clock,[long]($milliseconds*[Diagnostics.Stopwatch]::Frequency/1000))
+ if([Math]::Abs($clock.ElapsedMilliseconds-$milliseconds) -gt 1){throw 'Could not freeze the render clock at the requested timestamp'}
+}
 function Capture($form,$name){
  $b=[Drawing.Bitmap]::new($form.Width,$form.Height)
  # DrawToBitmap renders the same shipped controls directly at their actual size.
@@ -62,11 +73,20 @@ try{
  $bounds=$bar.Bounds
  Invoke $form 'Busy' @('Installing SYTER…','',$true)|Out-Null;Pump 20
  if(!$bar.Visible -or !$bar.Indeterminate -or (Field $form 'percent').Visible -or !(Field $form 'stage').Visible -or (Field $form 'stage').Text -ne 'Preparing installation…'){throw 'Waiting needs preparation caption and bar without fake percentage'}
- $a=Capture $form 'fade-start';$early=BarGreen $a $bar;$a.Dispose();Pump 65
- $b=Capture $form 'fade-middle';$middle=BarGreen $b $bar;$b.Dispose();Pump 140
- $c=Capture $form 'waiting-a';$full=BarGreen $c $bar;$first=CropBytes $c $bar.Bounds;$c.Dispose();Pump 240
+ $revealClock=$bar.GetType().GetField('reveal',$flags).GetValue($bar)
+ $gradientClock=$bar.GetType().GetField('clock',$flags).GetValue($bar)
+ Set-ClockElapsed $gradientClock 400
+ Set-ClockElapsed $revealClock 0
+ $a=Capture $form 'fade-start';$early=BarGreen $a $bar;$a.Dispose()
+ Set-ClockElapsed $revealClock 90
+ $b=Capture $form 'fade-middle';$middle=BarGreen $b $bar;$b.Dispose()
+ Set-ClockElapsed $revealClock 180
+ $c=Capture $form 'fade-full';$full=BarGreen $c $bar;$c.Dispose()
+ if($early -ge $middle-5 -or $middle -ge $full-5){throw "Fade did not reveal gradually: $early / $middle / $full"}
+ # Now use the real running clock to verify the shipped highlight animates.
+ $gradientClock.Restart();Pump 40
+ $c=Capture $form 'waiting-a';$first=CropBytes $c $bar.Bounds;$c.Dispose();Pump 240
  $d=Capture $form 'waiting-b';$second=CropBytes $d $bar.Bounds;$d.Dispose()
- if($early -ge $full-5 -or $middle -lt $early-5){throw "Fade did not reveal gradually: $early / $middle / $full"}
  if($first -eq $second){throw 'Waiting highlight did not animate'}
  Write-Host "PASS: soft bar reveal and live gradient ($early / $middle / $full); preparation caption present"
  $animationField.SetValue($bar,$systemAnimation);(Field $form 'stage').SoftChanges=$systemAnimation
