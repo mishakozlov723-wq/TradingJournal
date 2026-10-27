@@ -87,16 +87,30 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Missing numeric fields remain compatible with old records. Any supplied
+    // numbers must obey the same supported range as the journal form.
+    function tradeNumbersValid(data) {
+      let r = data.get('r', 0);
+      let risk = data.get('riskPercent', 1);
+      return r is number && r >= -1000000 && r <= 1000000
+        && risk is number && risk >= 0 && risk <= 100;
+    }
+    function tradeNumbersUpdateValid() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['r', 'riskPercent'])
+        || tradeNumbersValid(request.resource.data);
+    }
+
     // Trades are owned by the UID stored in the document.
     match /trades/{tradeId} {
       allow read: if isRetocker()
         || owns(resource.data.uid);
 
       allow create: if (isRetocker() || owns(request.resource.data.uid))
+        && tradeNumbersValid(request.resource.data)
         && request.resource.data.direction in ['LONG','SHORT']
         && journalTargetAllowed(request.resource.data);
 
-      allow update: if journalUnlocked(resource.data.uid) && journalTargetAllowed(request.resource.data)
+      allow update: if tradeNumbersUpdateValid() && journalUnlocked(resource.data.uid) && journalTargetAllowed(request.resource.data)
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['direction']) || request.resource.data.direction in ['LONG','SHORT'])
         && (isRetocker()
         || (
@@ -224,9 +238,10 @@ service cloud.firestore {
         || owns(resource.data.uid);
 
       allow create: if (isRetocker() || owns(request.resource.data.uid))
+        && tradeNumbersValid(request.resource.data)
         && request.resource.data.direction in ['LONG','SHORT'];
 
-      allow update: if (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['direction']) || request.resource.data.direction in ['LONG','SHORT'])
+      allow update: if tradeNumbersUpdateValid() && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['direction']) || request.resource.data.direction in ['LONG','SHORT'])
         && (isRetocker()
         || (
           owns(resource.data.uid)

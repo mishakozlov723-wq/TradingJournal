@@ -43,3 +43,24 @@ test('atomic metadata and multi-trade mutation rejects as a whole when one write
  batch.update(doc(db,'titles','atomic-owner'),{assets:[{name:'NEW'}],assetRevision:1});batch.update(doc(db,'trades','atomic-one'),{asset:'NEW'});batch.update(doc(db,'trades','atomic-two'),{asset:'NEW',direction:'INVALID'});await assertFails(batch.commit());
  assert.equal((await getDoc(doc(db,'titles','atomic-owner'))).data().assets[0].name,'OLD');for(const id of ['atomic-one','atomic-two'])assert.equal((await getDoc(doc(db,'trades',id))).data().asset,'OLD');
 });
+
+for(const collection of ['trades','backtestTrades']){
+ test(collection+': supported numeric bounds accepted; extreme, null and string writes rejected for owner and admin',async()=>{
+  for(const uid of ['owner-a','DXBgoKHXkAVW9Rclf1juT6JrMhA2']){
+   const db=env.authenticatedContext(uid).firestore(),ref=doc(db,collection,'numeric-'+uid);
+   await assertSucceeds(setDoc(ref,{uid:'owner-a',direction:'LONG',r:-1000000,riskPercent:0}));
+   await assertSucceeds(updateDoc(ref,{r:1000000,riskPercent:100}));
+   for(const bad of [{r:1000001},{r:-1000001},{r:1e308},{r:NaN},{r:Infinity},{r:'2'},{r:null},{riskPercent:101},{riskPercent:-1},{riskPercent:'1'},{riskPercent:null},{riskPercent:1e308}]){
+    await assertFails(updateDoc(ref,bad));
+    await assertFails(setDoc(doc(db,collection,'bad-number-'+uid),{uid:'owner-a',direction:'LONG',r:1,riskPercent:1,...bad}));
+   }
+  }
+ });
+ test(collection+': legacy invalid numbers can be read, annotated and corrected but not made more invalid',async()=>{
+  const refId='legacy-number-'+collection;
+  await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),collection,refId),{uid:'owner-a',direction:'LONG',r:1e308,riskPercent:101}));
+  const db=env.authenticatedContext('owner-a').firestore(),ref=doc(db,collection,refId);
+  await assertSucceeds(getDoc(ref));await assertSucceeds(updateDoc(ref,{notes:'preserved legacy record'}));
+  await assertFails(updateDoc(ref,{r:1e307}));await assertSucceeds(updateDoc(ref,{r:2,riskPercent:1}));
+ });
+}

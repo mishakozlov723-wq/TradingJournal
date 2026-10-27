@@ -10,81 +10,9 @@ const { spawn } = require('node:child_process');
 const { Script } = require('node:vm');
 const html = require('./assembled-html.cjs')();
 
-function installFirestoreDouble() {
-  window.testFailWrite = false;
-  window.testFailRead = false;
-  window.testBatchSizes = [];
-  const deleteField = Symbol('delete');
-  const saved = () => JSON.parse(localStorage.getItem('model-test-db') || '{}');
-  function merge(a, b) {
-    for (const k of Object.keys(b)) {
-      if (b[k] === deleteField) { delete a[k]; continue; }
-      if (b[k] && typeof b[k] === 'object' && !Array.isArray(b[k])) a[k] = merge(a[k] || {}, b[k]);
-      else a[k] = b[k];
-    }
-    return a;
-  }
-  const database = {
-    batch() {
-      const updates = [];
-      return {
-        update(ref, value) { updates.push([ref.key, value]); },
-        commit() {
-          testBatchSizes.push(updates.length);
-          if (testFailWrite) return Promise.reject(Error('test batch failure'));
-          const data = saved();
-          for (const [key, value] of updates) {
-            if (!data[key]) return Promise.reject(Error('missing document'));
-            data[key] = merge(data[key], value);
-          }
-          localStorage.setItem('model-test-db', JSON.stringify(data));
-          return Promise.resolve();
-        }
-      };
-    },
-    collection(name) {
-      const query = (field, value) => ({
-        get() {
-          const data = saved();
-          const docs = Object.keys(data).filter(k => k.startsWith(name + '/') && (!field || data[k][field] === value))
-            .map(k => ({ id: k.split('/')[1], data: () => data[k] }));
-          return Promise.resolve({ empty: !docs.length, forEach: cb => docs.forEach(cb) });
-        }
-      });
-      return {
-        ...query(), where: (f, op, v) => query(f, v),
-        doc(id) {
-          id = id || crypto.randomUUID().replaceAll('-', '');
-          const key = name + '/' + id;
-          return {
-            id, key,
-            get() {
-              if (testFailRead && name === 'titles') return Promise.reject(Error('test read failure'));
-              const d = saved()[key];
-              return Promise.resolve({ exists: !!d, data: () => d });
-            },
-            set(value, options) {
-              if (testFailWrite) return Promise.reject(Error('test write failure'));
-              const data = saved();
-              data[key] = options && options.merge ? merge(data[key] || {}, value) : value;
-              localStorage.setItem('model-test-db', JSON.stringify(data));
-              return Promise.resolve();
-            },
-            delete() {
-              const data = saved(); delete data[key];
-              localStorage.setItem('model-test-db', JSON.stringify(data));
-              return Promise.resolve();
-            },
-            onSnapshot() { return () => {}; }
-          };
-        }
-      };
-    }
-  };
-  const auth = { currentUser: null, onAuthStateChanged() {}, signInWithEmailAndPassword() { return Promise.resolve(); } };
-  window.firebase = { initializeApp() {}, firestore: () => database, auth: () => auth };
-  firebase.firestore.FieldValue = { delete: () => deleteField, serverTimestamp: () => new Date().toISOString(), increment: n => n };
-}
+// Share the current transactional/batch-capable double with model regressions.
+const legacy=fs.readFileSync(path.join(__dirname,'trading-models.test.cjs'),'utf8');
+const firestoreStub=legacy.slice(legacy.indexOf('function installFirestoreDouble()'),legacy.indexOf("test('all application"));
 
 test('all application inline scripts parse', () => {
   for (const [i, match] of [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].entries()) {
@@ -114,7 +42,7 @@ test('overview live update browser regression', { timeout: 90000 }, async t => {
     urls.forEach((url, i) => { source = source.split(url).join('/test-font/' + i); });
   }
   const page = source.replace(/<script\b[^>]*src="[^"]+"[^>]*><\/script>/g, '')
-    .replace('<script>', '<script>(' + installFirestoreDouble.toString() + ')();</script><script>');
+    .replace('<script>', '<script>'+fs.readFileSync(path.join(__dirname,'../calendar-navigation.js'),'utf8')+'</script><script>'+firestoreStub+'installFirestoreDouble();</script><script>');
   const server = http.createServer((req, res) => {
     if (req.url === '/') { res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.end(page); }
     else if (fonts.has(req.url)) { res.setHeader('Content-Type', 'font/woff2'); res.end(fonts.get(req.url)); }
@@ -163,6 +91,8 @@ test('overview live update browser regression', { timeout: 90000 }, async t => {
     const { targetId } = await send('Target.createTarget', { url: 'about:blank' });
     const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
     const cmd = (method, params = {}) => send(method, params, sessionId);
+    // This suite verifies desktop motion, not the mobile no-animation fallback.
+    await cmd('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
     await cmd('Runtime.enable'); await cmd('Page.enable'); await cmd('Network.enable');
     await cmd('Network.setBlockedURLs', { urls: ['https://*'] });
     async function evaluate(expression) {
@@ -239,17 +169,25 @@ test('overview live update browser regression', { timeout: 90000 }, async t => {
       setCurveColor(before); await tick();
     `);
     await check('add trade: same path element morphs, new row inserted, old rows kept', `
+      // Drive the production morph callback with deterministic RAF timestamps.
+      // SVG/layout work can take >650ms on CI, so wall-clock sleeps are not a
+      // reliable way to inspect an intermediate frame. Other RAF users stay native.
+      const nativeRAF=window.requestAnimationFrame, nativeCancel=window.cancelAnimationFrame;
+      const frames=new Map();let nextFrame=-1;
+      window.requestAnimationFrame=fn=>{if(fn.name!=='step')return nativeRAF.call(window,fn);const id=nextFrame--;frames.set(id,fn);return id;};
+      window.cancelAnimationFrame=id=>{if(id<0)frames.delete(id);else nativeCancel.call(window,id);};
+      window.__morphFrame=now=>{const pending=[...frames.values()];frames.clear();pending.forEach(fn=>fn(now));};
+      window.__restoreRAF=()=>{window.requestAnimationFrame=nativeRAF;window.cancelAnimationFrame=nativeCancel;};
       trades.push({id:'lt9',openDT:'2026-03-20T10:00',closeDT:'2026-03-20T11:00',asset:'EURUSD',direction:'LONG',r:4,riskPercent:1,chart:null});
       render();
-      await new Promise(r=>requestAnimationFrame(r));
+      __morphFrame(0);
       assert(__line.getAttribute('d')===__d,'first morph frame == previous curve (no jump)');
-      await new Promise(r=>requestAnimationFrame(r));
-      await new Promise(r=>setTimeout(r,200));
+      __morphFrame(200);
       const mid=__line.getAttribute('d');
       assert(el('chartLinePath')===__line,'path element reused (no redraw)');
       assert(mid!==__d,'animating');
       assert(overviewChartState.anim,'animation in progress');
-      await new Promise(r=>setTimeout(r,700));
+      __morphFrame(900);
       assert(!overviewChartState.anim,'animation finished');
       const fin=__line.getAttribute('d');
       assert(fin!==mid,'moved to final');
@@ -264,22 +202,23 @@ test('overview live update browser regression', { timeout: 90000 }, async t => {
       window.__line=el('chartLinePath'); window.__d=fin; window.__rows=rows;
     `);
     await check('edit gain via render(): morph, rows kept', `
-      trades.find(x=>x.id==='lt0').r=5; render(); await new Promise(r=>setTimeout(r,120));
+      trades.find(x=>x.id==='lt0').r=5; render(); __morphFrame(1000); __morphFrame(1120);
       assert(el('chartLinePath')===__line && overviewChartState.anim,'morphing');
-      await new Promise(r=>setTimeout(r,700));
+      __morphFrame(1800);
       assert([...el('allTradesBody').children].every((tr,i)=>tr===__rows[i]),'rows kept');
     `);
     await check('delete via table button + interrupting animation', `
       el('allTradesBody').querySelector('.del-btn[data-id="lt2"]').click();
-      await new Promise(r=>setTimeout(r,150));
+      await tick(); __morphFrame(2000); __morphFrame(2150);
       el('allTradesBody').querySelector('.del-btn[data-id="lt3"]').click();
-      await new Promise(r=>setTimeout(r,900));
+      await tick(); __morphFrame(2200); __morphFrame(3000);
       assert(!overviewChartState.anim,'done');
       assert(el('allTradesBody').children.length===4,'4 rows');
       assert(el('chartSvg').querySelectorAll('.chart-hit-area').length===4,'4 hits');
       const fin=el('chartLinePath').getAttribute('d');
       renderChartUncached(lastChartData,{drawIn:false});
       assert(el('chartLinePath').getAttribute('d')===fin,'end state correct after interruption');
+      __restoreRAF();
     `);
     await check('delete everything -> empty state, add again -> draws', `
       trades=[]; render(); await tick();

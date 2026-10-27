@@ -19,7 +19,7 @@
    (~450 KB) loads right after the page is ready instead of before it. Their menu
    entries stay hidden until the code has loaded, exactly as before. */
 (function(){
-  var files=['accounts-config.js?v=1053adb163','accounts-space.js?v=14f1b007e7','vendor/lightweight-charts.js?v=37e5f4fe8b','replay-data-config.js?v=a87b6ba84a','replay-space.js?v=976abbd301'];
+  var files=['accounts-config.js?v=1053adb163','accounts-space.js?v=398c6858f9','vendor/lightweight-charts.js?v=37e5f4fe8b','replay-data-config.js?v=a87b6ba84a','replay-space.js?v=b75cfbf3ac'];
   var started=false;
   function next(i){
     if(i>=files.length)return;
@@ -46,11 +46,11 @@
     } catch (e) {}
   })();
 </script>
-<link rel="stylesheet" href="app.css?v=5744c89882">
+<link rel="stylesheet" href="app.css?v=3965d87872">
 
 
 
-<link rel="stylesheet" href="trade-media.css?v=4dd63ff2f5">
+<link rel="stylesheet" href="trade-media.css?v=8ccf2b784c">
 </head>
 <body>
 
@@ -1473,8 +1473,8 @@ separated by commas or new lines"></textarea>
   firebase.initializeApp(firebaseConfig);
   var db = firebase.firestore();
 </script>
-<script src="calendar-navigation.js?v=c24a235c35"></script>
-<script src="app.js?v=c19f587d77"></script>
+<script src="calendar-navigation.js?v=ae8a89ec56"></script>
+<script src="app.js?v=aff9075139"></script>
 <script src="trade-media.js?v=703d21b514"></script>
 <script src="desktop-autologin.js?v=8c2de5be35"></script>
 
@@ -1527,6 +1527,8 @@ separated by commas or new lines"></textarea>
     getTrades: function(btId){ return allBacktestTrades.filter(function(t){ return t.backtestId === btId; }); },
     /* t: { asset, direction, openDT, closeDT, r, riskPercent, modelId, ...extra } */
     addTrade: function(btId, t){
+      var risk=t.riskPercent==null?1:Number(t.riskPercent), r=Number(t.r);
+      if(!Number.isFinite(r)||Math.abs(r)>1000000||!Number.isFinite(risk)||risk<0||risk>100)return null;
       var existing=t.id&&allBacktestTrades.find(function(x){return x.id===t.id&&x.backtestId===btId;});if(existing)return existing;
       var bt = backtests.filter(function(b){ return b.id === btId; })[0]; if (!bt) return null;
       var ow = owner(); if (!ow) return null;
@@ -1555,21 +1557,22 @@ separated by commas or new lines"></textarea>
     },
     /* partial update of a saved trade (e.g. hiddenOnChart) — stats and Backtest Space keep counting it */
     patchTrade: function(id, patch){
-      var tr = allBacktestTrades.filter(function(t){ return t.id === id; })[0]; if (!tr) return;
+      var tr = allBacktestTrades.filter(function(t){ return t.id === id; })[0]; if (!tr) return false;
       if(!persist('backtestTrades',id,patch,{merge:true}))return false;
       Object.assign(tr, patch); saveBacktestLocal();return true;
     },
     deleteTrade: function(id){
-      var tr = allBacktestTrades.filter(function(t){ return t.id === id; })[0]; if (!tr) return;
+      var tr = allBacktestTrades.filter(function(t){ return t.id === id; })[0]; if (!tr) return false;
       var deleteOwner=viewingUser,deleteGeneration=tjDataGeneration;
       var pending=tjDeleteBacktestRecords([tr],null,deleteOwner);
       var queued=false;try{queued=tjBacktestOutbox(deleteOwner).some(function(op){return op.parts.some(function(part){return part.some(function(w){return w.collection==='backtestTrades'&&w.id===id&&w.remove;});});});}catch(_){}
       pending.catch(function(err){if(viewingUser===deleteOwner&&tjDataGeneration===deleteGeneration)showBacktestSyncError(queued?'Deletion is queued and will retry when online.':'Deletion was not saved: '+err.message);});
-      if(!queued)return;
+      if(!queued)return false;
       allBacktestTrades = allBacktestTrades.filter(function(t){ return t.id !== id; });
       var bt = backtests.filter(function(b){ return b.id === tr.backtestId; })[0]; if (bt) this.syncRR(bt);
       saveBacktestLocal();
       if (bt) persist('backtests',bt.id,{rrText:bt.rrText},{merge:true});
+      return true; // The removal is durably queued, not necessarily synced yet.
     },
     /* Replay chart-style templates (collection replayProfiles, one doc per template, owned by uid). */
     profilesLoad: function(){
@@ -1598,7 +1601,7 @@ separated by commas or new lines"></textarea>
 </script>
 
 <!-- Notes v3.20.3: database runtime and styles are embedded; no additional asset request. -->
-<script src="notes-workspace.js?v=5ed37d7d67"></script>
+<script src="notes-workspace.js?v=d817d6a5d0"></script>
 
 
 

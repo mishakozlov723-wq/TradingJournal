@@ -9,6 +9,7 @@ function bootstrap(){
   window.viewingUser='alice';window.currentUser={login:'alice'};window.testWrites=[];window.testDelay=0;window.testFail=false;
   const read=()=>JSON.parse(localStorage.getItem('notes-test-cloud')||'{}');
   window.db={collection(name){return {doc(id){return {key:name+'/'+id,get(){const d=read()[this.key];return Promise.resolve({exists:!!d,data:()=>d});},set(v){const d=read();d[this.key]=v;localStorage.setItem('notes-test-cloud',JSON.stringify(d));return Promise.resolve();}};}};},batch(){const ops=[];return {set(ref,data,opt){ops.push({key:ref.key,data:JSON.parse(JSON.stringify(data)),merge:opt&&opt.merge});},delete(ref){ops.push({key:ref.key,remove:true});},commit(){const captured=JSON.parse(JSON.stringify(ops));testWrites.push(captured);return new Promise((resolve,reject)=>setTimeout(()=>{if(testFail){reject(Error('test failure'));return;}const data=read();for(const op of captured){if(op.remove)delete data[op.key];else data[op.key]=op.merge?{...data[op.key],...op.data}:op.data;}localStorage.setItem('notes-test-cloud',JSON.stringify(data));resolve();},testDelay));}};}};
+  db.runTransaction=async fn=>{const batch=db.batch();await fn({get:r=>r.get(),set:batch.set,delete:batch.delete});return batch.commit();};
   window.firebase={auth:()=>({currentUser:{uid:viewingUser}}),firestore:{FieldValue:{delete:()=>null}}};
 }
 const access=`
@@ -35,6 +36,7 @@ NT.start();
 `;
 let html=require('./assembled-html.cjs')();
 html=html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/g,(all,attrs,body)=>{
+  if(attrs.includes('calendar-navigation.js'))return all;
   if(attrs.includes('notes-database.js')||attrs.includes('notes-mobile-script'))return all;
   if(attrs.includes('notes-workspace-script'))return '<script>('+bootstrap.toString()+')();</script><script>'+body.replace(/\}\)\(\);\s*$/,access+'\n})();')+'</script>';
   return '';

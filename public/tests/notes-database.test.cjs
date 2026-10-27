@@ -7,7 +7,7 @@ test('all inline scripts and Notes sources parse',()=>{
   const html=require('./assembled-html.cjs')();
   for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g))new Script(match[1]);
   new Script(fs.readFileSync(__dirname+'/../notes-database.js','utf8'));
-  const source=fs.readFileSync(__dirname+'/../../notes.js','utf8');
+  const source=fs.readFileSync(__dirname+'/../notes-workspace.js','utf8');
   assert.equal(html.match(/<script id="notes-workspace-script">\s*([\s\S]*?)<\/script>/)[1].trim(),source.trim());
 });
 test('exactly six property types and minimal default',()=>{assert.deepEqual(Object.keys(D.TYPES),['text','date','number','checkbox','select','status']);const b=D.normalize(D.create());assert.equal(b.rows.length,1);assert.deepEqual(b.properties.map(p=>p.name),['Name','Property']);assert.equal(b.view.layout,'full');assert.deepEqual(D.normalize(b),b);});

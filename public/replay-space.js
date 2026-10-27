@@ -826,7 +826,7 @@
     var t=$('rpToast'); if(!t) return; t.textContent=msg; t.className='rp-toast is-visible'+(kind?' is-'+kind:'');
     clearTimeout(toast._t); toast._t=setTimeout(function(){ t.classList.remove('is-visible'); },3600);
   }
-  function readRisk(){ var v=parseFloat(String($('rpRisk').value).replace(',','.')); return (isFinite(v)&&v>=0)?v:1; }
+  function readRisk(){ var raw=String($('rpRisk').value).trim(), v=Number(raw.replace(',','.')); return (raw&&isFinite(v)&&v>=0&&v<=100)?v:null; }
 
   function avgRange(){
     var s=S.sess, d=s.d, bk=buckets(d,S.tf), b=bk.b2[s.cur], sum=0, n=0;
@@ -862,13 +862,15 @@
     if(dr.sl==null||!isFinite(dr.sl)) return toast('Set a stop (SL).','warn');
     if(dr.dir>0?dr.sl>=entry:dr.sl<=entry) return toast(dr.dir>0?'For Long the stop must be below the entry.':'For Short the stop must be above the entry.','warn');
     if(dr.tp!=null&&(dr.dir>0?dr.tp<=entry:dr.tp>=entry)) return toast(dr.dir>0?'For Long the take profit must be above the entry.':'For Short the take profit must be below the entry.','warn');
+    var risk=readRisk();
+    if(risk===null) return toast('Use a risk from 0 to 100%.','warn');
     if(!ensureBacktest()) return;
     var kind=null, status='open';
     if(!dr.market&&Math.abs(entry-price)>=Math.pow(10,-s.d.dp)/2){
       status='pending';
       kind = dr.dir>0 ? (entry>price?'stop':'limit') : (entry<price?'stop':'limit');
     }
-    var p={ id:newId(), dir:dr.dir, entry:entry, sl:dr.sl, tp:dr.tp, status:status, kind:kind, risk0:Math.abs(entry-dr.sl), riskPct:readRisk(), modelId:$('rpModel').value||'', placedT:nowT(), openT:status==='open'?nowT():null, endT:dr.endT!=null?dr.endT:newEndT(), ar:s.cur<s.maxIdx };
+    var p={ id:newId(), dir:dr.dir, entry:entry, sl:dr.sl, tp:dr.tp, status:status, kind:kind, risk0:Math.abs(entry-dr.sl), riskPct:risk, modelId:$('rpModel').value||'', placedT:nowT(), openT:status==='open'?nowT():null, endT:dr.endT!=null?dr.endT:newEndT(), ar:s.cur<s.maxIdx };
     s.pos.push(p); s.draft=null; saveSession(); renderTrade(true); requestDraw();
     toast((status==='open'?(dr.dir>0?'Long':'Short')+' opened at '+fp(entry):'Pending '+(kind==='stop'?'Stop':'Limit')+' order at '+fp(entry))+(p.ar?' · marked “after cut”':''),p.ar?'warn':'ok');
   }
@@ -987,7 +989,7 @@
     });
     $('rpPosList').addEventListener('click',function(e){ var b=e.target.closest('[data-close]'); if(b) closeManual(b.getAttribute('data-close')); });
     $('rpRisk').addEventListener('input',function(){ var v=this.value.replace(/[^0-9.,]/g,''); if(v!==this.value) this.value=v; });
-    $('rpRisk').addEventListener('change',function(){ if(prefKey()) setPref({ risk:readRisk() }); });
+    $('rpRisk').addEventListener('change',function(){ var risk=readRisk(); if(risk!==null&&prefKey()) setPref({ risk:risk }); });
     $('rpTradeToggle').addEventListener('click',function(){ var t=$('rpTrade'); t.classList.toggle('is-collapsed'); try { if(uid()) localStorage.setItem(COLLAPSE_KEY+'_'+uid(),t.classList.contains('is-collapsed')?'1':'0'); } catch(_){} });
     [['rpInEntry','entry'],['rpInSL','sl'],['rpInTP','tp']].forEach(function(x){
       $(x[0]).addEventListener('input',function(){
@@ -1162,22 +1164,35 @@
     return best;
   }
   function hideClosed(id){
-    var s=S.sess, b=bridge(); if(!s) return;
-    var t=s.closed.filter(function(x){ return x.id===id; })[0]; if(!t) return;
-    t.hid=true; if(b&&b.patchTrade) b.patchTrade(id,{ hiddenOnChart:true });
+    var s=S.sess, b=bridge(); if(!s) return false;
+    var t=s.closed.filter(function(x){ return x.id===id; })[0]; if(!t) return false;
+    var accepted=false;
+    try { accepted=!!(b&&b.patchTrade&&b.patchTrade(id,{ hiddenOnChart:true })===true); } catch(_){}
+    if(!accepted){ toast('Could not save this change. The trade is still shown.','warn'); return false; }
+    t.hid=true;
     saveSession(); renderTrade(true); requestDraw(); toast('Trade hidden on the chart — still counted in stats (Ctrl + middle click — delete permanently)');
+    return true;
   }
   function unhideAll(){
-    var s=S.sess, b=bridge(); if(!s) return; var n=0;
-    s.closed.forEach(function(t){ if(t.hid){ t.hid=false; n++; if(b&&b.patchTrade) b.patchTrade(t.id,{ hiddenOnChart:false }); } });
-    if(n){ saveSession(); renderTrade(true); requestDraw(); toast('Trades shown: '+n); }
+    var s=S.sess, b=bridge(); if(!s) return; var n=0, failed=0;
+    s.closed.forEach(function(t){ if(!t.hid) return;
+      var accepted=false;
+      try { accepted=!!(b&&b.patchTrade&&b.patchTrade(t.id,{ hiddenOnChart:false })===true); } catch(_){}
+      if(accepted){ t.hid=false; n++; } else failed++;
+    });
+    if(n){ saveSession(); renderTrade(true); requestDraw(); }
+    if(failed) toast('Trades shown: '+n+'. Could not save '+failed+' change(s); those trades remain hidden.','warn');
+    else if(n) toast('Trades shown: '+n);
   }
   function deleteClosed(id){
-    var s=S.sess, b=bridge(); if(!s) return;
-    var t=s.closed.filter(function(x){ return x.id===id; })[0]; if(!t) return;
+    var s=S.sess, b=bridge(); if(!s) return false;
+    var t=s.closed.filter(function(x){ return x.id===id; })[0]; if(!t) return false;
+    var accepted=false;
+    try { accepted=!!(b&&b.deleteTrade&&b.deleteTrade(id)===true); } catch(_){}
+    if(!accepted){ toast('Could not save the deletion. The trade was not removed.','warn'); return false; }
     s.closed=s.closed.filter(function(x){ return x.id!==id; });
-    if(b) b.deleteTrade(id);
-    saveSession(); renderTrade(true); requestDraw(); toast('Trade deleted permanently ('+sgnR(t.r)+')','warn');
+    saveSession(); renderTrade(true); requestDraw(); toast('Trade deleted — saved for sync ('+sgnR(t.r)+')','warn');
+    return true;
   }
 
   /* ---------- cut (TradingView-style "select bar": trim the chart back to a chosen candle) ---------- */

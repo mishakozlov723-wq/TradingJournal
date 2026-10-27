@@ -8,6 +8,8 @@ const legacy = fs.readFileSync(path.join(__dirname, 'trading-models.test.cjs'), 
 const stub = legacy.slice(legacy.indexOf('function installFirestoreDouble()'), legacy.indexOf("test('all application"));
 
 function authDouble() {
+  const database=firebase.firestore(),collection=database.collection.bind(database);
+  database.collection=name=>{const c=collection(name),where=c.where;c.where=(...args)=>{const q=where(...args);q.onSnapshot=(next,error)=>{let active=true;q.get().then(s=>{if(active)next(s)},e=>{if(active&&error)error(e)});return ()=>{active=false}};return q};return c};
   const seed = window.__authSeed; // { email } = session still stored from the last manual sign-in
   const listeners = [];
   const auth = {

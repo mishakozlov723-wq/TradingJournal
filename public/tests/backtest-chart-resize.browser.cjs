@@ -26,7 +26,7 @@ let fails=0;const ok=(c,m)=>{console.log((c?'PASS ':'FAIL ')+m);if(!c)fails++;};
   s=await st();ok(s.disp==='block'&&s.grip&&Math.round(s.h)===300,'dots visible, default 300px ('+s.h+')');
   const mainBefore=s.main;
 
-  await page.evaluate(()=>{const s=document.getElementById('backtestChart');window.__p0=s.querySelector('path');window.__fr=[];let last=performance.now();(function f(t){const vb=s.getAttribute('viewBox').split(' ');window.__fr.push({dt:t-last,H:+vb[3],same:s.querySelector('path')===window.__p0});last=t;if(window.__fr.length<400)requestAnimationFrame(f);})(last);});
+  await page.evaluate(()=>{const s=document.getElementById('backtestChart');window.__p0=s.querySelector('path');const frames=window.__fr=[];let last=performance.now();(function f(t){const vb=s.getAttribute('viewBox').split(' ');frames.push({dt:t-last,H:+vb[3],same:s.querySelector('path')===window.__p0});last=t;if(frames.length<400)requestAnimationFrame(f);})(last);});
   let b=await gripPos();await page.mouse.move(b.x,b.y);await page.mouse.down();
   for(let i=1;i<=30;i++){await page.mouse.move(b.x,b.y+150*i/30);await page.waitForTimeout(16);}
   s=await st();ok(s.live&&s.cls,'during drag: live mode');
@@ -66,7 +66,7 @@ let fails=0;const ok=(c,m)=>{console.log((c?'PASS ':'FAIL ')+m);if(!c)fails++;};
   s=await st();ok(s.root===''&&Math.round(s.h)===300&&!s.inline&&(await db())===null,'double-click resets to 300 and saves it');
 
   await openBt('bt-big',3000);await page.waitForTimeout(4000);
-  await page.evaluate(()=>{window.__fr=[];let last=performance.now();(function f(t){window.__fr.push(t-last);last=t;if(window.__fr.length<120)requestAnimationFrame(f);})(last);});
+  await page.evaluate(()=>{const frames=window.__fr=[];let last=performance.now();(function f(t){frames.push(t-last);last=t;if(frames.length<120)requestAnimationFrame(f);})(last);});
   b=await gripPos();await page.mouse.move(b.x,b.y);await page.mouse.down();for(let i=1;i<=40;i++){await page.mouse.move(b.x,b.y+200*i/40);await page.waitForTimeout(16);}await page.mouse.up();await page.waitForTimeout(1300);
   const f2=(await page.evaluate(()=>window.__fr)).slice(2).sort((a,b)=>a-b);
   console.log('3000 trades: frame avg '+(f2.reduce((a,b)=>a+b,0)/f2.length).toFixed(1)+'ms p95 '+f2[Math.floor(f2.length*.95)].toFixed(1)+'ms');

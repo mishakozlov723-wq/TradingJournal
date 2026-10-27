@@ -15,7 +15,7 @@ PUBLIC = os.path.join(HERE, '..', 'public')
 INDEX = os.path.join(PUBLIC, 'index.html')
 
 PLACEHOLDERS = {
-    'APPCSS': 'app.css', 'APPJS': 'app.js', 'NOTESWORKSPACEJS': 'notes-workspace.js',
+    'APPCSS': 'app.css', 'APPJS': 'app.js', 'CALNAV': 'calendar-navigation.js', 'TRADEMEDIAJS': 'trade-media.js', 'TRADEMEDIACSS': 'trade-media.css', 'FLOATINGPANELS': 'floating-panels.js', 'NOTESWORKSPACEJS': 'notes-workspace.js',
     'ACCCFG': 'accounts-config.js', 'ACCSPACE': 'accounts-space.js', 'LWC': 'vendor/lightweight-charts.js',
     'RPCFG': 'replay-data-config.js', 'RPSPACE': 'replay-space.js', 'ACCCSS': 'accounts-space.css', 'RPCSS': 'replay-space.css', 'DESKTOPAUTO': 'desktop-autologin.js',
 }
