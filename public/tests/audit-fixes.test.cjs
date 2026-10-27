@@ -74,3 +74,11 @@ test('request budget preserves caller cancellation and enforces explicit timeout
 test('Myfxbook requests explicitly select a 12-second budget',async()=>{
  const source=read('accounts-proxy-vercel/api/myfxbook.js');let args;const c={URLSearchParams,MYFXBOOK_API:'https://myfxbook.invalid',budget:{request:async(...a)=>{args=a;return {ok:true,status:200,text:async()=>'{"error":false}'}}}};vm.createContext(c);vm.runInContext(extract(source,'mfb'),c);await c.mfb('get-my-accounts',{session:'dummy'});assert.equal(args[2],12000);assert.equal(args[1].signal,undefined);
 });
+
+test('runtime asset fingerprints agree with the SHA256 live-release verifier',()=>{
+ const crypto=require('node:crypto'),index=read('public/index.html');
+ for(const name of ['app.js','app.css','accounts-space.js','notes-workspace.js','replay-space.js','calendar-navigation.js','trade-media.js','trade-media.css','floating-panels.js']){
+  const hash=crypto.createHash('sha256').update(read('public/'+name)).digest('hex').slice(0,10);
+  assert.ok(index.includes(name+'?v='+hash),name+' SHA256 fingerprint');
+ }
+});

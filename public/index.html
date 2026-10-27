@@ -12,14 +12,14 @@
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 <link rel="manifest" href="site.webmanifest">
 <meta name="theme-color" content="#000000">
-<link rel="stylesheet" href="accounts-space.css?v=a8eac3b11e">
-<link rel="stylesheet" href="replay-space.css?v=67388d5743">
+<link rel="stylesheet" href="accounts-space.css?v=2cf295ae18">
+<link rel="stylesheet" href="replay-space.css?v=fef9e59b75">
 <script>
 /* v3.43: Accounts and Replay are not needed to show the journal, so their code
    (~450 KB) loads right after the page is ready instead of before it. Their menu
    entries stay hidden until the code has loaded, exactly as before. */
 (function(){
-  var files=['accounts-config.js?v=1053adb163','accounts-space.js?v=398c6858f9','vendor/lightweight-charts.js?v=37e5f4fe8b','replay-data-config.js?v=a87b6ba84a','replay-space.js?v=b75cfbf3ac'];
+  var files=['accounts-config.js?v=af5df91544','accounts-space.js?v=14f1b007e7','vendor/lightweight-charts.js?v=e21cc5caa0','replay-data-config.js?v=da53d8be61','replay-space.js?v=8b4f5ae20b'];
   var started=false;
   function next(i){
     if(i>=files.length)return;
@@ -46,11 +46,11 @@
     } catch (e) {}
   })();
 </script>
-<link rel="stylesheet" href="app.css?v=3965d87872">
+<link rel="stylesheet" href="app.css?v=5744c89882">
 
 
 
-<link rel="stylesheet" href="trade-media.css?v=8ccf2b784c">
+<link rel="stylesheet" href="trade-media.css?v=dce95c7da1">
 </head>
 <body>
 
@@ -1473,10 +1473,10 @@ separated by commas or new lines"></textarea>
   firebase.initializeApp(firebaseConfig);
   var db = firebase.firestore();
 </script>
-<script src="calendar-navigation.js?v=ae8a89ec56"></script>
-<script src="app.js?v=aff9075139"></script>
-<script src="trade-media.js?v=703d21b514"></script>
-<script src="desktop-autologin.js?v=8c2de5be35"></script>
+<script src="calendar-navigation.js?v=c24a235c35"></script>
+<script src="app.js?v=c19f587d77"></script>
+<script src="trade-media.js?v=d2fd6db8f6"></script>
+<script src="desktop-autologin.js?v=5cd7b49cc7"></script>
 
 <script id="replay-bridge">
 /* Bridge between the journal (Backtest Space data) and Replay Space. Replay never touches journal internals directly. */
@@ -1601,7 +1601,7 @@ separated by commas or new lines"></textarea>
 </script>
 
 <!-- Notes v3.20.3: database runtime and styles are embedded; no additional asset request. -->
-<script src="notes-workspace.js?v=d817d6a5d0"></script>
+<script src="notes-workspace.js?v=5ed37d7d67"></script>
 
 
 
@@ -1694,6 +1694,6 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
   });
 }
 </script>
-<script src="floating-panels.js?v=2"></script>
+<script src="floating-panels.js?v=da40858bf9"></script>
 </body>
 </html>
