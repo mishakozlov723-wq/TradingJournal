@@ -111,6 +111,13 @@ jobs:
             const {persistPrivate}=require('./scripts/persist-private-ci.cjs');
             const result=await persistPrivate({github,context,kind:'rollback'});
             await core.summary.addLink('Byte-verified private rollback export',result.url).write();
+      - name: Preserve existing public Notes image links before restricting originals
+        if: ${{ inputs.deploy_rules }}
+        env:
+          NODE_PATH: /tmp/syter-preflight/node_modules
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RETOCKER }}
+          CONFIRM_LIVE: ${{ inputs.deploy_live }}
+        run: node scripts/migrate-shared-note-images.cjs
       - name: Activate compatible Firestore rules and verify readback
         if: ${{ inputs.deploy_rules }}
         env:

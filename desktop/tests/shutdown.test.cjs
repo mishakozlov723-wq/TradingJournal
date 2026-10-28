@@ -1,0 +1,6 @@
+'use strict';
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
+const text=fs.readFileSync(path.join(__dirname,'../main.js'),'utf8'),request=text.slice(text.indexOf('function requestMode('),text.indexOf('function fitBounds('));
+function state(){const sent=[],c={isQuitting:false,miniReady:true,win:{isDestroyed:()=>false,isVisible:()=>true,isMinimized:()=>false,isFocused:()=>true},view:{webContents:{isDestroyed:()=>false,send:(...v)=>sent.push(v)}},showWindow(){throw Error('must not reveal during shutdown');}};vm.createContext(c);vm.runInContext(request,c);return {c,sent};}
+for(const [name,change]of Object.entries({quitting:c=>c.isQuitting=true,'window closed':c=>c.win=null,'view closed':c=>c.view=null,'destroyed window':c=>c.win.isDestroyed=()=>true,'destroyed renderer':c=>c.view.webContents.isDestroyed=()=>true,'not ready':c=>c.miniReady=false}))test('mode requests safely ignored: '+name,()=>{const {c,sent}=state();change(c);assert.doesNotThrow(()=>{c.requestMode(true);c.requestMode(false);});assert.equal(sent.length,0);});
+test('active journal still receives mode requests',()=>{const {c,sent}=state();c.requestMode(true);assert.deepEqual(sent,[['syter:mode-request',true]]);});
