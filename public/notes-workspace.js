@@ -1004,7 +1004,7 @@
         if (key !== notesImageCacheKey(id)) throw new Error('account changed');
         if (!notesShareMode) notesImgCachePut(key, data); return data;
       });
-    }).then(function(data){ if (key !== notesImageCacheKey(id)) throw new Error('account changed'); notesImgMem[key] = data; delete notesImgWait[key]; return data; }, function(err){ delete notesImgWait[key]; throw err; });
+    }).then(function(data){ delete notesImgWait[key]; if (key !== notesImageCacheKey(id)) throw new Error('account changed'); notesImgMem[key] = data; return data; }, function(err){ delete notesImgWait[key]; throw err; });
     notesImgWait[key] = p; return p;
   }
   function notesImageUpload(data) {

@@ -56,3 +56,11 @@ for(const [platform,file]of [['vercel','accounts-proxy-vercel/api/myfxbook.js'],
   generation='revoked';const revoked=await call(auth);assert.equal(revoked.status,401);assert.equal(revoked.data.code,'CONNECTION_INVALID');
  });
 }
+test('account switch during private image read rejects and clears inflight state so owner can retry',async()=>{
+ let uid='owner-a',release,calls=0;
+ const c=load(notes,['notesImageCacheKey','notesImageDocument','notesImageResolve'],{
+  notesShareMode:false,notesPublicImageToken:'',notesAuthUid:()=>uid,notesIsImageRef:v=>v.startsWith('tjimg:'),notesValidCoverImage:()=>true,notesImgMem:{},notesImgWait:{},notesImgCacheGet:async()=>null,notesImgCachePut(){},
+  db:{collection:()=>({doc:()=>({get:async()=>{calls++;if(calls===1)await new Promise(r=>release=r);return {exists:true,data:()=>({data:'data:image/png;base64,AAAA'})};}})})}
+ });
+ const pending=c.notesImageResolve('tjimg:AAAAAAAAAAAAAAAA');while(!release)await new Promise(r=>setImmediate(r));uid='owner-b';release();await assert.rejects(pending,/account changed/);assert.deepEqual(Object.keys(c.notesImgWait),[]);uid='owner-a';assert.equal(await c.notesImageResolve('tjimg:AAAAAAAAAAAAAAAA'),'data:image/png;base64,AAAA');assert.equal(calls,2);
+});
