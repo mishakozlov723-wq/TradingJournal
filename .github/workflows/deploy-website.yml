@@ -42,6 +42,8 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+          # Full history: every committed firestore.rules version is a known live state.
+          fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
@@ -63,7 +65,15 @@ jobs:
             const {persistPrivate}=require('./scripts/persist-private-ci.cjs');
             const result=await persistPrivate({github,context,kind:'rollback'});
             await core.summary.addHeading('Read-only preflight backup').addLink('Verified private rollback export',result.url).write();
+  # The complete PR regression suite (unit, browser scenarios and rules emulator)
+  # must pass for the exact deployed commit before any production write.
+  regression:
+    if: ${{ inputs.deploy_live && !inputs.artifact_maintenance && !inputs.verify_live_only }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/journal-regression.yml
   deploy:
+    needs: regression
     permissions:
       contents: write
     if: ${{ inputs.deploy_live && !inputs.artifact_maintenance && !inputs.verify_live_only }}
@@ -85,15 +95,13 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
-      - name: Verify website syntax and targeted regression tests
+      - name: Verify syntax of every JavaScript file and the deploy payload
         run: |
-          node --check public/calendar-navigation.js
-          node --check public/app.js
-          node --check public/replay-space.js
-          node --test tests/backtest-model-filter.test.cjs tests/chart-resize.test.cjs tests/release-rollout.test.cjs tests/calendar-navigation.test.cjs
+          git ls-files -z -- '*.js' '*.cjs' '*.mjs' | xargs -0 -n 1 node --check
           test -s public/index.html
           test -s public/app.css
       - name: Install isolated Firebase API authentication helper

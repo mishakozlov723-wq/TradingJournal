@@ -13,7 +13,7 @@ function Start-TestApp([string]$exe){
 (async()=>{
  const req=process.mainModule&&process.mainModule.require?process.mainModule.require.bind(process.mainModule):require;
  const {app}=req('electron');await app.whenReady();
- if(app.getVersion()!=='1.3.13')throw Error('Test needs the actual installed 1.3.13 application');
+ if(app.getVersion()!=='__SYTER_FROM_VERSION__')throw Error('Test needs the actual installed __SYTER_FROM_VERSION__ application');
  const updater=req('electron-updater').autoUpdater;
  const config=await updater.configOnDisk.value;
  if(config.provider!=='github'||config.owner!=='mishakozlov723-wq'||config.repo!=='syter-releases')throw Error('Production updater identity changed');
@@ -40,8 +40,8 @@ function Start-TestApp([string]$exe){
    }finally{$message.Dispose()}
    if($response.id -ne 1){continue}
    if($response.error -or $response.result.exceptionDetails){throw ('Cannot configure disposable update transport: '+($response|ConvertTo-Json -Depth 8 -Compress))}
-   if($response.result.result.value.version -ne '1.3.13'){throw 'Installed updater version was not confirmed'}
-   Write-Host 'PASS: actual 1.3.13 publisher guard accepted unchanged GitHub config; process-local test transport attached'
+   if($response.result.result.value.version -ne '__SYTER_FROM_VERSION__'){throw 'Installed updater version was not confirmed'}
+   Write-Host 'PASS: actual __SYTER_FROM_VERSION__ publisher guard accepted unchanged GitHub config; process-local test transport attached'
    break
   }
  }finally{$socket.Dispose();$cancel.Dispose()}

@@ -8,7 +8,7 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "test": "node --test tests/mini-shortcut.test.cjs tests/window-motion.test.cjs tests/cover-presentation.test.cjs tests/mini-mode-main.test.cjs tests/link-routing.test.cjs tests/view-layout.test.cjs tests/window-width-policy.test.cjs tests/interface-preview-shortcut.test.cjs tests/user-release.test.cjs tests/lifecycle.test.cjs",
+    "test": "node --test tests/mini-shortcut.test.cjs tests/window-motion.test.cjs tests/cover-presentation.test.cjs tests/mini-mode-main.test.cjs tests/link-routing.test.cjs tests/view-layout.test.cjs tests/window-width-policy.test.cjs tests/interface-preview-shortcut.test.cjs tests/user-release.test.cjs tests/lifecycle.test.cjs tests/pr3-desktop.test.cjs",
     "build": "node scripts/prepare-progress-nsis.js && node scripts/build-progress-nsis.js && node scripts/publish-update.js && node scripts/build-branded-installer.js",
     "release": "npm version patch --no-git-tag-version && npm run build"
   },
@@ -42,6 +42,7 @@
       "mini-journal-legacy.js",
       "mini-view-state.js",
       "view-layout.js",
+      "window-bounds.js",
       "build/app-icon.png",
       "build/tray-icon.png",
       "window-width-policy.js",

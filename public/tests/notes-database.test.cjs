@@ -2,11 +2,12 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const {Script}=require('node:vm');
-const D=require('../notes-database.js');
+const notesDatabase=require('./notes-database-source.cjs');
+const D=notesDatabase.load();
 test('all inline scripts and Notes sources parse',()=>{
   const html=require('./assembled-html.cjs')();
   for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g))new Script(match[1]);
-  new Script(fs.readFileSync(__dirname+'/../notes-database.js','utf8'));
+  new Script(notesDatabase.source());
   const source=fs.readFileSync(__dirname+'/../notes-workspace.js','utf8');
   assert.equal(html.match(/<script id="notes-workspace-script">\s*([\s\S]*?)<\/script>/)[1].trim(),source.trim());
 });

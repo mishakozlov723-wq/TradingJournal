@@ -99,3 +99,13 @@
     WriteRegStr HKCU "Software\SYTER\Installer" "Stage" "installed"
   ${endif}
 !macroend
+# A real uninstall removes the fixed HKCU receipts written above. Updates and
+# reinstalls run the previous uninstaller with --updated, so the receipt of the
+# version being installed is never removed by them.
+!macro customUnInstall
+  ${ifNot} ${isUpdated}
+    DeleteRegKey HKCU "Software\SYTER\Desktop"
+    DeleteRegKey HKCU "Software\SYTER\Installer"
+    DeleteRegKey /ifempty HKCU "Software\SYTER"
+  ${endif}
+!macroend
