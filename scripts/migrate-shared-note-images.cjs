@@ -11,23 +11,28 @@ function decode(v){
  if('arrayValue'in v)return(v.arrayValue.values||[]).map(decode);if('mapValue'in v)return Object.fromEntries(Object.entries(v.mapValue.fields||{}).map(([k,x])=>[k,decode(x)]));return undefined;
 }
 async function migrate(adapter){
- const report={shares:0,copies:0,verified:0};
+ const report={shares:0,copies:0,verified:0,skipped:{missing:0,owner:0,content:0}};
  for await(const name of adapter.names()){
   let done=false;
   for(let attempt=0;attempt<4&&!done;attempt++){
    const snap=await adapter.read(name);if(!snap)break;
    const uid=snap.data.uid,ids=imageIds(snap.data.pages||[]);
    if(typeof uid!=='string'||!uid)throw Error('Public snapshot missing owner; rollout stopped');
+   const published=[],skipped={missing:0,owner:0,content:0};
    for(const id of ids){
     const source=await adapter.read('notesImages/'+id),data=source?.data;
-    if(!data||data.uid!==uid||typeof data.data!=='string'||!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(data.data)||data.data.length>650000)throw Error('Public snapshot image failed ownership/content checks; rollout stopped');
+    // A broken image must not block the whole rollout. Missing or invalid originals are
+    // already unreadable by the current viewer; foreign images must never be copied.
+    // Skipped ids are not published, so they simply stay unavailable via the public link.
+    const reason=!data?'missing':data.uid!==uid?'owner':(typeof data.data!=='string'||!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(data.data)||data.data.length>650000)?'content':'';
+    if(reason){skipped[reason]++;continue;}
     const copy=name+'/images/'+id;
     await adapter.copy(copy,{uid,data:data.data});
     const readback=await adapter.read(copy);
     if(readback?.data.uid!==uid||readback?.data.data!==data.data)throw Error('Share image byte verification failed');
-    report.copies++;report.verified++;
+    published.push(id);report.copies++;report.verified++;
    }
-   try{await adapter.publish(name,ids,snap.version);done=true;report.shares++;}
+   try{await adapter.publish(name,published,snap.version);done=true;report.shares++;for(const k in skipped)report.skipped[k]+=skipped[k];}
    catch(e){if(e.status!==409&&e.status!==412)throw e;}
   }
   if(!done&&(await adapter.read(name)))throw Error('Public snapshot changed repeatedly; retry rollout');
@@ -48,7 +53,7 @@ async function cli(){
   publish:(name,ids,version)=>request('PATCH',name+'?updateMask.fieldPaths=imageIds&currentDocument.updateTime='+encodeURIComponent(version),{fields:{imageIds:{arrayValue:{values:ids.map(x=>({stringValue:x}))}}}})
  };
  const report=await migrate(adapter);fs.writeFileSync('rollout-backup/shared-image-migration.json',JSON.stringify({sourceSha:process.env.GITHUB_SHA,...report},null,2));
- console.log('PASS: existing public note image copies verified; '+JSON.stringify(report)+'; no original/private documents changed');
+ console.log('PASS: existing public note image copies verified; '+JSON.stringify(report)+'; no original/private documents changed'+(Object.values(report.skipped).some(Boolean)?'; skipped unusable images (counts only): '+JSON.stringify(report.skipped):''));
 }
 if(require.main===module)cli().catch(e=>{console.error(e.message);process.exitCode=1;});
 module.exports={imageIds,decode,migrate};
