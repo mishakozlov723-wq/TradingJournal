@@ -2,6 +2,9 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
+<!-- PR2: Content Security Policy. Scripts only from this site and the pinned CDNs (Firebase, html2canvas fallback);
+     network calls only to Firebase, the accounts proxy and the replay quotes host. Update when adding a new external service. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdnjs.cloudflare.com https://apis.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' data: blob: https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://www.gstatic.com https://trading-journal-accounts-proxy.vercel.app https://retocker-replay-quotes.web.app; frame-src 'self' https://retocker.firebaseapp.com https://*.firebaseapp.com https://apis.google.com; worker-src 'self' blob:; manifest-src 'self'; media-src 'self' data: blob:; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
 <title>Trading Journal</title>
@@ -19,7 +22,7 @@
    (~450 KB) loads right after the page is ready instead of before it. Their menu
    entries stay hidden until the code has loaded, exactly as before. */
 (function(){
-  var files=['accounts-config.js?v=af5df91544','accounts-space.js?v=14f1b007e7','vendor/lightweight-charts.js?v=e21cc5caa0','replay-data-config.js?v=da53d8be61','replay-space.js?v=8b4f5ae20b'];
+  var files=['accounts-config.js?v=af5df91544','accounts-space.js?v=14f1b007e7','vendor/lightweight-charts.js?v=e21cc5caa0','replay-data-config.js?v=da53d8be61','replay-space.js?v=aa83b67eba'];
   var started=false;
   function next(i){
     if(i>=files.length)return;
@@ -34,6 +37,26 @@
 })();
 </script>
 <script>
+  // Some browsers (blocked site data, strict private modes) throw on any access to
+  // Web Storage. Swap in an in-memory store so the app still starts and signs in;
+  // values then simply do not survive a reload.
+  (function() {
+    ['localStorage', 'sessionStorage'].forEach(function(name) {
+      try { window[name].getItem('__tj_probe'); return; } catch (e) {}
+      var data = {};
+      var memory = {
+        getItem: function(k) { k = String(k); return Object.prototype.hasOwnProperty.call(data, k) ? data[k] : null; },
+        setItem: function(k, v) { data[String(k)] = String(v); },
+        removeItem: function(k) { delete data[String(k)]; },
+        clear: function() { data = {}; },
+        key: function(i) { var keys = Object.keys(data); return i >= 0 && i < keys.length ? keys[i] : null; },
+        get length() { return Object.keys(data).length; }
+      };
+      try { Object.defineProperty(window, name, { value: memory, configurable: true, writable: true }); window.tjStorageUnavailable = true; } catch (e) {}
+    });
+  })();
+</script>
+<script>
   // Apply the saved theme before CSS performs its first paint.
   // This prevents the default version from flashing during a reload.
   (function() {
@@ -46,7 +69,7 @@
     } catch (e) {}
   })();
 </script>
-<link rel="stylesheet" href="app.css?v=906b7ed7d7">
+<link rel="stylesheet" href="app.css?v=acb15454c8">
 
 
 
@@ -1395,10 +1418,10 @@ separated by commas or new lines"></textarea>
   </div>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js" integrity="sha384-ZaR6mWzmJtrRibZ1Vm7SoHFr8OXjyAuGAXalGDKqbxFT18oi/z+oZLIRFkpeNor1" crossorigin="anonymous"></script>
 
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js" integrity="sha384-Ke0FJhH7LyRqDxZ0wt+/OXV38yfQVu7g9VPEEGjYmB4RVOY/ta04uecRhsMwT7V3" crossorigin="anonymous"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js" integrity="sha384-I1LYojsZ5RM1cOda44Z2h42Qa6YfsQ1XkXxREnhp4ueYBR/4d1pG1K+NZM537Vsj" crossorigin="anonymous"></script>
 
 <script>
 /* v3.41: quiet save watcher. Nothing is shown while saves succeed.
@@ -1488,8 +1511,8 @@ separated by commas or new lines"></textarea>
   var db = firebase.firestore();
 </script>
 <script src="calendar-navigation.js?v=c24a235c35"></script>
-<script src="app.js?v=096e3156ff"></script>
-<script src="trade-media.js?v=d2fd6db8f6"></script>
+<script src="app.js?v=9d5b3cebff"></script>
+<script src="trade-media.js?v=b4c9d17a13"></script>
 <script src="desktop-autologin.js?v=5cd7b49cc7"></script>
 
 <script id="replay-bridge">
@@ -1615,7 +1638,7 @@ separated by commas or new lines"></textarea>
 </script>
 
 <!-- Notes v3.20.3: database runtime and styles are embedded; no additional asset request. -->
-<script src="notes-workspace.js?v=5ed37d7d67"></script>
+<script src="notes-workspace.js?v=20ac556da7"></script>
 
 
 

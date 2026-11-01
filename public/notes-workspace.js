@@ -1004,9 +1004,108 @@
     if (notesShareMode || !notesLoadedRemote || typeof db === 'undefined' || !uid) return Promise.reject(new Error('local'));
     if (!notesValidCoverImage(data)) return Promise.reject(new Error('invalid'));
     var id = notesImgToken();
+    var owner = notesLoadedFor;
     return db.collection('notesImages').doc(id).set({ uid:uid, data:data, createdAt:Date.now() }).then(function(){
-      notesImgMem[id] = data; notesImgCachePut(id, data); return 'tjimg:' + id;
+      notesImgMem[id] = data; notesImgCachePut(id, data);
+      // Track fresh uploads too: an image removed (or undone) before the page was ever saved
+      // would otherwise never show up as "removed from the cloud copy".
+      notesImgOrphanAdd(owner, [id]);
+      return 'tjimg:' + id;
     });
+  }
+  /* PR2: image documents that are no longer referenced by any page are deleted after a grace
+     period. Removed references are queued per owner in localStorage; the sweep re-checks the
+     live workspace, the last cloud copy and the undo/redo history before deleting anything. */
+  var NOTES_IMG_ORPHAN_GRACE_MS = 24 * 60 * 60 * 1000;
+  var NOTES_IMG_SWEEP_EVERY_MS = 5 * 60 * 1000;
+  var NOTES_IMG_SWEEP_BATCH = 20;
+  var notesImgSweepBusy = false, notesImgSweepAt = 0;
+  function notesImageRefsIn(text, out) {
+    out = out || Object.create(null);
+    if (typeof text !== 'string' || text.indexOf('tjimg:') < 0) return out;
+    var re = /tjimg:([A-Za-z0-9]{16,64})/g, m;
+    while ((m = re.exec(text))) out[m[1]] = true;
+    return out;
+  }
+  function notesImageRefsOfHashes(hashes) {
+    var out = Object.create(null);
+    Object.keys(hashes || {}).forEach(function(k){ notesImageRefsIn(hashes[k], out); });
+    return out;
+  }
+  function notesImgOrphanKey(ownerKey) { return 'tjNotesImgOrphansV1:' + ownerKey; }
+  function notesImgOrphanRead(ownerKey) {
+    try { var v = JSON.parse(localStorage.getItem(notesImgOrphanKey(ownerKey)) || '{}'); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; }
+    catch (_) { try { localStorage.removeItem(notesImgOrphanKey(ownerKey)); } catch (__) {} return {}; }
+  }
+  function notesImgOrphanWrite(ownerKey, queue) {
+    try {
+      if (Object.keys(queue).length) localStorage.setItem(notesImgOrphanKey(ownerKey), JSON.stringify(queue));
+      else localStorage.removeItem(notesImgOrphanKey(ownerKey));
+    } catch (_) {}
+  }
+  function notesImgOrphanAdd(ownerKey, ids) {
+    if (!ownerKey || !ids || !ids.length) return;
+    var queue = notesImgOrphanRead(ownerKey), now = Date.now(), changed = false;
+    ids.forEach(function(id){ if (/^[A-Za-z0-9]{16,64}$/.test(id)) { queue[id] = now; changed = true; } });
+    if (changed) notesImgOrphanWrite(ownerKey, queue);
+  }
+  // Called after a successful cloud save: references present in the previous cloud copy but
+  // missing from the new one become deletion candidates.
+  function notesImgNoteRemoved(ownerKey, prevHashes, nextHashes) {
+    var before = notesImageRefsOfHashes(prevHashes), after = notesImageRefsOfHashes(nextHashes), gone = [];
+    Object.keys(before).forEach(function(id){ if (!after[id]) gone.push(id); });
+    notesImgOrphanAdd(ownerKey, gone);
+  }
+  // live: referenced by the workspace or its last cloud copy; held: only reachable via undo/redo.
+  function notesImageRefsInUse() {
+    var live = Object.create(null), held = Object.create(null);
+    try { notesImageRefsIn(JSON.stringify(notesPages), live); } catch (_) { return null; }
+    Object.keys(notesCloudPageHashes || {}).forEach(function(k){ notesImageRefsIn(notesCloudPageHashes[k], live); });
+    var hist = [notesHist.base].concat(notesHist.undo || [], notesHist.redo || []);
+    hist.forEach(function(snap){ if (snap && typeof snap.pages === 'string') notesImageRefsIn(snap.pages, held); });
+    return { live:live, held:held };
+  }
+  function notesImgSweep(force) {
+    var ownerKey = notesLoadedFor, uid = notesAuthUid(), now = Date.now();
+    if (notesImgSweepBusy || !ownerKey || !uid || notesShareMode || !notesLoadedRemote || notesCloudIncomplete || notesCloudConflict || notesMobileLoading || typeof db === 'undefined') return Promise.resolve(0);
+    if (!force && now - notesImgSweepAt < NOTES_IMG_SWEEP_EVERY_MS) return Promise.resolve(0);
+    var queue = notesImgOrphanRead(ownerKey), ids = Object.keys(queue);
+    if (!ids.length) return Promise.resolve(0);
+    var used = notesImageRefsInUse();
+    if (!used) return Promise.resolve(0);
+    notesImgSweepAt = now;
+    var due = [], changed = false;
+    ids.forEach(function(id){
+      if (used.live[id]) { delete queue[id]; changed = true; return; }   // live again: future removals are re-detected
+      var at = Number(queue[id]) || 0;
+      if (!at || at > now) { queue[id] = now; changed = true; return; }
+      if (used.held[id]) return;                                        // undo could still bring it back
+      if (now - at >= NOTES_IMG_ORPHAN_GRACE_MS && due.length < NOTES_IMG_SWEEP_BATCH) due.push(id);
+    });
+    if (changed) notesImgOrphanWrite(ownerKey, queue);
+    if (!due.length) return Promise.resolve(0);
+    notesImgSweepBusy = true;
+    var deleted = 0;
+    return Promise.all(due.map(function(id){
+      return db.collection('notesImages').doc(id).delete().then(function(){ deleted++; return true; }, function(err){
+        var code = err && err.code;
+        // Already gone or not ours (e.g. uploaded by someone else): nothing left to clean up.
+        if (code === 'not-found' || code === 'permission-denied') return true;
+        console.warn('Notes image cleanup will retry later:', err);
+        return false;
+      }).then(function(done){
+        if (!done) return;
+        delete notesImgMem[id];
+        notesImgDb().then(function(d){ if (!d) return; try { d.transaction('img','readwrite').objectStore('img').delete(id); } catch (_) {} });
+        return id;
+      });
+    })).then(function(results){
+      var latest = notesImgOrphanRead(ownerKey);
+      results.forEach(function(id){ if (id && latest[id] && Number(latest[id]) <= now) delete latest[id]; });
+      notesImgOrphanWrite(ownerKey, latest);
+      notesImgSweepBusy = false;
+      return deleted;
+    }, function(){ notesImgSweepBusy = false; return deleted; });
   }
   // Upload when possible, otherwise keep the inline copy (exactly the previous behaviour).
   function notesStoreImage(data) {
@@ -1692,6 +1791,7 @@
     }).then(function(){
       // Never let an old owner's async completion overwrite the cache for the newly selected owner.
       if (notesLoadedFor === ownerKey) {
+        try { notesImgNoteRemoved(ownerKey, notesCloudPageHashes, nextHashes); } catch (_) {}   // cleanup must never break saving
         notesCloudPageHashes = nextHashes;
         notesCloudPageIds = currentIds.slice();
         notesCloudRevision=notesRevision(meta);notesCloudConflict=false;
@@ -1703,7 +1803,7 @@
       if (pending || (notesLoadedFor === ownerKey && notesDirty)) {
         // Flush edits made while this commit was running. setTimeout avoids deep promise recursion.
         setTimeout(function(){ notesSave(); }, 0);
-      } else if (notesLoadedFor === ownerKey) notesSetState('Saved');
+      } else if (notesLoadedFor === ownerKey) { notesSetState('Saved'); setTimeout(function(){ try { notesImgSweep(false); } catch (_) {} }, 2000); }
     }).catch(function(err){
       console.error('Notes save failed:',err);
       notesRemoteSaveInFlight = false; notesRemoteSaveOwner = null;
@@ -3490,7 +3590,7 @@
   function notesHistoryReset() {
     clearTimeout(notesHist.timer); notesHist.undo=[]; notesHist.redo=[]; notesHist.open=false;
     notesHist.base = notesShareMode ? null : notesHistorySnap();
-    if (!notesShareMode) setTimeout(notesOffloadImages, 1500);
+    if (!notesShareMode) { setTimeout(notesOffloadImages, 1500); setTimeout(function(){ try { notesImgSweep(true); } catch (_) {} }, 20000); }
   }
   function notesHistoryBreak() {
     // Close the current typing group so the next change becomes its own step.
