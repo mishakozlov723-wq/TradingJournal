@@ -237,6 +237,8 @@
       if (mini) { openModal(null); managedDraft = true; draftOwner = user; }
       else closeModal();
       render(); status.textContent = 'Сделка сохранена ✓';
+      // Same owner-only streak feedback as a save from the full journal form.
+      if (typeof maybeShowStreakToast === 'function') maybeShowStreakToast();
     } catch (err) { if (user === viewingUser && generation === tjDataGeneration) { error('Не удалось сохранить сделку. Черновик оставлен для повтора.'); status.textContent = ''; } }
     finally { saving = false; form.inert = false; $('tradeModalSubmitBtn').disabled = imageBusy; }
   }, true);
