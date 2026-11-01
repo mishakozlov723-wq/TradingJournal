@@ -366,6 +366,31 @@
   var calendarYear = new Date().getFullYear();
   var calendarMonth = new Date().getMonth();
   var calendarBrowse = { year: calendarYear, month: calendarMonth, level: 'days' };
+  // Periods start on "today". A tab or the desktop app left open across midnight
+  // into a new month/year follows the calendar, unless the user navigated away.
+  var tjPeriodToday = { year: calendarYear, month: calendarMonth };
+  function tjFollowTodayPeriods() {
+    var now = new Date(), year = now.getFullYear(), month = now.getMonth();
+    var was = tjPeriodToday;
+    if (was.year === year && was.month === month) return false;
+    tjPeriodToday = { year: year, month: month };
+    var changed = false;
+    if (was.year !== year) {
+      if (monthlyYear === was.year && monthlySelectedMonth === null) { monthlyYear = year; changed = true; }
+      if (weeklyYear === was.year && weeklySelected === null) { weeklyYear = year; changed = true; }
+    }
+    if (calendarYear === was.year && calendarMonth === was.month) {
+      calendarYear = year; calendarMonth = month; changed = true;
+      if (calendarBrowse.level === 'days' && calendarBrowse.year === was.year && calendarBrowse.month === was.month) {
+        calendarBrowse.year = year; calendarBrowse.month = month;
+      }
+    }
+    if (changed && currentUser && typeof render === 'function') render();
+    return changed;
+  }
+  setInterval(tjFollowTodayPeriods, 60000);
+  document.addEventListener('visibilitychange', function() { if (!document.hidden) tjFollowTodayPeriods(); });
+  window.addEventListener('focus', tjFollowTodayPeriods);
   var datetimePickerState = {
     target: null,
     year: new Date().getFullYear(),
@@ -876,20 +901,28 @@
   }
 
   // Field-level updates preserve every other trade property, including screenshots.
-  // Read all of this user's trades, not just the currently rendered table/backtest.
+  // Ask the server only for this user's trades that reference the removed models
+  // (equality + `in`, no composite index); never download the whole journal.
+  var TJ_MODEL_IN_CHUNK = 10;
   function purgeTradeModelReferences(user, ids) {
     var owner = findUser(user);
     if (!owner) return Promise.reject(new Error('Unknown model owner'));
-    return Promise.all(['trades', 'backtestTrades'].map(function(collection) {
-      return db.collection(collection).where('uid', '==', owner.uid).get().then(function(snapshot) {
-        var refs = [];
-        snapshot.forEach(function(doc) {
-          if (ids.indexOf(doc.data().modelId) >= 0) refs.push(db.collection(collection).doc(doc.id));
-        });
-        return refs;
-      });
-    })).then(function(results) {
-      var refs = results[0].concat(results[1]), chain = Promise.resolve();
+    ids = ids.filter(function(id, i) { return typeof id === 'string' && id && ids.indexOf(id) === i; });
+    if (!ids.length) return Promise.resolve();
+    var lookups = [];
+    ['trades', 'backtestTrades'].forEach(function(collection) {
+      for (var i = 0; i < ids.length; i += TJ_MODEL_IN_CHUNK) {
+        (function(chunk) {
+          lookups.push(db.collection(collection).where('uid', '==', owner.uid).where('modelId', 'in', chunk).get({ source: 'server' }).then(function(snapshot) {
+            var refs = [];
+            snapshot.forEach(function(doc) { refs.push(db.collection(collection).doc(doc.id)); });
+            return refs;
+          }));
+        })(ids.slice(i, i + TJ_MODEL_IN_CHUNK));
+      }
+    });
+    return Promise.all(lookups).then(function(results) {
+      var refs = [].concat.apply([], results), chain = Promise.resolve();
       for (var i = 0; i < refs.length; i += 400) {
         (function(chunk) {
           chain = chain.then(function() {
@@ -903,14 +936,20 @@
       }
       return chain;
     }).then(function() {
-      // Also clean caches that could otherwise restore deleted references on reload.
+      // The server is already clean. Local caches are best effort: a damaged cache
+      // is dropped instead of turning a successful deletion into an error.
       ['syter_backtest_trades_v1_' + user, 'tj_trades_v3_' + user].forEach(function(key) {
-        var raw = localStorage.getItem(key);
-        if (!raw) return;
-        var records = JSON.parse(raw);
-        if (!Array.isArray(records)) return;
-        clearTradeModelReferences(records, ids);
-        localStorage.setItem(key, JSON.stringify(records));
+        try {
+          var raw = localStorage.getItem(key);
+          if (!raw) return;
+          var records = JSON.parse(raw);
+          if (!Array.isArray(records)) return;
+          clearTradeModelReferences(records, ids);
+          localStorage.setItem(key, JSON.stringify(records));
+        } catch (err) {
+          console.warn('Dropping unreadable local cache after model cleanup:', key, err);
+          try { localStorage.removeItem(key); } catch (e) {}
+        }
       });
       if (!window.indexedDB) return;
       return openDB().then(function(database) {
@@ -927,7 +966,7 @@
           tx.oncomplete = resolve;
           tx.onerror = tx.onabort = function() { reject(tx.error || new Error('Local model cleanup failed')); };
         });
-      });
+      }).catch(function(err) { console.warn('Local model cleanup skipped:', err); });
     }).then(function() {
       if (viewingUser !== user) return;
       clearTradeModelReferences(trades.concat(allBacktestTrades, backtestTrades), ids);
@@ -1452,6 +1491,9 @@
   document.getElementById('streakCelebrateOverlay').addEventListener('contextmenu', function(e) { e.preventDefault(); });
 
   function maybeShowStreakToast() {
+    // The popup and its "seen" mark belong to the journal owner. An administrator
+    // browsing a student's journal must neither see it nor consume it for them.
+    if (!currentUser || !viewingUser || currentUser.login !== viewingUser) return;
     var brk = computeStreakBreak(trades);
     if (brk.type) {
       var brkSeen = breakAck.type === brk.type && breakAck.tradeId === brk.tradeId;
@@ -2051,8 +2093,15 @@
       if (!tjLoadIsCurrent(load)) return;
       if (activeTab === 'backtests') renderBacktests();
       startLiveSync(load);
+      // Lighten old oversized thumbnails in the background (owner only, a few per visit).
+      setTimeout(function() {
+        if (!tjLoadIsCurrent(load) || !window.TJMedia || !TJMedia.shrinkLegacy) return;
+        if (!currentUser || currentUser.login !== viewingUser) return;
+        TJMedia.shrinkLegacy(trades.concat(allBacktestTrades || []), viewingUser);
+      }, TJ_THUMB_SHRINK_DELAY_MS);
     });
   }
+  var TJ_THUMB_SHRINK_DELAY_MS = 8000;
 
   function tjOfferLegacyRecovery(records, user, load) {
     // Shown as a journal notice: the old #saveError target was inside a closed modal.
@@ -2698,12 +2747,31 @@
     });
   }
 
+  // Typing in RR / days tested updates the backtest in memory at once, but the
+  // re-render, the local copy and the server write wait for a short pause (or
+  // blur / leaving the page), instead of running on every keystroke.
+  var TJ_BACKTEST_RR_DEBOUNCE_MS = 500;
   var backtestRRSaveTimer = null, tjBacktestRRPending = null, tjBacktestRRDrafts = {};
+  function tjStoreBacktestRRDraftLocally(draft) {
+    // Keyed by the draft owner, so a switch of the viewed account can never
+    // write one user's backtests under another user's key.
+    try {
+      var key = 'syter_backtests_v1_' + draft.user;
+      var list = JSON.parse(localStorage.getItem(key) || '[]');
+      if (!Array.isArray(list)) return;
+      var changed = false;
+      list.forEach(function(item) {
+        if (item && item.id === draft.id) { item.rrText = draft.rrText; item.daysTested = draft.daysTested; changed = true; }
+      });
+      if (changed) localStorage.setItem(key, JSON.stringify(list));
+    } catch (e) { console.error('Could not save Backtests locally:', e); }
+  }
   function flushBacktestRRDraft() {
     var draft = tjBacktestRRPending;
+    clearTimeout(backtestRRSaveTimer); backtestRRSaveTimer = null;
     if (!draft) return;
     tjBacktestRRPending = null;
-    clearTimeout(backtestRRSaveTimer); backtestRRSaveTimer = null;
+    if (draft.user === viewingUser) saveBacktestLocal(); else tjStoreBacktestRRDraftLocally(draft);
     tjBacktestWrite('backtests',draft.id,{ rrText: draft.rrText, daysTested: draft.daysTested }, { merge: true }, draft.user).then(function() {
       if (tjBacktestRRDrafts[draft.id] === draft) delete tjBacktestRRDrafts[draft.id];
     }).catch(function(err) {
@@ -2711,19 +2779,22 @@
       if (viewingUser === draft.user) showBacktestSyncError('The data was saved on this device, but could not be synced. Check your connection.');
     });
   }
+  function commitBacktestRRDraft() {
+    var draft = tjBacktestRRPending;
+    flushBacktestRRDraft();
+    if (draft && draft.user === viewingUser) renderBacktests();
+  }
   function updateActiveBacktestFromInputs() {
     var bt = backtests.filter(function(b) { return b.id === activeBacktestId; })[0];
     if (!bt) return;
-    if (tjBacktestRRPending && tjBacktestRRPending.id !== bt.id) flushBacktestRRDraft();
+    if (tjBacktestRRPending && tjBacktestRRPending.id !== bt.id) commitBacktestRRDraft();
     var rrInputEl = document.getElementById('backtestRRInput'), daysInputEl = document.getElementById('backtestDaysTested');
     var draft = { id: bt.id, user: viewingUser, rrText: rrInputEl ? rrInputEl.value : '', daysTested: (daysInputEl && daysInputEl.value !== '') ? Number(daysInputEl.value) : null };
     bt.rrText = draft.rrText; bt.daysTested = draft.daysTested;
     tjBacktestRRDrafts[bt.id] = draft; tjBacktestRRPending = draft;
-    saveBacktestLocal();
-    renderBacktests();
     showBacktestSyncError('');
     clearTimeout(backtestRRSaveTimer);
-    flushBacktestRRDraft();
+    backtestRRSaveTimer = setTimeout(commitBacktestRRDraft, TJ_BACKTEST_RR_DEBOUNCE_MS);
   }
 
   function playBacktestViewTransition(view) {
@@ -3776,7 +3847,16 @@
       addConfirmButton(function() { trade.direction = selectedDirection; closeInlineEditPopup(); saveAndRefresh(); });
     } else if (col === 'result') {
       var selectedSign = Math.sign(Number(trade.r) || 0);
-      [['WIN', 1], ['LOSS', -1]].forEach(function(pair) {
+      // A break-even trade has no size to flip, so WIN/LOSS also asks for the RR;
+      // without it the choice used to be silently ignored.
+      var isBreakEven = !(Math.abs(Number(trade.r)) > 0);
+      var magnitudeInput = null;
+      var syncMagnitude = function() {
+        if (!magnitudeInput) return;
+        magnitudeInput.style.display = selectedSign === 0 ? 'none' : '';
+        if (selectedSign !== 0) setTimeout(function() { magnitudeInput.focus(); }, 0);
+      };
+      [['WIN', 1], ['LOSS', -1]].concat(isBreakEven ? [['BE', 0]] : []).forEach(function(pair) {
         var label = pair[0], sign = pair[1];
         var isActive = (sign === selectedSign);
         var btn = document.createElement('button');
@@ -3786,10 +3866,42 @@
           selectedSign = sign;
           Array.prototype.forEach.call(popup.querySelectorAll('.popup-option'), function(option) { option.classList.remove('active-option'); });
           btn.classList.add('active-option');
+          syncMagnitude();
         });
         popup.appendChild(btn);
       });
-      addConfirmButton(function() { trade.r = Math.abs(trade.r) * selectedSign; closeInlineEditPopup(); saveAndRefresh(); });
+      if (isBreakEven) {
+        magnitudeInput = document.createElement('input');
+        magnitudeInput.className = 'popup-input';
+        magnitudeInput.type = 'number'; magnitudeInput.step = '0.01'; magnitudeInput.min = '0'; magnitudeInput.max = '1000000';
+        magnitudeInput.placeholder = 'RR, e.g. 1.5';
+        magnitudeInput.setAttribute('aria-label', 'RR');
+        popup.appendChild(magnitudeInput);
+        syncMagnitude();
+      }
+      addConfirmButton(function() {
+        if (selectedSign === 0) { trade.r = 0; closeInlineEditPopup(); saveAndRefresh(); return; }
+        if (isBreakEven) {
+          var size = Number(magnitudeInput.value.trim().replace(',', '.'));
+          if (!(Number.isFinite(size) && size > 0 && size <= 1000000)) {
+            magnitudeInput.classList.add('popup-input-invalid');
+            magnitudeInput.focus();
+            return;
+          }
+          trade.r = size * selectedSign;
+        } else {
+          trade.r = Math.abs(trade.r) * selectedSign;
+        }
+        closeInlineEditPopup(); saveAndRefresh();
+      });
+      if (magnitudeInput) {
+        magnitudeInput.addEventListener('input', function() { magnitudeInput.classList.remove('popup-input-invalid'); });
+        magnitudeInput.addEventListener('keydown', function(e) {
+          if (e.key !== 'Enter' || e.isComposing) return;
+          e.preventDefault();
+          var ok = popup.querySelector('.popup-confirm-btn'); if (ok) ok.click();
+        });
+      }
     } else if (col === 'rr') {
       popup.classList.add('rr-edit-popup');
       var inp = document.createElement('input');
@@ -4404,6 +4516,37 @@
     return computeStats(sub);
   }
 
+  // pos / neg / flat. A day or week that ended at exactly 0% is neutral, not green.
+  function tjResultTone(value) {
+    var v = Number(value) || 0;
+    if (Math.abs(v) < 1e-9) return 'flat';
+    return v > 0 ? 'pos' : 'neg';
+  }
+
+  // Streak of consecutive profitable trading days. Days without trades (weekends,
+  // days off) neither extend nor break it, and it runs across month boundaries.
+  // `current` is the streak as of the viewed month's end (or today), `best` is the
+  // longest streak reached on a day of the viewed month.
+  function tjCalendarStreaks(list, year, month) {
+    var byKey = {};
+    list.forEach(function(t) {
+      var d = tradeStatsDate(t);
+      if (isNaN(d.getTime())) return;
+      var key = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+      byKey[key] = (byKey[key] || 0) + tradeGainPercent(t);
+    });
+    var now = new Date(), today = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+    var monthStart = year * 10000 + (month + 1) * 100, monthEnd = monthStart + 99;
+    var limit = Math.min(monthEnd, today), run = 0, best = 0, current = 0;
+    Object.keys(byKey).map(Number).sort(function(a, b) { return a - b; }).forEach(function(key) {
+      if (key > limit) return;
+      run = tjResultTone(byKey[key]) === 'pos' ? run + 1 : 0;
+      if (key > monthStart) best = Math.max(best, run);
+      current = run;
+    });
+    return { current: current, best: best };
+  }
+
   function renderCalendar() {
     calendarBrowse.year = calendarYear; calendarBrowse.month = calendarMonth;
     var nav = window.TJCalendarNav, coarse = calendarBrowse.level !== 'days';
@@ -4438,7 +4581,7 @@
     var monthTotal = 0;
     var rowCells = []; // day cells for the current row (max 7), reset every week
     var cellsHTML = '';
-    var streakRun = 0, bestStreak = 0, currentStreak = 0;
+    var streaks = tjCalendarStreaks(filtered, calendarYear, calendarMonth);
 
     function flushWeekCell() {
       var weekR = 0, weekHasTrades = false;
@@ -4451,7 +4594,7 @@
         }
       });
       var wcls = 'cal-week-cell';
-      if (weekHasTrades) wcls += weekR >= 0 ? ' pos' : ' neg';
+      if (weekHasTrades) wcls += ' ' + tjResultTone(weekR);
       cellsHTML += '<div class="' + wcls + '">' +
         (weekHasTrades ? '<div class="cal-week-r">' + fmtPercent(weekR) + '</div>' : '<div class="cal-week-dash">—</div>') +
       '</div>';
@@ -4471,13 +4614,8 @@
       var cls = 'cal-cell';
       if (!dayTrades.length) {
         cls += ' empty-day';
-        streakRun = 0;
       } else {
-        cls += ' has-trades';
-        cls += dayR >= 0 ? ' pos' : ' neg';
-        if (dayR > 0) { streakRun++; bestStreak = Math.max(bestStreak, streakRun); }
-        else streakRun = 0;
-        currentStreak = streakRun;
+        cls += ' has-trades ' + tjResultTone(dayR);
       }
 
       cellsHTML += '<div class="' + cls + '" data-day="' + day + '">' +
@@ -4501,9 +4639,10 @@
     document.getElementById('calGrid').innerHTML = cellsHTML;
     var totalEl = document.getElementById('calTotalLabel');
     totalEl.textContent = fmtPercent(monthTotal);
-    totalEl.style.color = monthTotal >= 0 ? 'var(--green)' : 'var(--red)';
-    document.getElementById('calStreakLabel').textContent = 'Current streak: ' + currentStreak + ' day' + (currentStreak === 1 ? '' : 's');
-    document.getElementById('calBestStreakLabel').textContent = 'Best streak: ' + bestStreak + ' day' + (bestStreak === 1 ? '' : 's');
+    var totalTone = tjResultTone(monthTotal);
+    totalEl.style.color = totalTone === 'pos' ? 'var(--green)' : (totalTone === 'neg' ? 'var(--red)' : 'var(--textDim)');
+    document.getElementById('calStreakLabel').textContent = 'Current streak: ' + streaks.current + ' day' + (streaks.current === 1 ? '' : 's');
+    document.getElementById('calBestStreakLabel').textContent = 'Best streak: ' + streaks.best + ' day' + (streaks.best === 1 ? '' : 's');
 
     Array.prototype.forEach.call(document.querySelectorAll('.cal-cell.has-trades'), function(el) {
       el.addEventListener('click', function() {
@@ -4651,6 +4790,7 @@
     if (t.chart) {
       var img = document.createElement('img');
       img.src = t.chart; img.alt = 'Trade screenshot'; img.draggable = false;
+      if (window.TJMedia && TJMedia.sharpen) TJMedia.sharpen(img, t);
       img.addEventListener('click', function() { if(window.TJMedia)TJMedia.gallery(t);else openFullscreenImage(t.chart); });
       shot.appendChild(img);
     } else {
@@ -5994,6 +6134,7 @@
 
   function openLightbox(trade) {
     document.getElementById('lightboxImg').src = trade.chart;
+    if (window.TJMedia && TJMedia.sharpen) TJMedia.sharpen(document.getElementById('lightboxImg'), trade);
     document.getElementById('lightboxImg')._trade=trade;
     document.getElementById('lightboxImg').onclick=function(){if(window.TJMedia)TJMedia.gallery(trade,0);};
     document.getElementById('lightboxTitle').textContent = trade.asset + ' · ' + trade.direction + (trade.images&&trade.images.length>1?' · '+trade.images.length+' изображений':'');
@@ -6018,6 +6159,7 @@
     flushNotePanelSave();
     currentNoteTradeId = trade.id;
     document.getElementById('notePanelImg').src = trade.chart;
+    if (window.TJMedia && TJMedia.sharpen) TJMedia.sharpen(document.getElementById('notePanelImg'), trade);
     document.getElementById('notePanelImg')._trade=trade;
     document.getElementById('notePanelImg').onclick=function(){if(window.TJMedia)TJMedia.gallery(trade,0);};
     document.getElementById('notePanelTitle').textContent = trade.asset + ' · ' + trade.direction;
@@ -6214,6 +6356,8 @@
 
   document.getElementById('backtestRRInput').addEventListener('input', updateActiveBacktestFromInputs);
   document.getElementById('backtestDaysTested').addEventListener('input', updateActiveBacktestFromInputs);
+  document.getElementById('backtestRRInput').addEventListener('blur', commitBacktestRRDraft);
+  document.getElementById('backtestDaysTested').addEventListener('blur', commitBacktestRRDraft);
   function setBacktestCleanOnly(flag) {
     var bt = backtests.filter(function(b) { return b.id === activeBacktestId; })[0];
     if (!bt || !!bt.cleanOnly === flag) return;
@@ -6250,13 +6394,15 @@
       if (exportBtn.dataset.tjLoading === '1') return;
       exportBtn.dataset.tjLoading = '1';
       // v3.43.1: own copy on our hosting first (vendor/html2canvas.min.js), public CDN only as a fallback.
+      var TJ_HTML2CANVAS_SRI = 'sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H';
       var sources = ['vendor/html2canvas.min.js?v=1.4.1', 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'];
       var tryLoad = function(i) {
         if (i >= sources.length) { exportBtn.dataset.tjLoading = ''; showBacktestSyncError('Could not load the export tool. Check your internet connection.'); return; }
         var sc = document.createElement('script');
         sc.src = sources[i];
         sc.async = true;
-        if (i > 0) sc.crossOrigin = 'anonymous';
+        // PR2: the CDN copy must match the vendored file byte for byte (Subresource Integrity).
+        if (i > 0) { sc.crossOrigin = 'anonymous'; sc.integrity = TJ_HTML2CANVAS_SRI; }
         sc.onload = function() {
           if (typeof html2canvas !== 'undefined') { exportBtn.dataset.tjLoading = ''; exportBtn.click(); }
           else tryLoad(i + 1);
@@ -6297,12 +6443,23 @@
       document.getElementById('backtestExportOverlay').classList.add('open');
     }).catch(function(err) {
       console.error('Export failed', err);
+      tjNotice('export', 'error', 'Не удалось подготовить картинку для экспорта' + tjErrorReason(err) + '. Попробуйте ещё раз.', [], 12000);
     }).finally(function() {
       unfreeze();
       btn.disabled = false; btn.classList.remove('exporting'); if (labelEl) labelEl.textContent = oldLabel; else btn.textContent = oldLabel;
     });
   });
   var lastBacktestExportCanvas = null;
+  // Keeps letters of any alphabet (Cyrillic names used to become "____"); only
+  // characters that file systems reject are replaced.
+  function tjExportFileName(name) {
+    var clean = String(name || '').normalize('NFC')
+      .replace(/[\\/:*?"<>|\u0000-\u001f\u007f]+/g, ' ')
+      .replace(/[^\p{L}\p{N}\-_. ]+/gu, ' ')
+      .trim().replace(/\s+/g, '_').replace(/_+/g, '_').replace(/^[._]+|[._]+$/g, '')
+      .slice(0, 80);
+    return clean || 'backtest';
+  }
   function closeBacktestExportModal() { document.getElementById('backtestExportOverlay').classList.remove('open'); }
   document.getElementById('backtestExportCloseBtn').addEventListener('click', closeBacktestExportModal);
   document.getElementById('backtestExportCancelBtn').addEventListener('click', closeBacktestExportModal);
@@ -6310,9 +6467,8 @@
   document.getElementById('backtestExportDownloadBtn').addEventListener('click', function() {
     if (!lastBacktestExportCanvas) return;
     var bt = backtests.filter(function(b) { return b.id === activeBacktestId; })[0];
-    var name = (bt && bt.name ? bt.name : 'backtest').replace(/[^a-z0-9\-_]+/gi, '_');
     var link = document.createElement('a');
-    link.download = name + '-stats.png';
+    link.download = tjExportFileName(bt && bt.name) + '-stats.png';
     link.href = lastBacktestExportCanvas.toDataURL('image/png');
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
     closeBacktestExportModal();
@@ -8014,6 +8170,30 @@
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape' && passModalOverlay.classList.contains('open')) setPasswordModal(false);
   });
+  // Each Firebase failure gets its own explanation; only a real network failure
+  // talks about the connection.
+  function tjPasswordChangeError(err) {
+    var code = err && err.code;
+    switch (code) {
+      case 'auth/requires-recent-login':
+        return 'To change the password you need to have logged in recently — sign out and back in with the old password, then try again.';
+      case 'auth/weak-password':
+        return 'The new password is too weak. Use at least 6 characters.';
+      case 'auth/network-request-failed':
+        return 'Failed to change password. Check your internet connection and try again.';
+      case 'auth/too-many-requests':
+        return 'Too many attempts. Wait a few minutes and try again.';
+      case 'auth/user-token-expired':
+      case 'auth/invalid-user-token':
+      case 'auth/user-not-found':
+      case 'auth/user-disabled':
+        return 'Your session is no longer valid. Sign out and back in, then try again.';
+      case 'auth/operation-not-allowed':
+        return 'Password changes are disabled for this site. Contact the administrator.';
+      default:
+        return 'Failed to change password' + tjErrorReason(err) + '. Try again.';
+    }
+  }
   document.getElementById('passForm').addEventListener('submit', function(e) {
     e.preventDefault();
     var p1 = document.getElementById('newPass1Input').value;
@@ -8039,17 +8219,15 @@
       document.getElementById('newPass2Input').value = '';
     }).catch(function(err) {
       errEl.style.display = 'block';
-      if (err && err.code === 'auth/requires-recent-login') {
-        errEl.textContent = 'To change the password you need to have logged in recently — sign out and back in with the old password, then try again.';
-      } else {
-        errEl.textContent = 'Failed to change password. Check your internet connection and try again.';
-      }
+      errEl.textContent = tjPasswordChangeError(err);
     });
   });
 
   // ---- Device mode switch (login screen) ----
   // Default is always 'desktop' unless this browser has previously chosen 'mobile' here.
-  var deviceMode = localStorage.getItem('journalDeviceMode') || 'desktop';
+  var deviceMode = 'desktop';
+  try { deviceMode = localStorage.getItem('journalDeviceMode') || 'desktop'; } catch (e) {}
+  if (window.tjStorageUnavailable) tjNotice('keep:storage', 'warn', 'Браузер блокирует хранилище сайта. Журнал работает, но настройки этого устройства и черновики не сохранятся после закрытия вкладки.');
 
   function detectActualDevice() {
     // Heuristic only: combines UA sniffing + touch support + viewport width.

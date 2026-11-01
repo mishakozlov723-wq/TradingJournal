@@ -819,7 +819,12 @@
   function curPrice(){ var s=S.sess; return s.d.C[s.cur]; }
   function nowT(){ var s=S.sess; return s.d.T[s.cur]+s.d.D[s.cur]; }
   function clampT(t){ var s=S.sess; return Math.min(Math.max(t,s.startTs),s.endTs+86399); }
-  function dtStr(t){ var d=new Date(clampT(t)*1000); return d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate())+'T'+pad(d.getUTCHours())+':'+pad(d.getUTCMinutes()); }
+  // PR2: trades sent to Backtests use the chart's time zone (the same time the replay clock shows).
+  function dtStr(t){
+    var ts=clampT(t);
+    if(S.tz&&S.tz!=='UTC'){ var o=tzParts(ts); return o.year+'-'+pad(o.month)+'-'+pad(o.day)+'T'+pad(o.hour)+':'+pad(o.minute); }
+    var d=new Date(ts*1000); return d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate())+'T'+pad(d.getUTCHours())+':'+pad(d.getUTCMinutes());
+  }
   function newId(){ return Math.random().toString(36).slice(2,9); }
   function sgnR(v){ return (v>0?'+':v<0?'−':'')+Math.abs(v).toFixed(2)+'R'; }
   function toast(msg,kind){
@@ -894,20 +899,38 @@
     return r;
   }
   /* returns an event description when something happened on bar i */
+  /* PR2: realistic gaps. If the bar opens beyond an order or exit level, the fill happens at the
+     bar's open price (worse for stops, better for limits/targets) instead of exactly at the level.
+     R stays measured against the planned risk (planned entry → stop). */
+  function gapFill(dir,kind,level,O){
+    // dir: +1 buy / -1 sell; kind: 'stop' (buy above / sell below the market), 'limit' (buy below / sell above).
+    var above=dir>0?kind==='stop':kind==='limit';
+    return above ? (O>=level?O:level) : (O<=level?O:level);
+  }
   function processBar(i){
-    var s=S.sess, d=s.d, H=d.H[i], L=d.L[i], T=d.T[i], E=T+d.D[i], ev=[];
+    var s=S.sess, d=s.d, O=d.O[i], H=d.H[i], L=d.L[i], T=d.T[i], E=T+d.D[i], ev=[];
     s.pos.slice().forEach(function(p){
       if(p.pendingClose){finishTrade(p,p.pendingClose.exit,p.pendingClose.reason,p.pendingClose.time);return;}
+      var atOpen=true;   // was the position already in the market when this bar opened?
       if(p.status==='pending'){
         var hit = p.dir>0 ? (p.kind==='stop'?H>=p.entry:L<=p.entry) : (p.kind==='stop'?L<=p.entry:H>=p.entry);
         if(!hit) return;
-        p.status='open'; p.openT=T; p.risk0=Math.abs(p.entry-p.sl)||Math.pow(10,-d.dp);
-        ev.push((p.dir>0?'Long':'Short')+' filled at '+fp(p.entry));
+        var planned=p.entry, fill=isFinite(O)?rnd(gapFill(p.dir,p.kind,planned,O)):planned;
+        p.status='open'; p.openT=T; p.risk0=Math.abs(planned-p.sl)||Math.pow(10,-d.dp);
+        atOpen=fill!==planned;
+        if(atOpen){ p.plannedEntry=planned; p.entry=fill; }
+        ev.push((p.dir>0?'Long':'Short')+' filled at '+fp(p.entry)+(atOpen?' (gap)':''));
       }
       var slHit = p.dir>0 ? L<=p.sl : H>=p.sl;
       var tpHit = p.tp!=null && (p.dir>0 ? H>=p.tp : L<=p.tp);
-      if(slHit){ var r1=finishTrade(p,p.sl,'SL',E); ev.push('Stop: '+sgnR(r1)); }
-      else if(tpHit){ var r2_=finishTrade(p,p.tp,'TP',E); ev.push('Take: '+sgnR(r2_)); }
+      var gapOk=atOpen&&isFinite(O);
+      // Exit orders: the stop sells below / buys above the market, the target is a limit order.
+      var slPx=gapOk?rnd(gapFill(-p.dir,'stop',p.sl,O)):p.sl, tpPx=p.tp!=null&&gapOk?rnd(gapFill(-p.dir,'limit',p.tp,O)):p.tp;
+      var slAtOpen=gapOk&&slPx!==p.sl, tpAtOpen=p.tp!=null&&gapOk&&tpPx!==p.tp;
+      // Whatever the open already crossed happened first; otherwise the stop wins (conservative).
+      if(tpAtOpen&&!slAtOpen){ var r0=finishTrade(p,tpPx,'TP',E); ev.push('Take: '+sgnR(r0)+' (gap)'); }
+      else if(slHit){ var r1=finishTrade(p,slPx,'SL',E); ev.push('Stop: '+sgnR(r1)+(slAtOpen?' (gap)':'')); }
+      else if(tpHit){ var r2_=finishTrade(p,tpPx,'TP',E); ev.push('Take: '+sgnR(r2_)); }
     });
     return ev.length?ev:null;
   }

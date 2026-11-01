@@ -34,7 +34,7 @@ test('Overview core resolves before Backtests while preserving the guarded readi
 
 test('Overview reveal is immediate, but live listeners wait for Backtests and recheck identity',async()=>{
   const bt=deferred(),events=[],button={classList:{remove:x=>events.push('button:'+x)}};
-  const c={Promise,activeTab:'overview',current:true,tjLoadIsCurrent(){return c.current},render(){events.push('render')},hideOverviewSkeleton(){events.push('hide')},maybeShowStreakToast(){events.push('toast')},renderBacktests(){events.push('backtests-ui')},startLiveSync(){events.push('live')}};
+  const c={Promise,activeTab:'overview',current:true,tjLoadIsCurrent(){return c.current},render(){events.push('render')},hideOverviewSkeleton(){events.push('hide')},maybeShowStreakToast(){events.push('toast')},renderBacktests(){events.push('backtests-ui')},startLiveSync(){events.push('live')},setTimeout(){},TJ_THUMB_SHRINK_DELAY_MS:0};
   vm.createContext(c);vm.runInContext(fn('finishJournalCoreLoad'),c);
   c.finishJournalCoreLoad({backtestsReady:bt.promise},button);
   assert.deepEqual(events,['render','hide','toast','button:is-loading']);

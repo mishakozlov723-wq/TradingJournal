@@ -1393,6 +1393,9 @@
   .cal-cell-r { font-size: 14px; font-weight: 700; font-family: "TJ Digits", "TJ Text", sans-serif; }
   .cal-cell.pos .cal-cell-r { color: var(--green); }
   .cal-cell.neg .cal-cell-r { color: var(--red); }
+  .cal-cell.flat { background: rgba(255,255,255,0.035); border-color: rgba(255,255,255,0.16); }
+  .cal-cell.flat .cal-cell-day { color: rgba(255,255,255,0.55); }
+  .cal-cell.flat .cal-cell-r { color: var(--textMain); }
 
   /* Week-total column, appended after each row of 7 day cells.
      No aspect-ratio here: it stretches to match the day cells' row height,
@@ -1408,6 +1411,8 @@
   .cal-week-r { font-size: 14px; font-weight: 700; font-family: "TJ Digits", "TJ Text", sans-serif; }
   .cal-week-cell.pos .cal-week-r { color: var(--green); }
   .cal-week-cell.neg .cal-week-r { color: var(--red); }
+  .cal-week-cell.flat { background: rgba(255,255,255,0.035); border-color: rgba(255,255,255,0.16); }
+  .cal-week-cell.flat .cal-week-r { color: var(--textMain); }
   .cal-week-dash { font-size: 15px; color: var(--textMuted); }
 
   .cal-legend { display: flex; justify-content: space-between; margin-top: 14px; flex-wrap: wrap; gap: 8px; }
@@ -2629,6 +2634,8 @@
     border-color: rgba(96,165,250,0.55);
     box-shadow: 0 0 0 3px rgba(96,165,250,0.12);
   }
+  .inline-edit-popup .popup-option + input.popup-input { margin-top: 6px; }
+  .inline-edit-popup input.popup-input.popup-input-invalid { border-color: rgba(248,113,113,0.6); }
   .popup-input-hint {
     color: var(--textMuted);
     font-size: 10.5px;
