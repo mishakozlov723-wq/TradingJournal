@@ -119,6 +119,13 @@ jobs:
             const {persistPrivate}=require('./scripts/persist-private-ci.cjs');
             const result=await persistPrivate({github,context,kind:'rollback'});
             await core.summary.addLink('Byte-verified private rollback export',result.url).write();
+      - name: Preserve existing public Notes image links before restricting originals
+        if: ${{ inputs.deploy_rules }}
+        env:
+          NODE_PATH: /tmp/syter-preflight/node_modules
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RETOCKER }}
+          CONFIRM_LIVE: ${{ inputs.deploy_live }}
+        run: node scripts/migrate-shared-note-images.cjs
       - name: Activate compatible Firestore rules and verify readback
         if: ${{ inputs.deploy_rules }}
         env:
@@ -161,7 +168,7 @@ jobs:
             echo '## Website deployed'
             echo '- Website: https://retocker.web.app/'
             echo "- Source commit: $GITHUB_SHA"
-            echo '- Scope: Firebase Hosting with verified readback; Firestore rules publish explicitly selected: ${{ inputs.deploy_rules }}. No user-data migration or desktop publication.'
+            echo '- Scope: Firebase Hosting with verified readback; Firestore rules publish explicitly selected: ${{ inputs.deploy_rules }} (rules publish first adds verified copies of images in already-public Notes links; originals untouched). No desktop publication.'
           } >> "$GITHUB_STEP_SUMMARY"
 
   verify-live:
