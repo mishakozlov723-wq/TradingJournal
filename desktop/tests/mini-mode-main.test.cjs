@@ -55,6 +55,7 @@ function setup({ maximized = false, fullscreen = false } = {}) {
       if (name === './return-compositor') return require('../return-compositor');
       if (name === './window-motion') return { createWindowMotion: () => motion };
       if (name === './cover-presentation') return require('../cover-presentation');
+      if (name === './tray-menu') return require('../tray-menu');
       if (name === './mini-shortcut') return { LABEL: 'Ctrl + Shift + Ё', createMiniShortcut: () => ({ dispose() {} }) };
       if (name === 'fs') return { writeFileSync() {}, readFileSync() { throw Error('no state'); }, rmSync() {} };
       return require(name);

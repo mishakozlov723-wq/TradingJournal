@@ -12,6 +12,7 @@ const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 const { createMiniShortcut, LABEL: MINI_SHORTCUT_LABEL } = require('./mini-shortcut');
+const { createTrayMenu } = require('./tray-menu');
 const { createWindowMotion } = require('./window-motion');
 const { createReturnCompositor } = require('./return-compositor');
 const { handlePreviewInput } = require('./interface-preview-shortcut');
@@ -47,6 +48,7 @@ const TRAY_ICON_PATH = path.join(__dirname, 'build', 'tray-icon.png');
 let win = null;      // frame + title bar
 let view = null;     // the site
 let tray = null;
+let trayMenu = null;
 let isQuitting = false;
 
 const crypto = require('crypto');
@@ -222,7 +224,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(start);
 }
 
-app.on('before-quit', () => { isQuitting = true; miniReady = false; stopCapture(); miniShortcut.dispose(); windowMotion.cancel(true); }); // also covers quitAndInstall() of the updater
+app.on('before-quit', () => { isQuitting = true; if (trayMenu) trayMenu.destroy(); miniReady = false; stopCapture(); miniShortcut.dispose(); windowMotion.cancel(true); }); // also covers quitAndInstall() of the updater
 app.on('will-quit', () => miniShortcut.dispose());
 
 app.setAppUserModelId('com.retocker.syter'); // taskbar grouping + notifications
@@ -292,12 +294,26 @@ function createTray() {
   if (tray) return;
   tray = new Tray(nativeImage.createFromPath(TRAY_ICON_PATH));
   tray.setToolTip('SYTER');
-  tray.setContextMenu(Menu.buildFromTemplate([
+  const quit = () => { isQuitting = true; app.quit(); };
+  // Native menu: used only as a fallback when the styled menu cannot be shown.
+  const nativeMenu = Menu.buildFromTemplate([
     { label: 'Открыть журнал', click: () => requestMode(false) },
     { label: 'Мини-журнал · ' + MINI_SHORTCUT_LABEL, click: () => requestMode(true) },
     { type: 'separator' },
-    { label: 'Выход', click: () => { isQuitting = true; app.quit(); } },
-  ]));
+    { label: 'Выход', click: quit },
+  ]);
+  trayMenu = createTrayMenu({
+    BrowserWindow, ipcMain, screen,
+    items: [
+      { id: 'journal', icon: 'journal', label: 'Открыть журнал' },
+      { id: 'mini', icon: 'mini', label: 'Мини-журнал', hint: MINI_SHORTCUT_LABEL },
+      { separator: true },
+      { id: 'quit', icon: 'quit', label: 'Выход' },
+    ],
+    onPick: id => { if (id === 'journal') requestMode(false); else if (id === 'mini') requestMode(true); else if (id === 'quit') quit(); },
+    fallback: () => { if (tray) tray.popUpContextMenu(nativeMenu); },
+  });
+  tray.on('right-click', () => trayMenu.open());
   // Clicking the tray always restores/focuses the current window, even if it
   // was still visible behind another app. Only the close button hides it.
   tray.on('click', showWindow);
