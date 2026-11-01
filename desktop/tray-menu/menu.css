@@ -11,27 +11,58 @@
 
 :root {
   --card: #0c0e13; --border: rgba(255,255,255,0.08); --hover: rgba(255,255,255,0.055);
-  --text: #8b95a1; --textMain: #f2f3f5; --muted: #6b7280;
-  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --text: #8b95a1; --textMain: #f2f3f5; --muted: #5d6470;
+  --ox: 50%; --oy: 100%;
+  --openEase: cubic-bezier(0.25, 0.75, 0.25, 1);
+  --closeEase: cubic-bezier(0.4, 0, 1, 1);
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
-body { padding: 10px; font-family: "TJ Text", "Segoe UI", sans-serif; user-select: none; -webkit-user-select: none; cursor: default; }
-.menu {
-  background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 6px;
-  box-shadow: 0 10px 28px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.03);
-  opacity: 0; transform: translateY(4px) scale(.985); transform-origin: 50% 100%;
+body { font-family: "TJ Text", "Segoe UI", sans-serif; user-select: none; -webkit-user-select: none; cursor: default; }
+
+/* The whole window is revealed by a circle growing from the click point (the tray icon);
+   the card itself grows from the same point. Closing plays it backwards. */
+.stage {
+  position: absolute; inset: 0; padding: 10px;
+  clip-path: circle(0px at var(--ox) var(--oy));
+  transition: clip-path .16s var(--closeEase);
 }
-body.open .menu { opacity: 1; transform: none; transition: opacity .12s var(--ease), transform .14s var(--ease); }
+.menu {
+  position: relative; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 6px;
+  box-shadow: 0 10px 28px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.03);
+  opacity: 0; transform: scale(.86); transform-origin: calc(var(--ox) - 10px) calc(var(--oy) - 10px);
+  transition: opacity .14s var(--closeEase), transform .16s var(--closeEase);
+}
+body.instant .stage, body.instant .menu { transition: none; }
+body.open .stage { clip-path: circle(360px at var(--ox) var(--oy)); transition: clip-path .24s var(--openEase); }
+body.open .menu { opacity: 1; transform: none; transition: opacity .16s var(--openEase), transform .24s var(--openEase); }
+
+/* One soft highlight that glides between items instead of each item blinking. */
+.hl {
+  position: absolute; left: 6px; right: 6px; top: 0; height: 36px; border-radius: 9px; background: var(--hover);
+  opacity: 0; pointer-events: none;
+  transition: transform .18s var(--openEase), opacity .16s ease;
+}
+.hl.show { opacity: 1; }
+.hl.jump { transition: opacity .16s ease; }
 .item {
+  position: relative; z-index: 1;
   display: flex; align-items: center; gap: 11px; width: 100%; height: 36px; padding: 0 11px;
   border: 0; border-radius: 9px; background: transparent; color: var(--text);
   font: 500 13px/1 "TJ Text", "Segoe UI", sans-serif; letter-spacing: .01em; text-align: left; cursor: pointer; outline: none;
-  transition: background .12s var(--ease), color .12s var(--ease);
+  transition: color .18s ease;
 }
 .item svg { flex: 0 0 auto; width: 16px; height: 16px; }
 .item .label { flex: 1 1 auto; white-space: nowrap; }
-.item .hint { flex: 0 0 auto; color: var(--muted); font-weight: 400; font-size: 11px; white-space: nowrap; }
-.item:hover, .item.active { background: var(--hover); color: var(--textMain); }
-.item:active { background: rgba(255,255,255,.08); }
+.item .hint { flex: 0 0 auto; color: var(--muted); font-weight: 400; font-size: 11px; white-space: nowrap; transition: color .18s ease; }
+.item.active { color: var(--textMain); }
+.item.active .hint { color: #7b8490; }
 .sep { height: 1px; margin: 4px 8px; background: var(--border); }
+/* Version: plain caption, never highlighted. */
+.foot { height: 30px; }
+.foot .sep { margin-top: 4px; margin-bottom: 4px; }
+.ver { height: 21px; display: flex; align-items: center; padding: 0 11px; color: var(--muted);
+  font: 400 11px/1 "TJ Text", "Segoe UI", sans-serif; letter-spacing: .02em; }
+@media (prefers-reduced-motion: reduce) {
+  .stage, .menu, .hl, body.open .stage, body.open .menu { transition: none !important; }
+}

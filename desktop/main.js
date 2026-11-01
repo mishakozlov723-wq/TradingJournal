@@ -303,7 +303,7 @@ function createTray() {
     { label: 'Выход', click: quit },
   ]);
   trayMenu = createTrayMenu({
-    BrowserWindow, ipcMain, screen,
+    BrowserWindow, ipcMain, screen, version: app.getVersion(),
     items: [
       { id: 'journal', icon: 'journal', label: 'Открыть журнал' },
       { id: 'mini', icon: 'mini', label: 'Мини-журнал', hint: MINI_SHORTCUT_LABEL },
