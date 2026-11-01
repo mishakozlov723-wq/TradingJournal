@@ -8506,7 +8506,7 @@
 
     var symbols = ['❄', '❅', '❆'];
     var colors = ['#f8fbff', '#eaf6ff', '#dbeeff', '#ffffff'];
-    var count = window.innerWidth < 700 ? 125 : 190;
+    var count = window.innerWidth < 700 ? 80 : 120;
     var fragment = document.createDocumentFragment();
 
     for (var i = 0; i < count; i++) {
@@ -8525,11 +8525,10 @@
       flake.style.setProperty('--snow-opacity', (0.32 + Math.random() * 0.6).toFixed(2));
       flake.style.setProperty('--snow-duration', duration.toFixed(1) + 's');
       flake.style.setProperty('--snow-delay', (-Math.random() * duration).toFixed(1) + 's');
-      flake.style.setProperty('--snow-sway', (16 + Math.random() * 58).toFixed(1) + 'px');
-      flake.style.setProperty('--snow-sway-duration', (11 + Math.random() * 17).toFixed(1) + 's');
+      flake.style.setProperty('--snow-sway', (10 + Math.random() * 36).toFixed(1) + 'px');
+      flake.style.setProperty('--snow-sway-duration', (14 + Math.random() * 18).toFixed(1) + 's');
       flake.style.setProperty('--snow-sway-delay', (-Math.random() * 24).toFixed(1) + 's');
       flake.style.setProperty('--snow-start-rotation', Math.round(Math.random() * 360) + 'deg');
-      flake.style.setProperty('--snow-twinkle', (1.6 + Math.random() * 3.4).toFixed(1) + 's');
       flake.style.setProperty('--snow-glow', (1 + Math.random() * 4).toFixed(1) + 'px');
 
       shape.className = 'winter-snowflake-shape';
