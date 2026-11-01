@@ -36,7 +36,7 @@ jobs:
         run: |
           export CHROME_PATH="$(command -v google-chrome || command -v chromium)"
           mkdir -p verification
-          for scenario in models-recovery notes-empty notes-admin-status notes-share usage-stats notes-database stabilization audit-remediation audit-fixes; do
+          for scenario in models-recovery notes-empty notes-admin-status notes-share usage-stats notes-database stabilization audit-remediation audit-fixes pr1-journal-safety; do
             node "public/tests/$scenario.browser.cjs"
           done
 
