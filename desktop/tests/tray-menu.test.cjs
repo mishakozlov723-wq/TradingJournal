@@ -26,3 +26,11 @@ test('tray menu is packaged and keeps the native menu as fallback', () => {
   assert.match(main, /popUpContextMenu\(nativeMenu\)/);
   assert.doesNotMatch(main, /tray\.setContextMenu\(/);
 });
+
+test('tray menu never takes focus, so the Windows tray overflow panel stays open', () => {
+  const src = fs.readFileSync(path.join(root, 'tray-menu.js'), 'utf8');
+  assert.doesNotMatch(src, /focusable:\s*true/);
+  assert.doesNotMatch(src, /\.focus\(\)/);
+  assert.match(src, /menuWin\.showInactive\(\)/);
+  assert.ok(fs.existsSync(path.join(root, 'tray-menu', 'catcher.html')));
+});
