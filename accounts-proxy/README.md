@@ -6,11 +6,11 @@ Environment variables (template: `.env.example`; set them in Netlify → Site co
 
 Required:
 - `FIREBASE_WEB_API_KEY`
-- `ACCOUNTS_CREDENTIAL_SECRET`
+- `ACCOUNTS_CREDENTIAL_SECRET` — at least 32 random bytes (a shorter value makes every request answer `503`); if not set, the key is derived from `FIREBASE_SERVICE_ACCOUNT`.
 - `FIREBASE_SERVICE_ACCOUNT` — full JSON of a Firebase service account key (one value). Without it every Accounts request answers `503 REVOCATION_NOT_CONFIGURED`. Its `project_id` must match `FIREBASE_PROJECT_ID` (default `retocker`).
 
 Recommended:
-- `ALLOWED_ORIGIN` — exact site origin allowed to call the proxy (for example `https://retocker.web.app`). Empty means any origin (`*`).
+- `ALLOWED_ORIGIN` — exact HTTPS site origins allowed to call the proxy, comma-separated (for example `https://retocker.web.app`). Empty or `*` means only `https://retocker.web.app` and `https://retocker.firebaseapp.com`.
 
 Optional:
 - `FIREBASE_PROJECT_ID`, `ACCOUNTS_ENFORCE_ALLOWLIST=1` + `ALLOWED_FIREBASE_UIDS`.
