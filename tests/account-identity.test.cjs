@@ -71,7 +71,8 @@ function fixture({ stale = true, missing = false, unavailable = false } = {}) {
   ['flushNotePanelSave', 'closeBestTrade', 'flushBacktestRRDraft', 'closeModelCreatePanel',
     'closeModal', 'renderTradeModelControl', 'showOverviewSkeleton', 'renderAssetControls',
     'updateCurveColorUI', 'tjApplyChartHeight', 'tjApplyBacktestChartHeight',
-    'invalidateTradeNumbers', 'saveBacktestLocal', 'tjScheduleLiveRender'].forEach(name => { context[name] = () => {}; });
+    'invalidateTradeNumbers', 'saveBacktestLocal', 'tjScheduleLiveRender',
+    'tjClearJournalNotices', 'tjClearNotice', 'tjNotice', 'tjResendPendingTrades'].forEach(name => { context[name] = () => {}; });
   vm.createContext(context);
   const directory = source.slice(source.indexOf('  var USERS = [];'), source.indexOf('  var currentUser = null;'));
   vm.runInContext(directory + '\n' + ['tjLoadIsCurrent', 'stopLiveSync', 'tjApplyLive', 'loadData', 'loadBacktests', 'startLiveSync'].map(productionFunction).join('\n'), context);

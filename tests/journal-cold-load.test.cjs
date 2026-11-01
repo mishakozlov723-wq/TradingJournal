@@ -21,7 +21,8 @@ test('Overview core resolves before Backtests while preserving the guarded readi
     findUser(){return {uid:'uid-alice'}},readTradingModelsDocument(){return Promise.resolve({exists:false,data(){return {}}})},normalizeAssetDefinitions(){return []},renderAssetControls(){},updateCurveColorUI(){},tjApplyChartHeight(){},tjApplyBacktestChartHeight(){},
     db:{collection(name){assert.equal(name,'trades');return {where(){return {get(){return Promise.resolve({forEach(){}})}}}}}},normalizeTradeRisk:x=>x,invalidateTradeNumbers(){},migrateFromLocalStorage(){return Promise.resolve()},idbGetAllForUser(){return Promise.resolve([])},
     loadBacktests(uid,load){calls.push(['backtests',uid,load.user]);return bt.promise},tjLoadIsCurrent(load){return load.generation===c.tjDataGeneration&&load.user===c.viewingUser&&load.authUser===c.currentUser},
-    remoteSaveTrade(){},tjClone:x=>JSON.parse(JSON.stringify(x)),document:{getElementById(){return {style:{},textContent:''}}}
+    remoteSaveTrade(){},tjClone:x=>JSON.parse(JSON.stringify(x)),document:{getElementById(){return {style:{},textContent:''}}},
+    tjClearJournalNotices(){},tjNotice(){},tjResendPendingTrades(){calls.push('resend')}
   };
   vm.createContext(c);vm.runInContext(fn('loadData'),c);
   const load=await c.loadData();
