@@ -46,7 +46,7 @@
     } catch (e) {}
   })();
 </script>
-<link rel="stylesheet" href="app.css?v=5744c89882">
+<link rel="stylesheet" href="app.css?v=906b7ed7d7">
 
 
 
@@ -447,6 +447,14 @@
       <div class="asset-delete-message">Do you really want to delete asset <strong id="assetDeleteName"></strong>?</div>
       <div class="asset-delete-check"><input type="checkbox" id="assetDeleteAcknowledge"><span>Yes, I understand that this permanently deletes this asset’s journal trades and photos. Backtest and Replay instruments are separate and are not changed. This action cannot be undone.</span></div>
       <div class="asset-delete-actions"><button type="button" class="ghost-btn" id="assetDeleteCancelBtn">Cancel</button><button type="button" class="add-btn" id="assetDeleteConfirmBtn">Confirm deletion</button></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay asset-custom-overlay tj-confirm-overlay" id="tjConfirmOverlay" aria-hidden="true">
+    <div class="modal-box asset-delete-box" role="alertdialog" aria-modal="true" aria-labelledby="tjConfirmTitle" aria-describedby="tjConfirmMessage">
+      <div class="row" style="margin-bottom:10px;"><div class="card-title" style="margin-bottom:0;" id="tjConfirmTitle">Удалить?</div></div>
+      <div class="asset-delete-message" id="tjConfirmMessage"></div>
+      <div class="asset-delete-actions"><button type="button" class="ghost-btn" id="tjConfirmCancel">Отмена</button><button type="button" class="add-btn tj-confirm-danger" id="tjConfirmOk">Удалить</button></div>
     </div>
   </div>
 
@@ -1422,7 +1430,7 @@ separated by commas or new lines"></textarea>
     pending++;
     if (!waitTimer) waitTimer = setTimeout(function() {
       waitTimer = null;
-      if (pending > 0) { shownWaiting = true; show(navigator.onLine === false ? 'No connection \u2014 will save when you are back online' : 'Not saved yet \u2014 retrying\u2026', 'wait'); }
+      if (pending > 0) { shownWaiting = true; show(navigator.onLine === false ? 'No connection \u2014 keep this tab open; it will save when you are back online' : 'Not saved yet \u2014 retrying\u2026', 'wait'); }
     }, 6000);
   }
   function end(ok, path) {
@@ -1458,6 +1466,12 @@ separated by commas or new lines"></textarea>
     wrap(CR, 'add', function(ref) { return (ref.path || '') + '/'; });
   } catch (e) { console.warn('Save watcher unavailable:', e); }
   window.addEventListener('online', function() { if (pending > 0 && shownWaiting) show('Back online \u2014 saving\u2026', 'wait'); });
+  // Unacknowledged writes live only in this tab (no offline persistence):
+  // ask before the browser closes/reloads it. Skipped in the desktop app: its close
+  // button hides to the tray, and Electron would silently block a real quit.
+  window.addEventListener('beforeunload', function(e) {
+    if (pending > 0 && !window.syterDesktop) { e.preventDefault(); e.returnValue = ''; return ''; }
+  });
 })();
 </script>
 <script>
@@ -1474,7 +1488,7 @@ separated by commas or new lines"></textarea>
   var db = firebase.firestore();
 </script>
 <script src="calendar-navigation.js?v=c24a235c35"></script>
-<script src="app.js?v=c19f587d77"></script>
+<script src="app.js?v=096e3156ff"></script>
 <script src="trade-media.js?v=d2fd6db8f6"></script>
 <script src="desktop-autologin.js?v=5cd7b49cc7"></script>
 

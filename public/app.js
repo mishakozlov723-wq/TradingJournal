@@ -232,8 +232,22 @@
       return !!(now && now.uid === authUser.uid && tjAdminUid === authUser.uid);
     }
     if (!currentAdmin()) return Promise.resolve();
+    // Two /users profiles with one login would flip the settings owner back and
+    // forth on every administrator sign-in. Never guess: leave such roots alone.
+    var uidsByLogin = Object.create(null), ambiguous = [];
+    profiles.forEach(function(profile) {
+      if (!profile.login || !profile.uid) return;
+      var key = String(profile.login).toLowerCase(), uids = uidsByLogin[key] || (uidsByLogin[key] = []);
+      if (uids.indexOf(profile.uid) < 0) uids.push(profile.uid);
+    });
+    Object.keys(uidsByLogin).forEach(function(key) { if (uidsByLogin[key].length > 1) ambiguous.push(key + ' (' + uidsByLogin[key].join(', ') + ')'); });
+    if (ambiguous.length) {
+      console.warn('Several /users profiles share a login; settings ownership was not changed:', ambiguous.join('; '));
+      if (typeof tjNotice === 'function') tjNotice('keep:duplicate-logins', 'warn', 'Несколько профилей /users используют один логин: ' + ambiguous.join('; ') + '. Владелец их настроек не изменялся. Удалите или переименуйте лишний профиль, чтобы вход и настройки работали однозначно.');
+    }
     return Promise.all(profiles.map(function(profile) {
       if (!profile.login || !profile.uid) return Promise.resolve();
+      if (uidsByLogin[String(profile.login).toLowerCase()].length > 1) return Promise.resolve();
       var ref = db.collection('titles').doc(profile.login);
       return db.runTransaction(function(tx) {
         return tx.get(ref).then(function(snap) {
@@ -1498,6 +1512,321 @@
     Object.keys(data).forEach(function(k) { ex[k] = data[k]; });
     return true;
   }
+  // ---------------------------------------------------------------------------
+  // PR1: journal notices. #saveError lives inside the trade modal and is invisible
+  // once that modal is closed, so background failures (loading, a save that ends
+  // after the form closed, deleting) are reported here, above every dialog.
+  var tjNotices = Object.create(null);
+  function tjNoticeHost() {
+    var host = document.getElementById('journalNotice');
+    if (host) return host;
+    host = document.createElement('div');
+    host.id = 'journalNotice';
+    host.className = 'tj-notice-host';
+    document.body.appendChild(host);
+    return host;
+  }
+  // level: 'error' | 'warn' | 'info' | 'ok'. The same kind replaces its previous
+  // notice; repeating identical text is a no-op (safe to call on every render).
+  function tjNotice(kind, level, message, actions, timeoutMs) {
+    if (typeof document === 'undefined' || !document.body) return null;
+    actions = actions || [];
+    var current = tjNotices[kind];
+    var signature = level + '\u0000' + message + '\u0000' + actions.map(function(a) { return a.label; }).join('\u0000');
+    if (current && current.el.isConnected && current.signature === signature) {
+      current.actions = actions;
+      tjArmNoticeTimer(kind, timeoutMs);
+      return current.el;
+    }
+    var host = tjNoticeHost();
+    var el = current && current.el.isConnected ? current.el : document.createElement('div');
+    if (current && current.timer) clearTimeout(current.timer);
+    el.className = 'tj-notice tj-notice-' + level;
+    el.setAttribute('role', level === 'error' ? 'alert' : 'status');
+    el.setAttribute('data-kind', kind);
+    var text = document.createElement('div');
+    text.className = 'tj-notice-text';
+    text.textContent = message;
+    var bar = document.createElement('div');
+    bar.className = 'tj-notice-actions';
+    actions.forEach(function(action, index) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'tj-notice-btn';
+      button.textContent = action.label;
+      button.addEventListener('click', function() {
+        var live = tjNotices[kind], chosen = live && live.actions[index];
+        if (!chosen) return;
+        if (!chosen.keep) tjClearNotice(kind);
+        chosen.run();
+      });
+      bar.appendChild(button);
+    });
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'tj-notice-close';
+    close.setAttribute('aria-label', 'Скрыть уведомление');
+    close.innerHTML = '<svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true" focusable="false"><path d="M2 2l8 8M10 2l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+    close.addEventListener('click', function() { tjClearNotice(kind); });
+    bar.appendChild(close);
+    el.replaceChildren(text, bar);
+    if (!el.isConnected) host.appendChild(el);
+    tjNotices[kind] = { el: el, signature: signature, actions: actions, timer: null };
+    tjArmNoticeTimer(kind, timeoutMs);
+    return el;
+  }
+  function tjArmNoticeTimer(kind, timeoutMs) {
+    var item = tjNotices[kind];
+    if (!item) return;
+    if (item.timer) { clearTimeout(item.timer); item.timer = null; }
+    if (timeoutMs > 0) item.timer = setTimeout(function() { if (tjNotices[kind] === item) tjClearNotice(kind); }, timeoutMs);
+  }
+  function tjClearNotice(kind) {
+    var item = tjNotices[kind];
+    if (!item) return;
+    delete tjNotices[kind];
+    if (item.timer) clearTimeout(item.timer);
+    if (item.el && item.el.parentNode) item.el.parentNode.removeChild(item.el);
+  }
+  // Journal notices never leak into another account's journal. 'keep:' notices
+  // describe this tab/administrator (not one journal) and survive a journal switch.
+  function tjClearJournalNotices() {
+    Object.keys(tjNotices).forEach(function(kind) { if (kind.indexOf('keep:') !== 0) tjClearNotice(kind); });
+  }
+  function tjErrorReason(err) {
+    var reason = err && (err.code || err.message);
+    return reason ? ' (' + String(reason).slice(0, 120) + ')' : '';
+  }
+  function tjDescribeTrade(t) {
+    if (!t) return 'Сделка';
+    var parts = [], number = tradeNumberOf(t);
+    if (number) parts.push('#' + number);
+    if (t.asset) parts.push(String(t.asset));
+    if (t.direction) parts.push(String(t.direction));
+    if (t.openDT) parts.push(fmtDT(t.openDT));
+    parts.push(fmtR(Number(t.r) || 0));
+    return parts.join(' · ');
+  }
+  // A failure of the save being submitted from the open form stays inside that form
+  // (its draft is kept for retry); every other failure becomes a visible notice.
+  function tjReportTradeSaveError(trade, message, err) {
+    var el = document.getElementById('saveError'), overlay = document.getElementById('modalOverlay'), form = document.getElementById('tradeForm');
+    if (el && overlay && overlay.classList.contains('open') && form && trade && form.dataset.pendingId === String(trade.id)) {
+      el.textContent = message;
+      el.style.display = 'block';
+      return;
+    }
+    tjNotice('save:' + (trade ? trade.id : ''), 'error', tjDescribeTrade(trade) + ': изменения не сохранены на сервере' + tjErrorReason(err) + '. Проверьте соединение и повторите.');
+  }
+
+  // PR1: one styled confirmation dialog for destructive journal actions.
+  var tjConfirmState = null;
+  function tjConfirmAction(options) {
+    options = options || {};
+    var overlay = document.getElementById('tjConfirmOverlay');
+    if (!overlay) return Promise.resolve(window.confirm(options.message || options.title || ''));
+    if (tjConfirmState) tjConfirmState.finish(false);
+    if (overlay.parentNode !== document.body) document.body.appendChild(overlay);
+    document.getElementById('tjConfirmTitle').textContent = options.title || 'Удалить?';
+    document.getElementById('tjConfirmMessage').textContent = options.message || '';
+    document.getElementById('tjConfirmOk').textContent = options.confirmLabel || 'Удалить';
+    var previous = document.activeElement;
+    return new Promise(function(resolve) {
+      var state = { finish: function(result) {
+        if (tjConfirmState !== state) return;
+        tjConfirmState = null;
+        overlay.classList.remove('open');
+        overlay.setAttribute('aria-hidden', 'true');
+        if (previous && previous.isConnected && typeof previous.focus === 'function') { try { previous.focus({ preventScroll: true }); } catch (e) {} }
+        resolve(!!result);
+      } };
+      tjConfirmState = state;
+      overlay.setAttribute('aria-hidden', 'false');
+      overlay.classList.add('open');
+      // Destructive default: keyboard focus starts on Cancel.
+      setTimeout(function() { if (tjConfirmState === state) document.getElementById('tjConfirmCancel').focus(); }, 30);
+    });
+  }
+  (function() {
+    var overlay = document.getElementById('tjConfirmOverlay');
+    if (!overlay) return;
+    document.body.appendChild(overlay);
+    document.getElementById('tjConfirmOk').addEventListener('click', function() { if (tjConfirmState) tjConfirmState.finish(true); });
+    document.getElementById('tjConfirmCancel').addEventListener('click', function() { if (tjConfirmState) tjConfirmState.finish(false); });
+    overlay.addEventListener('click', function(e) { if (e.target === overlay && tjConfirmState) tjConfirmState.finish(false); });
+    document.addEventListener('keydown', function(e) {
+      if (!tjConfirmState || e.key !== 'Escape') return;
+      e.preventDefault(); e.stopPropagation();
+      tjConfirmState.finish(false);
+    }, true);
+  })();
+  function tjRequestTradeDelete(id) {
+    var trade = trades.filter(function(t) { return t.id === id; })[0];
+    if (!trade) return Promise.resolve(false);
+    var owner = viewingUser, generation = tjDataGeneration;
+    var images = (Array.isArray(trade.images) ? trade.images : (Array.isArray(trade._images) ? trade._images : [])).length || (trade.chart ? 1 : 0);
+    return tjConfirmAction({
+      title: 'Удалить сделку?',
+      message: tjDescribeTrade(trade) + (images ? ' — сделка и её изображения (' + images + ') будут удалены.' : ' — сделка будет удалена.') + ' Это действие нельзя отменить.',
+      confirmLabel: 'Удалить'
+    }).then(function(confirmed) {
+      if (!confirmed || viewingUser !== owner || generation !== tjDataGeneration) return false;
+      if (!trades.some(function(t) { return t.id === id; })) return false;
+      if (typeof currentNoteTradeId !== 'undefined' && currentNoteTradeId === id) closeNotePanel();
+      trades = trades.filter(function(t) { return t.id !== id; });
+      remoteDeleteTrade(id);
+      render();
+      return true;
+    });
+  }
+
+  // PR1: Firestore runs without offline persistence, so a queued write dies with
+  // the tab. NEW journal trades are also recorded here (per signed-in account)
+  // until the server acknowledges them and are re-sent after the next successful
+  // server load. Image payloads are too large for localStorage and are not kept.
+  var TJ_TRADE_OUTBOX_PREFIX = 'syter_trade_outbox_v1_';
+  var TJ_SAVE_WAIT_MS = 5000, TJ_OFFLINE_SAVE_WAIT_MS = 1500;
+  function tjTradeOutboxKey() {
+    try {
+      var auth = typeof firebase !== 'undefined' && firebase.auth ? firebase.auth().currentUser : null;
+      return auth && auth.uid ? TJ_TRADE_OUTBOX_PREFIX + auth.uid : null;
+    } catch (e) { return null; }
+  }
+  function tjTradeOutboxRead(key) {
+    if (!key) return [];
+    try {
+      var list = JSON.parse(localStorage.getItem(key) || '[]');
+      if (!Array.isArray(list)) throw Error('not a list');
+      return list.filter(function(e) { return e && typeof e.id === 'string' && e.id && typeof e.ownerUid === 'string' && e.record && typeof e.record === 'object'; });
+    } catch (e) {
+      console.warn('Trade outbox unreadable; it was left untouched:', e);
+      var damaged = []; damaged.damaged = true; return damaged;
+    }
+  }
+  function tjTradeOutboxStore(key, list) {
+    try {
+      if (list.length) localStorage.setItem(key, JSON.stringify(list)); else localStorage.removeItem(key);
+      return true;
+    } catch (e) { console.warn('Trade outbox unavailable:', e); return false; }
+  }
+  function tjTradeOutboxRecord(trade) {
+    var record = {};
+    Object.keys(trade).forEach(function(k) { if (k !== '_images' && k !== 'images' && k !== 'chart') record[k] = trade[k]; });
+    return tjClone(record);
+  }
+  function tjTradeOutboxPut(trade, key) {
+    if (!key || !trade || !trade.id || !trade.uid) return false;
+    var record = tjTradeOutboxRecord(trade);
+    if (!record) return false;
+    var current = tjTradeOutboxRead(key);
+    if (current.damaged) return false; // never overwrite a copy kept for manual recovery
+    var list = current.filter(function(e) { return e.id !== String(trade.id); });
+    var images = Array.isArray(trade._images) ? trade._images.length : (Array.isArray(trade.images) ? trade.images.length : 0);
+    list.push({ id: String(trade.id), ownerUid: String(trade.uid), owner: String(trade.user || ''), images: images, savedAt: Date.now(), record: record });
+    return tjTradeOutboxStore(key, list);
+  }
+  // Later edits of a still-unacknowledged trade must survive a reload too.
+  function tjTradeOutboxUpdate(trade, key) {
+    if (!key || !trade || !trade.id) return;
+    var list = tjTradeOutboxRead(key), entry = list.filter(function(e) { return e.id === String(trade.id); })[0];
+    if (!entry) return;
+    var record = tjTradeOutboxRecord(trade);
+    if (!record) return;
+    entry.record = record; entry.savedAt = Date.now();
+    tjTradeOutboxStore(key, list);
+  }
+  function tjTradeOutboxRemove(id, key) {
+    if (!key || !id) return;
+    var list = tjTradeOutboxRead(key), next = list.filter(function(e) { return e.id !== String(id); });
+    if (next.length !== list.length) tjTradeOutboxStore(key, next);
+  }
+  // A rejected write is final for this account. If the account changed meanwhile,
+  // the entry stays: that account re-sends it after its next successful load.
+  function tjTradeOutboxForget(id, key) {
+    if (key && key === tjTradeOutboxKey()) tjTradeOutboxRemove(id, key);
+  }
+  function tjTradeOutboxHas(id) {
+    return tjTradeOutboxRead(tjTradeOutboxKey()).some(function(e) { return e.id === String(id); });
+  }
+  function tjSettleWithin(promise, ms) {
+    return new Promise(function(resolve) {
+      var done = false;
+      var timer = setTimeout(function() { if (!done) { done = true; resolve({ pending: true }); } }, ms);
+      Promise.resolve(promise).then(function(value) {
+        if (done) return; done = true; clearTimeout(timer); resolve({ value: value });
+      }, function(error) {
+        if (done) return; done = true; clearTimeout(timer); resolve({ error: error || Error('Save failed') });
+      });
+    });
+  }
+  // A new trade whose save is still unacknowledged after the wait is shown in the
+  // journal right away; the form is released instead of staying locked offline.
+  var tjPendingTradeSaves = Object.create(null);
+  function tjShowPendingTradesNotice(justSaved) {
+    var ids = Object.keys(tjPendingTradeSaves);
+    if (!ids.length) {
+      if (justSaved) tjNotice('keep:pending', 'ok', 'Сделка сохранена на сервере.', null, 4000);
+      else tjClearNotice('keep:pending');
+      return;
+    }
+    var images = ids.some(function(id) { return tjPendingTradeSaves[id].images > 0; });
+    tjNotice('keep:pending', 'warn', (ids.length === 1 ? 'Сервер ещё не подтвердил сохранение сделки.' : 'Сервер ещё не подтвердил сохранение сделок: ' + ids.length + '.') +
+      ' Она уже в журнале и отправится автоматически, когда появится связь. Не закрывайте вкладку до подтверждения' +
+      (images ? ': иначе сделка отправится при следующем открытии журнала на этом устройстве, но без изображений.' : ': иначе сделка отправится при следующем открытии журнала на этом устройстве.'));
+  }
+  function tjTrackPendingTrade(trade, saving, owner) {
+    var id = String(trade.id);
+    tjPendingTradeSaves[id] = { images: Array.isArray(trade._images) ? trade._images.length : 0 };
+    tjShowPendingTradesNotice(false);
+    Promise.resolve(saving).then(function(ok) { return ok; }, function(err) { console.error(err); return false; }).then(function(ok) {
+      if (!tjPendingTradeSaves[id]) return;
+      delete tjPendingTradeSaves[id];
+      if (!ok && viewingUser === owner && !tjTradeOutboxHas(id) && trades.some(function(t) { return t.id === id; })) {
+        // The server rejected it (reason already reported): never show it as saved.
+        trades = trades.filter(function(t) { return t.id !== id; });
+        invalidateTradeNumbers();
+        render();
+      }
+      tjShowPendingTradesNotice(!!ok);
+    });
+  }
+  // After a successful SERVER read: drop acknowledged entries; re-send the rest
+  // under their original id (idempotent) and show them in the journal again.
+  function tjResendPendingTrades(targetUid, serverIds, load) {
+    var key = tjTradeOutboxKey();
+    if (!key || !targetUid) return 0;
+    var entries = tjTradeOutboxRead(key).filter(function(e) { return e.ownerUid === targetUid; });
+    var resent = 0, withoutImages = 0;
+    entries.forEach(function(entry) {
+      if (serverIds[entry.id]) { tjTradeOutboxRemove(entry.id, key); return; }
+      var record = tjClone(entry.record);
+      if (!record) { tjTradeOutboxRemove(entry.id, key); return; }
+      record.id = entry.id; record.uid = targetUid;
+      if (!trades.some(function(t) { return t.id === entry.id; })) trades.push(normalizeTradeRisk(tjClone(record)));
+      if (tjPendingTradeSaves[entry.id]) return; // this tab is still sending it, with its images
+      resent++; if (entry.images > 0) withoutImages++;
+      db.collection('trades').doc(entry.id).set(record, { merge: true }).then(function() {
+        tjTradeOutboxRemove(entry.id, key);
+        if (tjLoadIsCurrent(load)) tjServerTrades[entry.id] = tjClone(record);
+      }).catch(function(err) {
+        console.error(err);
+        tjTradeOutboxForget(entry.id, key);
+        if (!tjLoadIsCurrent(load)) return;
+        trades = trades.filter(function(t) { return t.id !== entry.id; });
+        invalidateTradeNumbers();
+        render();
+        tjNotice('outbox:' + entry.id, 'error', tjDescribeTrade(record) + ': сделка из очереди этого устройства не принята сервером' + tjErrorReason(err) + ' и убрана из списка. Добавьте её заново.');
+      });
+    });
+    if (Object.keys(tjPendingTradeSaves).length) tjShowPendingTradesNotice(false);
+    if (resent) tjNotice('outbox', 'info', 'Отправлены сделки, которые не успели сохраниться в прошлый раз: ' + resent + '.' +
+      (withoutImages ? ' Изображения к ним (' + withoutImages + ') не сохранились — добавьте их заново.' : ''), null, withoutImages ? 0 : 8000);
+    return resent;
+  }
+  function tjReloadJournal() {
+    loadData().then(function(load) { if (load) finishJournalCoreLoad(load); });
+  }
+
   function startLiveSync(load) {
     if (load && !tjLoadIsCurrent(load)) return;
     stopLiveSync();
@@ -1508,6 +1837,15 @@
     tjLive.unsubs.push(db.collection('trades').where('uid', '==', uid).onSnapshot(function(snap) {
       if (!guard()) return;
       var changed = false;
+      // A server snapshot supersedes an earlier failed load: clear its notice and
+      // send what this device still holds for this journal (as a successful load would).
+      if (snap.metadata && !snap.metadata.fromCache && tjNotices.load) {
+        tjClearNotice('load');
+        var seen = Object.create(null);
+        snap.forEach(function(d) { seen[d.id] = true; });
+        tjResendPendingTrades(uid, seen, load);
+        changed = true;
+      }
       snap.docChanges().forEach(function(ch) {
         var d = ch.doc;
         if (d.metadata.hasPendingWrites) return;
@@ -1597,6 +1935,7 @@
     flushBacktestRRDraft();
     if(window.TJMedia){TJMedia.clearCache();TJMedia.reset();}
     var load = { generation: ++tjDataGeneration, user: viewingUser, authUser: currentUser };
+    tjClearJournalNotices();
     stopLiveSync();
     tjServerTrades = {};
     closeModelCreatePanel();
@@ -1619,6 +1958,7 @@
     var user = viewingUser;
     var owner = findUser(user);
     var targetUid = owner ? owner.uid : null;
+    var serverIds = Object.create(null);
     return readTradingModelsDocument(user, load).then(function(doc) {
       if (!tjLoadIsCurrent(load)) return;
       deletedAssets = doc.exists && Array.isArray(doc.data().deletedAssets) ? doc.data().deletedAssets : [];
@@ -1649,11 +1989,13 @@
     }).then(function() {
       if (!tjLoadIsCurrent(load)) return;
       if (!targetUid) return { empty: true, forEach: function() {} };
-      return db.collection('trades').where('uid', '==', targetUid).get();
+      // Server only: without persistence an offline default read silently returns
+      // the empty memory cache, which looked exactly like an empty journal.
+      return db.collection('trades').where('uid', '==', targetUid).get({ source: 'server' });
     }).then(function(snapshot) {
       if (!tjLoadIsCurrent(load)) return;
       var remote = [];
-      snapshot.forEach(function(d) { var record=d.data(); record.id=d.id; remote.push(record); tjServerTrades[d.id] = tjClone(record); });
+      snapshot.forEach(function(d) { var record=d.data(); record.id=d.id; remote.push(record); serverIds[d.id] = true; tjServerTrades[d.id] = tjClone(record); });
       if (remote.length > 0) {
         trades = remote.map(normalizeTradeRisk);
         var toFix = trades.filter(function(t) { return !t.uid && owner; });
@@ -1673,6 +2015,7 @@
     }).then(function() {
       if (!tjLoadIsCurrent(load)) return;
       trades = (trades || []).map(normalizeTradeRisk);
+      tjResendPendingTrades(targetUid, serverIds, load);
       invalidateTradeNumbers();
       // Overview is ready once settings and trades are reconciled. Backtests keep
       // their own explicit loading state and finish in the background; callers use
@@ -1693,9 +2036,8 @@
       if (!tjLoadIsCurrent(load)) return;
       console.error(err);
       trades = [];
-      var el = document.getElementById('saveError');
-      el.style.display = 'block';
-      el.textContent = 'Failed to load data from the server. Check that Firestore Database is enabled in your Firebase project and that you have an internet connection.';
+      // Visible outside every dialog; never presented as a genuinely empty journal.
+      tjNotice('load', 'error', 'Не удалось загрузить сделки с сервера' + tjErrorReason(err) + '. Журнал временно показан пустым — данные на сервере не изменены. Проверьте соединение и повторите.', [{ label: 'Повторить', run: tjReloadJournal }]);
     }).then(function() { return tjLoadIsCurrent(load) ? load : null; });
   }
 
@@ -1713,18 +2055,13 @@
   }
 
   function tjOfferLegacyRecovery(records, user, load) {
-    var el=document.getElementById('saveError');
-    if(!el)return;
-    el.replaceChildren(); el.style.display='block';
-    el.append(document.createTextNode('Found '+records.length+' legacy local trades. They were NOT imported: the empty cloud journal may be intentional. '));
-    var button=document.createElement('button'); button.type='button'; button.className='ghost-btn';
-    button.textContent='Export legacy trades…'; el.append(button);
-    button.onclick=function(){
+    // Shown as a journal notice: the old #saveError target was inside a closed modal.
+    tjNotice('legacy', 'info', 'На этом устройстве найдено старых локальных сделок: '+records.length+'. Они НЕ импортированы — пустой облачный журнал может быть намеренным. Можно скачать их копию.', [{ label: 'Скачать копию', keep: true, run: function(){
       if(!tjLoadIsCurrent(load))return;
       var url=URL.createObjectURL(new Blob([JSON.stringify({version:1,owner:user,trades:records},null,2)],{type:'application/json'}));
       var link=document.createElement('a');link.href=url;link.download='SYTER-legacy-trades-recovery.json';link.click();
       setTimeout(function(){URL.revokeObjectURL(url);},10000);
-    };
+    } }]);
   }
 
   function remoteSaveTrade(trade, fields, isNew) {
@@ -1732,12 +2069,16 @@
     if(!trade.uid){var mediaOwner=findUser(viewingUser);if(mediaOwner)trade.uid=mediaOwner.uid;}
     // Desktop 1.1 uses the same form but does not yet pass the image array.
     if(window.TJMedia&&isNew&&!Array.isArray(trade._images)&&document.getElementById('modalOverlay').classList.contains('open')&&TJMedia.snapshot().length)trade._images=TJMedia.snapshot();
+    // A new trade stays recoverable on this device until the server acknowledges it.
+    var outboxKey=tjTradeOutboxKey();
+    if(isNew)tjTradeOutboxPut(trade,outboxKey);else tjTradeOutboxUpdate(trade,outboxKey);
     if(window.TJMedia && Array.isArray(trade._images)) {
       var mediaUser=viewingUser, mediaGeneration=tjDataGeneration;
       return TJMedia.write('trades',trade,fields,isNew).then(function(record){
-        if(mediaUser===viewingUser&&mediaGeneration===tjDataGeneration){tjServerTrades[trade.id]=tjClone(record);invalidateTradeNumbers();}
+        if(isNew)tjTradeOutboxRemove(trade.id,outboxKey);
+        if(mediaUser===viewingUser&&mediaGeneration===tjDataGeneration){tjServerTrades[trade.id]=tjClone(record);invalidateTradeNumbers();tjClearNotice('save:'+trade.id);}
         return true;
-      }).catch(function(err){console.error(err);if(mediaUser===viewingUser){var el=document.getElementById('saveError');el.textContent='Не удалось сохранить изображения и сделку. Черновик оставлен для повтора.';el.style.display='block';}return false;});
+      }).catch(function(err){console.error(err);if(isNew)tjTradeOutboxForget(trade.id,outboxKey);if(mediaUser===viewingUser)tjReportTradeSaveError(trade,'Не удалось сохранить изображения и сделку. Черновик оставлен для повтора.',err);return false;});
     }
     var user = viewingUser, generation = tjDataGeneration;
     trade.user = trade.user || user;
@@ -1760,6 +2101,7 @@
     }
     var op = isNew ? ref.set(snapCopy) : ref.set(patch, { merge: true });
     return op.then(function() {
+      if (isNew) tjTradeOutboxRemove(trade.id, outboxKey);
       if (viewingUser !== user || generation !== tjDataGeneration) return true;
       if (isNew) tjServerTrades[trade.id] = snapCopy;
       else {
@@ -1768,13 +2110,13 @@
         tjServerTrades[trade.id] = confirmed;
       }
       document.getElementById('saveError').style.display = 'none';
+      tjClearNotice('save:' + trade.id);
       return true;
     }).catch(function(err) {
       console.error(err);
+      if (isNew) tjTradeOutboxForget(trade.id, outboxKey);
       if (viewingUser !== user || generation !== tjDataGeneration) return false;
-      var el = document.getElementById('saveError');
-      el.style.display = 'block';
-      el.textContent = 'Failed to save trade to the server (check your internet connection and that Firestore is enabled).';
+      tjReportTradeSaveError(trade, 'Failed to save trade to the server (check your internet connection and that Firestore is enabled).', err);
       return false;
     });
   }
@@ -1782,6 +2124,7 @@
   function remoteDeleteTrade(id) {
     var deleteOwner=viewingUser,deleteGeneration=tjDataGeneration;
     var removedTrade=trades.find(function(t){return t.id===id;})||tjServerTrades[id],deletion=db.batch();
+    tjTradeOutboxRemove(id,tjTradeOutboxKey());
     (removedTrade&&removedTrade.images||[]).forEach(function(ref){deletion.delete(db.collection('tradeImages').doc(ref.id));});
     deletion.delete(db.collection('trades').doc(id));
     deletion.commit().then(function() {
@@ -1789,9 +2132,7 @@
     }).catch(function(err) {
       console.error(err);
       if(viewingUser!==deleteOwner||tjDataGeneration!==deleteGeneration)return;
-      var el = document.getElementById('saveError');
-      el.style.display = 'block';
-      el.textContent = 'The trade was removed on this device, but could not be deleted from the server. It may come back after a reload.';
+      tjNotice('delete:'+id,'error',tjDescribeTrade(removedTrade)+': сделка убрана на этом устройстве, но сервер не подтвердил удаление'+tjErrorReason(err)+'. После перезагрузки она может вернуться — тогда удалите её ещё раз.');
     });
   }
 
@@ -1854,14 +2195,45 @@
   function tjBacktestWrite(collection,id,data,options,owner) {
     return tjQueueBacktestOps([[{collection:collection,id:id,data:data,merge:!!(options&&options.merge)}]],owner);
   }
+  // PR1: a Backtest trade whose save (with images) is not acknowledged in time is
+  // listed right away and queued WITHOUT images in the durable Backtest outbox, so
+  // it survives a reload. The in-flight write with images keeps going in this tab.
+  function tjQueuePendingBacktestTrade(btTrade, saving, owner) {
+    var listed = Object.assign({}, btTrade);
+    delete listed._images;
+    var durable = tjClone(listed);
+    if (durable) { delete durable.images; delete durable.chart; }
+    var queued = durable ? tjBacktestWrite('backtestTrades', durable.id, durable, { merge: true }, owner) : Promise.reject(Error('Trade could not be copied'));
+    queued.catch(function(err) { console.warn('Backtest sync pending:', err); });
+    showBacktestSyncError(queued.queued ? 'Сервер ещё не подтвердил сохранение. Сделка сохранена на этом устройстве и отправится автоматически; изображения сохранятся, если не закрывать вкладку до подтверждения.' : 'Сервер ещё не подтвердил сохранение. Не закрывайте вкладку до подтверждения.');
+    Promise.resolve(saving).then(function() {
+      if (viewingUser !== owner) return;
+      var record = allBacktestTrades.filter(function(t) { return t.id === btTrade.id; })[0];
+      if (record) { record.images = btTrade.images; record.chart = btTrade.chart; delete record._images; }
+      saveBacktestLocal();
+      if (activeTab === 'backtests') renderBacktests();
+      showBacktestSyncError('');
+    }, function(err) {
+      console.error(err);
+      if (viewingUser === owner) showBacktestSyncError('Изображения не сохранены: ' + (err && err.message || err) + '. Сама сделка отправится из очереди этого устройства.');
+    });
+    return listed;
+  }
   function tjFlushBacktestOutbox(owner) {
     if(tjBacktestFlushes[owner])return tjBacktestFlushes[owner];
+    var noted=false;
     function next(){
       var queue=tjBacktestOutbox(owner);
       if(queue.damaged)throw Error('Backtest sync paused: recover the damaged local queue before sending later operations.');
       if(!queue.length)return Promise.resolve();
-      var op=queue[0], auth=firebase.auth().currentUser, profile=findUser(owner);
-      if(!auth||auth.uid!==op.authUid||!profile||profile.uid!==op.ownerUid)throw Error('Backtest sync is waiting for its original account.');
+      var auth=firebase.auth().currentUser, profile=findUser(owner);
+      if(!auth||!profile)throw Error('Backtest sync is waiting for sign-in.');
+      // Operations queued by another account on this device wait for that account;
+      // they must not block this account's own operations (head-of-line).
+      var own=queue.filter(function(item){return item.authUid===auth.uid&&item.ownerUid===profile.uid;});
+      if(own.length<queue.length&&!noted){noted=true;console.info('Backtest sync: '+(queue.length-own.length)+' queued operation(s) wait for the account that created them.');}
+      if(!own.length)return Promise.resolve();
+      var op=own[0];
       if(op.index>=op.parts.length){localStorage.removeItem(tjBacktestOpPrefix(owner)+op.id);return next();}
       var batch=db.batch();
       op.parts[op.index].forEach(function(w){var ref=db.collection(w.collection).doc(w.id);if(w.remove)batch.delete(ref);else batch.set(ref,w.data,{merge:w.merge});});
@@ -2461,7 +2833,7 @@
 
   function computeStats(arr) {
     var invalid=arr.filter(function(t){var rawRisk=t.riskPercent;return (rawRisk!=null&&rawRisk!==''&&(!Number.isFinite(Number(rawRisk))||Number(rawRisk)<0||Number(rawRisk)>100))||!Number.isFinite(Number(t.r))||Math.abs(Number(t.r))>1000000||!Number.isFinite(tradeGainPercent(t))||tradeRiskPercent(t)>100;});
-    if(invalid.length){var warning=document.getElementById('saveError');if(warning){warning.style.display='block';warning.textContent=invalid.length+' trade(s) exceed the supported numeric range and are excluded from statistics. Export and correct these trades; stored data was not removed.';}}
+    if(invalid.length&&typeof tjNotice==='function')tjNotice('stats','warn','Некоторые сделки выходят за поддерживаемый числовой диапазон и не учитываются в статистике. Сохранённые данные не удалены — экспортируйте и исправьте эти сделки.');
     var sorted = sortedAsc(arr.filter(function(t){return invalid.indexOf(t)<0;}));
     var total = sorted.length;
     var wins = sorted.filter(function(t) { return Number(t.r) > 0; });
@@ -3726,11 +4098,7 @@
       if (!target || !target.closest) return;
       var del = target.closest('.del-btn');
       if (del && tbody.contains(del)) {
-        var delId = del.getAttribute('data-id');
-        if (typeof currentNoteTradeId !== 'undefined' && currentNoteTradeId === delId) closeNotePanel();
-        trades = trades.filter(function(t) { return t.id !== delId; });
-        remoteDeleteTrade(delId);
-        render();
+        tjRequestTradeDelete(del.getAttribute('data-id'));
         return;
       }
       var thumb = target.closest('.thumb-btn');
@@ -3792,13 +4160,7 @@
       return '<tr>' + tradeRowCells(t, tradeNumberOf(t), isMainTable).join('') + '</tr>';
     }).join('');
     Array.prototype.forEach.call(tbody.querySelectorAll('.del-btn'), function(btn) {
-      btn.addEventListener('click', function() {
-        var id = btn.getAttribute('data-id');
-        if (typeof currentNoteTradeId !== 'undefined' && currentNoteTradeId === id) closeNotePanel();
-        trades = trades.filter(function(t) { return t.id !== id; });
-        remoteDeleteTrade(id);
-        render();
-      });
+      btn.addEventListener('click', function() { tjRequestTradeDelete(btn.getAttribute('data-id')); });
     });
     Array.prototype.forEach.call(tbody.querySelectorAll('.thumb-btn'), function(btn) {
       btn.addEventListener('click', function(e) {
@@ -4237,7 +4599,7 @@
     var h = '';
     if (bt) {
       var g = tradeGainPercent(bt);
-      h += '<div class="best-card clickable" data-best-trade="' + escapeHtml(String(bt.id)) + '" role="button" tabindex="0">' +
+      h += '<div class="best-card clickable" data-best-trade="' + escapeAttr(String(bt.id)) + '" role="button" tabindex="0">' +
         '<div><div class="best-card-label">Best Trade</div><div class="best-card-meta">' + assetBadge(bt.asset) + '<span class="mono best-card-date">' + escapeHtml(fmtBacktestDate(bt.closeDT || bt.openDT)) + '</span></div></div>' +
         '<span class="best-card-value mono" style="color:' + bestPctColor(g) + '">' + fmtPercent(g) + '</span></div>';
     } else {
@@ -6161,11 +6523,18 @@
         var retired=Array.isArray(g.retired)?g.retired.slice():[];
         var deleted=Array.isArray(data.deletedAssets)?data.deletedAssets.slice():[];
         var settings={assets:normalizeAssetDefinitions(data.assets,deleted),deletedAssets:deleted};change(settings);
-        if(settings.assets.some(function(a){return retired.indexOf(a.name)>=0;}))throw Error('This asset name was retired by a completed migration. Use a new name; stale offline writes must not resurrect it.');
-        if(!fromName){tx.set(root,{assets:settings.assets,deletedAssets:settings.deletedAssets,uid:uid,assetRevision:(Number(data.assetRevision)||0)+1},{merge:true});return {settings:settings};}
+        // Saving a retired name again is the owner's explicit decision: revive it in
+        // the same transaction (an explicit, counted revival the rules accept). Stale
+        // offline writes still cannot use a name that is retired at commit time.
+        var revive=settings.assets.map(function(a){return a.name;}).filter(function(name,i,all){return retired.indexOf(name)>=0&&all.indexOf(name)===i;});
+        if(!fromName){
+          tx.set(root,{assets:settings.assets,deletedAssets:settings.deletedAssets,uid:uid,assetRevision:(Number(data.assetRevision)||0)+1},{merge:true});
+          if(revive.length)tx.set(guard,{uid:uid,locked:false,retired:retired.filter(function(name){return revive.indexOf(name)<0;}),revivals:(Number(g.revivals)||0)+1},{merge:true});
+          return {settings:settings};
+        }
         if(retired.indexOf(fromName)>=0)throw Error('This asset was already migrated. Reload the journal.');
         if(retired.length>=500)throw Error('Asset migration history is full. Export and contact support; no data changed.');
-        var op={id:Date.now().toString(36)+'_'+Math.random().toString(36).slice(2),from:fromName,to:toName,settings:settings};
+        var op={id:Date.now().toString(36)+'_'+Math.random().toString(36).slice(2),from:fromName,to:toName,settings:settings,revive:revive};
         tx.set(guard,{uid:uid,locked:true,retired:retired,operation:op},{merge:true});return {operation:op};
       });
       if(!start.operation)return start.settings;
@@ -6190,8 +6559,11 @@
         if(writes.length+2>490)throw Error('Too many trades/images for one safe atomic change. No journal data changed.');
         writes.forEach(function(w){if(w.remove)tx.delete(w.ref);else tx.update(w.ref,w.data);});
         tx.set(root,{assets:operation.settings.assets,deletedAssets:operation.settings.deletedAssets,uid:uid,assetRevision:(docs[1].exists?Number(docs[1].data().assetRevision)||0:0)+1},{merge:true});
-        var retired=(g.retired||[]).slice();if(retired.indexOf(operation.from)<0)retired.push(operation.from);
-        tx.set(guard,{uid:uid,locked:false,retired:retired,operation:null,lastOperation:operation.id},{merge:true});
+        var before=(g.retired||[]).slice(),revive=Array.isArray(operation.revive)?operation.revive:[];
+        var retired=before.filter(function(name){return revive.indexOf(name)<0;});if(retired.indexOf(operation.from)<0)retired.push(operation.from);
+        var guardData={uid:uid,locked:false,retired:retired,operation:null,lastOperation:operation.id};
+        if(before.some(function(name){return retired.indexOf(name)<0;}))guardData.revivals=(Number(g.revivals)||0)+1;
+        tx.set(guard,guardData,{merge:true});
         return operation.settings;
       });
     } catch(error){
@@ -6490,20 +6862,25 @@
         if(submitForm.dataset.pendingId)btTrade.id=submitForm.dataset.pendingId;else submitForm.dataset.pendingId=btTrade.id;
       }
       applyTradeModel(btTrade, selectedTradeModelId);
+      var listedBtTrade=btTrade;
       if(window.TJMedia){
         btTrade._images=TJMedia.snapshot();submitForm.dataset.saving='1';submitForm.inert=true;
-        try{await TJMedia.write('backtestTrades',btTrade,null,true);}catch(err){submitForm.dataset.saving='';submitForm.inert=false;showBacktestSyncError('Не сохранено: '+err.message);return;}
-        submitForm.dataset.saving='';submitForm.inert=false;if(submitOwner!==viewingUser)return;
+        var btSaving;try{btSaving=Promise.resolve(TJMedia.write('backtestTrades',btTrade,null,true));}catch(err){btSaving=Promise.reject(err);}
+        var btOutcome=await tjSettleWithin(btSaving,navigator.onLine===false?TJ_OFFLINE_SAVE_WAIT_MS:TJ_SAVE_WAIT_MS);
+        submitForm.dataset.saving='';submitForm.inert=false;
+        if(btOutcome.error){showBacktestSyncError('Не сохранено: '+(btOutcome.error.message||btOutcome.error));return;}
+        if(submitOwner!==viewingUser)return;
+        if(btOutcome.pending)listedBtTrade=tjQueuePendingBacktestTrade(btTrade,btSaving,submitOwner);
       }
       if(!window.TJMedia){
         var queuedWrite=tjBacktestWrite('backtestTrades',btTrade.id,btTrade);
         queuedWrite.catch(function(err){if(viewingUser===submitOwner)showBacktestSyncError(queuedWrite.queued?'Saved on this device. Sync will retry when online.':'Not saved: '+err.message);});
         if(!queuedWrite.queued){showBacktestSyncError('Not saved: local storage is unavailable.');return;}
       }
-      if(oldBtTrade)Object.assign(oldBtTrade,btTrade);else{backtestTrades.push(btTrade);allBacktestTrades.push(btTrade);}
+      if(oldBtTrade)Object.assign(oldBtTrade,listedBtTrade);else{backtestTrades.push(listedBtTrade);allBacktestTrades.push(listedBtTrade);}
       delete submitForm.dataset.pendingId;
       saveBacktestLocal();
-      showBacktestSyncError('');
+      if(listedBtTrade===btTrade)showBacktestSyncError('');
       backtestTradeMode = false; editingBacktestTradeId = null; document.getElementById('magnitudeInput').value = ''; currentScreenshot = null; closeModal(); renderBacktests(); return;
     }
     var newTrade = {
@@ -6522,9 +6899,15 @@
     if(submitForm.dataset.pendingId)newTrade.id=submitForm.dataset.pendingId;
     else submitForm.dataset.pendingId=newTrade.id;
     submitForm.dataset.saving='1';submitForm.inert=true;
-    var ok=await remoteSaveTrade(newTrade,null,true);
+    var saving;try{saving=Promise.resolve(remoteSaveTrade(newTrade,null,true));}catch(err){saving=Promise.reject(err);}
+    // Without an acknowledgement in time (or offline) the trade is shown as pending
+    // and the form is released instead of staying locked until the network returns.
+    var outcome=await tjSettleWithin(saving,navigator.onLine===false?TJ_OFFLINE_SAVE_WAIT_MS:TJ_SAVE_WAIT_MS);
     submitForm.dataset.saving='';submitForm.inert=false;
-    if(!ok||submitOwner!==viewingUser)return;
+    if(outcome.error){console.error(outcome.error);if(submitOwner===viewingUser)tjReportTradeSaveError(newTrade,'Failed to save trade to the server (check your internet connection and that Firestore is enabled).',outcome.error);return;}
+    if(submitOwner!==viewingUser)return;
+    if(outcome.pending)tjTrackPendingTrade(newTrade,saving,submitOwner);
+    else if(!outcome.value)return;
     delete submitForm.dataset.pendingId;
     if(!trades.some(function(t){return t.id===newTrade.id;}))trades.push(newTrade);
     document.getElementById('magnitudeInput').value = '';
@@ -7457,10 +7840,12 @@
   });
   setupSiteVersionSettings();
 
+  // Escapes text for element content AND quoted attributes. Journal data can be
+  // written by another account (student -> administrator view), so quotes matter.
   function escapeHtml(s) {
-    var div = document.createElement('div');
-    div.textContent = s;
-    return div.innerHTML;
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(ch) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    });
   }
 
   function fmtDiaryDate(iso) {
@@ -7502,9 +7887,14 @@
       Array.prototype.forEach.call(list.querySelectorAll('.del-btn'), function(btn) {
         btn.addEventListener('click', function() {
           var id = btn.getAttribute('data-id');
-          if(btn.disabled)return;btn.disabled=true;
-          db.collection('diary').doc(id).delete().then(loadDiary).catch(function() {
-            btn.disabled=false;var err=document.getElementById('diaryError');err.style.display='block';err.textContent='Could not delete note. Nothing was removed; retry.';
+          if(btn.disabled)return;
+          var entry = entries.filter(function(x) { return x.id === id; })[0];
+          tjConfirmAction({ title: 'Удалить запись?', message: 'Запись дневника' + (entry && entry.createdAt ? ' от ' + fmtDiaryDate(entry.createdAt) : '') + ' будет удалена. Это действие нельзя отменить.', confirmLabel: 'Удалить' }).then(function(confirmed) {
+            if(!confirmed||btn.disabled||!btn.isConnected||viewingUser!==diaryOwner||tjDataGeneration!==diaryGeneration)return;
+            btn.disabled=true;
+            db.collection('diary').doc(id).delete().then(loadDiary).catch(function() {
+              btn.disabled=false;var err=document.getElementById('diaryError');err.style.display='block';err.textContent='Could not delete note. Nothing was removed; retry.';
+            });
           });
         });
       });

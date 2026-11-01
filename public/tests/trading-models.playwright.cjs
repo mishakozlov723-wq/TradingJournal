@@ -222,7 +222,7 @@ async function check(name,body){await evaluate('(async()=>{const assert=(v,m)=>{
       showInlinePopup(td,linked,'rr');inlineEditPopup.querySelector('input').value='3';inlineEditPopup.querySelector('.popup-confirm-btn').click();await tick();
       assert(linked.modelId===modelId);assert(tradeGainPercent(linked)===1.5);
       const oldDelete=Array.from(el('allTradesBody').querySelectorAll('.del-btn')).find(btn=>btn.dataset.id==='old-trade');
-      oldDelete.click();await tick();assert(trades.length===1);assert(tradingModels.length===2);
+      oldDelete.click();await tick();assert(trades.length===2);el('tjConfirmOk').click();await tick();assert(trades.length===1);assert(tradingModels.length===2);
       await loadData();assert(trades.length===1);assert(trades[0].modelId===modelId);assert(trades[0].r===3);
     `);
       await check('backtest save, edit and local persistence preserve model ID', `

@@ -70,6 +70,18 @@ service cloud.firestore {
         && (!existsAfter(/databases/$(database)/documents/journalAssetGuards/$(uid))
           || !(data.get('asset', '') in getAfter(/databases/$(database)/documents/journalAssetGuards/$(uid)).data.get('retired', [])));
     }
+    // Re-adding a retired name is an explicit owner action in the asset
+    // settings. Only such a write may shrink `retired`: it must leave the fence
+    // unlocked and bump the revival counter by exactly one in the same commit.
+    // The counter itself never goes back.
+    function journalAssetRevivalsValid() {
+      let revivals = request.resource.data.get('revivals', 0);
+      return revivals is int && revivals >= resource.data.get('revivals', 0);
+    }
+    function journalAssetRevival() {
+      return request.resource.data.locked == false
+        && request.resource.data.get('revivals', 0) == resource.data.get('revivals', 0) + 1;
+    }
     match /journalAssetGuards/{uid} {
       allow read: if isRetocker() || owns(uid);
       allow create: if (isRetocker() || owns(uid))
@@ -82,8 +94,11 @@ service cloud.firestore {
         && request.resource.data.locked is bool
         && request.resource.data.retired is list
         && request.resource.data.retired.size() <= 500
-        && request.resource.data.retired.hasAll(resource.data.retired);
-      // Tombstones must survive every client/version and cannot be erased.
+        && journalAssetRevivalsValid()
+        && (request.resource.data.retired.hasAll(resource.data.retired)
+          || journalAssetRevival());
+      // Tombstones are never deleted. A name leaves `retired` only through an
+      // explicit, counted revival; stale writes stay fenced until then.
       allow delete: if false;
     }
 
@@ -100,12 +115,19 @@ service cloud.firestore {
         || tradeNumbersValid(request.resource.data);
     }
 
+    // Trade ids are rendered inside the administrator's view of a student
+    // journal. Every client generates [0-9a-z]+ ids; refuse markup/quotes.
+    function journalRecordId(id) {
+      return id is string && id.matches('^[A-Za-z0-9_-]{1,128}$');
+    }
+
     // Trades are owned by the UID stored in the document.
     match /trades/{tradeId} {
       allow read: if isRetocker()
         || owns(resource.data.uid);
 
       allow create: if (isRetocker() || owns(request.resource.data.uid))
+        && journalRecordId(tradeId)
         && tradeNumbersValid(request.resource.data)
         && request.resource.data.direction in ['LONG','SHORT']
         && journalTargetAllowed(request.resource.data);
@@ -238,6 +260,7 @@ service cloud.firestore {
         || owns(resource.data.uid);
 
       allow create: if (isRetocker() || owns(request.resource.data.uid))
+        && journalRecordId(tradeId)
         && tradeNumbersValid(request.resource.data)
         && request.resource.data.direction in ['LONG','SHORT'];
 

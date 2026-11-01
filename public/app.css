@@ -3117,6 +3117,54 @@
   body.mobile-mode #tjSavePill { right: 50%; transform: translate(50%, 6px); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
   body.mobile-mode #tjSavePill.show { transform: translate(50%, 0); }
 
+  /* PR1: journal notices — load/save/delete problems stay visible above every dialog */
+  .tj-notice-host {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 99990;
+    width: min(560px, calc(100vw - 24px)); display: flex; flex-direction: column; gap: 8px;
+    pointer-events: none;
+  }
+  .tj-notice-host:empty { display: none; }
+  .tj-notice {
+    pointer-events: auto; display: flex; align-items: center; gap: 10px;
+    padding: 10px 8px 10px 12px; border-radius: 14px; font-size: 13px; line-height: 1.45;
+    color: var(--textMain); background: rgba(18,22,30,.96); border: 1px solid rgba(255,255,255,.10);
+    box-shadow: 0 12px 32px rgba(0,0,0,.45);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    animation: errorSlideIn .35s var(--easeOut);
+  }
+  /* Severity is a small round badge before the text: red/amber "!", blue "i", green check. */
+  .tj-notice::before {
+    content: ''; flex: 0 0 26px; height: 26px; border-radius: 50%;
+    background-color: rgba(255,255,255,.08); background-repeat: no-repeat; background-position: center; background-size: 14px;
+  }
+  .tj-notice-error::before { background-color: rgba(248,113,113,.16); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f87171' stroke-width='2.6' stroke-linecap='round'%3E%3Cpath d='M12 6v7M12 17.5v.5'/%3E%3C/svg%3E"); }
+  .tj-notice-warn::before { background-color: rgba(251,191,36,.16); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fbbf24' stroke-width='2.6' stroke-linecap='round'%3E%3Cpath d='M12 6v7M12 17.5v.5'/%3E%3C/svg%3E"); }
+  .tj-notice-info::before { background-color: rgba(96,165,250,.16); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2360a5fa' stroke-width='2.6' stroke-linecap='round'%3E%3Cpath d='M12 11v7M12 6.5v.5'/%3E%3C/svg%3E"); }
+  .tj-notice-ok::before { background-color: rgba(52,211,153,.16); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2334d399' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12.5l4 4 8-9'/%3E%3C/svg%3E"); }
+  .tj-notice-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .tj-notice-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+  .tj-notice-btn {
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14); color: var(--textMain);
+    padding: 4px 10px; border-radius: 9px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;
+    transition: background .2s var(--ease), border-color .2s var(--ease);
+  }
+  .tj-notice-btn:hover { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.24); }
+  .tj-notice-close {
+    background: none; border: none; color: var(--textMuted); font-size: 14px; line-height: 1;
+    width: 26px; height: 26px; border-radius: 8px; cursor: pointer; transition: color .2s var(--ease), background .2s var(--ease);
+    display: inline-flex; align-items: center; justify-content: center; padding: 0;
+  }
+  .tj-notice-close:hover { color: var(--textMain); background: rgba(255,255,255,.06); }
+  body.mobile-mode .tj-notice-host { top: calc(10px + env(safe-area-inset-top, 0px)); }
+  body.mobile-mode .tj-notice { flex-wrap: wrap; }
+  body.mobile-mode .tj-notice-close { width: 36px; height: 36px; }
+
+  /* PR1: confirmation for destructive journal actions (above notes/backtest layers) */
+  .tj-confirm-overlay { z-index: 15400; }
+  .tj-confirm-overlay .asset-delete-message { white-space: pre-line; overflow-wrap: anywhere; }
+  .tj-confirm-danger { background: rgba(248,113,113,.12); border-color: rgba(248,113,113,.42); color: var(--red); }
+  .tj-confirm-danger:hover { background: rgba(248,113,113,.22); }
+
   /* v3.41: phones always use the mobile layout */
   .device-switch-btn.is-locked, .device-switch-btn:disabled { opacity: .38; cursor: not-allowed; }
 
