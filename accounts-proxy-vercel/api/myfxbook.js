@@ -1,21 +1,15 @@
 'use strict';
 
-const crypto = require('crypto');
+const security = require('../lib/security');
+const {sealCredentials,openCredentials}=security;
 
 const budget=require('../lib/request-budget'),connectionState=require('../lib/connection-state');
 
 const MYFXBOOK_API = 'https://www.myfxbook.com/api';
 const IDENTITY_LOOKUP = 'https://identitytoolkit.googleapis.com/v1/accounts:lookup';
-const CONNECTION_VERSION = 'v2';
 
-function setCors(res){
-  res.setHeader('Access-Control-Allow-Origin', process.env.ALLOWED_ORIGIN || '*');
-  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-TJ-Accounts-Connection');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-store, max-age=0');
-}
-function send(res,status,body){ setCors(res); return res.status(status).json(body); }
+function setCors(req,res){ Object.entries(security.cors(req.headers)).forEach(([key,value])=>res.setHeader(key,value)); }
+function send(req,res,status,body){ setCors(req,res); return res.status(status).json(body); }
 function bearer(headers){
   const raw=(headers && (headers.authorization || headers.Authorization)) || '';
   const m=String(raw).match(/^Bearer\s+(.+)$/i); return m ? m[1] : '';
@@ -85,38 +79,6 @@ function publicAccount(a){
     commission:a.commission,currency:a.currency,profitFactor:a.profitFactor,pips:a.pips,server:a.server&&a.server.name?{name:a.server.name}:null
   };
 }
-function rootSecret(){
-  // Dedicated secret wins. Existing MYFXBOOK_PASSWORD is a migration-compatible
-  // server-only fallback so the v3.24 upgrade does not require another Vercel setup step.
-  const raw=String(process.env.ACCOUNTS_CREDENTIAL_SECRET || process.env.MYFXBOOK_PASSWORD || '');
-  if(!raw) throw Object.assign(new Error('Server configuration is missing ACCOUNTS_CREDENTIAL_SECRET.'),{status:500});
-  return crypto.createHash('sha256').update('tj-accounts-v1|'+raw).digest();
-}
-function b64url(buf){ return Buffer.from(buf).toString('base64url'); }
-function unb64url(s){ return Buffer.from(String(s||''),'base64url'); }
-function sealCredentials(uid,email,password,generation){
-  const iv=crypto.randomBytes(12);
-  const cipher=crypto.createCipheriv('aes-256-gcm',rootSecret(),iv);
-  const payload=Buffer.from(JSON.stringify({uid:String(uid),email:String(email),password:String(password),iat:Date.now(),generation:String(generation)}),'utf8');
-  const ciphertext=Buffer.concat([cipher.update(payload),cipher.final()]);
-  const tag=cipher.getAuthTag();
-  return [CONNECTION_VERSION,b64url(iv),b64url(ciphertext),b64url(tag)].join('.');
-}
-function openCredentials(token,expectedUid){
-  try{
-    const parts=String(token||'').split('.');
-    if(parts.length!==4 || parts[0]!==CONNECTION_VERSION) throw new Error('format');
-    const decipher=crypto.createDecipheriv('aes-256-gcm',rootSecret(),unb64url(parts[1]));
-    decipher.setAuthTag(unb64url(parts[3]));
-    const plaintext=Buffer.concat([decipher.update(unb64url(parts[2])),decipher.final()]).toString('utf8');
-    const payload=JSON.parse(plaintext);
-    if(!payload || String(payload.uid)!==String(expectedUid) || !payload.email || !payload.password) throw new Error('binding');
-    if(!Number.isFinite(payload.iat)||payload.iat>Date.now()+60000||Date.now()-payload.iat>30*86400000||!payload.generation)throw new Error('expired');
-    return {email:String(payload.email),password:String(payload.password),generation:String(payload.generation)};
-  }catch(_){
-    throw Object.assign(new Error('Myfxbook connection is invalid. Reconnect this Trading Journal user.'),{status:401,code:'CONNECTION_INVALID'});
-  }
-}
 async function withCredentialsSession(credentials,run){
   const login=await mfb('login',{email:credentials.email,password:credentials.password});
   if(!login.session) throw new Error('Myfxbook did not create a session.');
@@ -137,11 +99,12 @@ async function listAccounts(session){
 }
 
 async function handler(req,res){
-  if(req.method==='OPTIONS'){ setCors(res); return res.status(204).end(); }
-  if(req.method!=='GET' && req.method!=='POST') return send(res,405,{ok:false,error:'Method not allowed.'});
+  if(!security.originAllowed(req.headers))return res.status(403).json({ok:false,error:'Origin is not allowed.',code:'ORIGIN_DENIED'});
+  if(req.method==='OPTIONS'){ setCors(req,res); return res.status(204).end(); }
+  if(req.method!=='GET' && req.method!=='POST') return send(req,res,405,{ok:false,error:'Method not allowed.'});
   try {
     const token=bearer(req.headers);
-    if(!token) return send(res,401,{ok:false,error:'Firebase authorization is required.',code:'FIREBASE_AUTH'});
+    if(!token) return send(req,res,401,{ok:false,error:'Firebase authorization is required.',code:'FIREBASE_AUTH'});
     const user=await verifyFirebaseUser(token);
     const action=String((req.query&&req.query.action)||'accounts').toLowerCase();
 
@@ -149,35 +112,37 @@ async function handler(req,res){
       const body=await readJsonBody(req);
       const email=String(body.email||'').trim();
       const password=String(body.password||'');
-      if(!email || !password) return send(res,400,{ok:false,error:'Enter the Myfxbook email and password.',code:'CONNECT_INPUT'});
+      if(!email || !password) return send(req,res,400,{ok:false,error:'Enter the Myfxbook email and password.',code:'CONNECT_INPUT'});
       const result=await withCredentialsSession({email,password},async session=>{
         const listed=await listAccounts(session);
         return {connectionToken:sealCredentials(user.localId,email,password,await connectionState.generation(user.localId)),accounts:listed.accounts};
       });
-      return send(res,200,{ok:true,connectionToken:result.connectionToken,accounts:result.accounts});
+      return send(req,res,200,{ok:true,connectionToken:result.connectionToken,accounts:result.accounts});
     }
 
     if(req.method==='POST' && action==='disconnect'){
       await connectionState.revoke(user.localId);
-      return send(res,200,{ok:true,revoked:true});
+      return send(req,res,200,{ok:true,revoked:true});
     }
 
-    if(req.method!=='GET') return send(res,405,{ok:false,error:'Method not allowed.'});
+    if(req.method!=='GET') return send(req,res,405,{ok:false,error:'Method not allowed.'});
 
     const encryptedConnection=connectionHeader(req.headers);
-    if(!encryptedConnection) return send(res,428,{ok:false,error:'Connect Myfxbook for this Trading Journal user first.',code:'MYFXBOOK_NOT_CONNECTED'});
+    if(!encryptedConnection) return send(req,res,428,{ok:false,error:'Connect Myfxbook for this Trading Journal user first.',code:'MYFXBOOK_NOT_CONNECTED'});
     const credentials=openCredentials(encryptedConnection,user.localId);
     if(credentials.generation!==await connectionState.generation(user.localId))throw Object.assign(new Error('Myfxbook connection was revoked. Reconnect.'),{status:401,code:'CONNECTION_INVALID'});
+
+    const refreshedConnection=credentials.legacy?sealCredentials(user.localId,credentials.email,credentials.password,credentials.generation,credentials.iat):undefined;
 
     return await withCredentialsSession(credentials,async session=>{
       const listed=await listAccounts(session);
       const rawAccounts=listed.rawAccounts, accounts=listed.accounts;
-      if(action==='accounts') return send(res,200,{ok:true,accounts});
-      if(action!=='details') return send(res,400,{ok:false,error:'Unknown action.'});
+      if(action==='accounts') return send(req,res,200,{ok:true,accounts,connectionToken:refreshedConnection});
+      if(action!=='details') return send(req,res,400,{ok:false,error:'Unknown action.'});
       const id=String((req.query&&req.query.id)||'').trim();
-      if(!/^\d+$/.test(id)) return send(res,400,{ok:false,error:'Invalid account id.'});
+      if(!/^\d+$/.test(id)) return send(req,res,400,{ok:false,error:'Invalid account id.'});
       const rawAccount=rawAccounts.find(a=>String(a.id)===id);
-      if(!rawAccount) return send(res,404,{ok:false,error:'Account is not available in this Myfxbook profile.'});
+      if(!rawAccount) return send(req,res,404,{ok:false,error:'Account is not available in this Myfxbook profile.'});
       const errors=[];
       let start=parseMfbDate(rawAccount.firstTradeDate)||parseMfbDate(rawAccount.creationDate)||new Date(Date.now()-365*86400000);
       start=new Date(start.getTime()-2*86400000);
@@ -186,12 +151,12 @@ async function handler(req,res){
         safeMfb('get-open-trades',{session,id},'Open trades',errors),
         safeMfb('get-data-daily',{session,id,start:yyyyMmDd(start),end:yyyyMmDd(new Date())},'Daily data',errors)
       ]);
-      return send(res,200,{ok:true,account:publicAccount(rawAccount),history:historyData.history||[],openTrades:openData.openTrades||[],daily:dailyData.dataDaily||[],partialErrors:errors});
+      return send(req,res,200,{ok:true,account:publicAccount(rawAccount),connectionToken:refreshedConnection,history:historyData.history||[],openTrades:openData.openTrades||[],daily:dailyData.dataDaily||[],partialErrors:errors});
     });
   } catch(err){
     console.error('Accounts proxy error:',err&&err.message?err.message:err);
-    return send(res,err&&err.status?err.status:500,{ok:false,error:err&&err.message?err.message:'Accounts proxy failed.',code:err&&err.code?err.code:undefined});
+    return send(req,res,err&&err.status?err.status:500,{ok:false,error:err&&err.message?err.message:'Accounts proxy failed.',code:err&&err.code?err.code:undefined});
   }
 };
 
-module.exports=(req,res)=>budget.run(()=>handler(req,res));
+module.exports=(req,res)=>budget.run(async()=>{try{return await handler(req,res);}catch(_){return res.status(503).json({ok:false,error:'Accounts security configuration is invalid.',code:'SECURITY_CONFIG'});}});
