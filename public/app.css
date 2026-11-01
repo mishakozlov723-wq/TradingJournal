@@ -3125,18 +3125,23 @@
   }
   .tj-notice-host:empty { display: none; }
   .tj-notice {
-    pointer-events: auto; display: flex; align-items: flex-start; gap: 10px;
-    padding: 10px 8px 10px 14px; border-radius: 14px; font-size: 13px; line-height: 1.45;
+    pointer-events: auto; display: flex; align-items: center; gap: 10px;
+    padding: 10px 8px 10px 12px; border-radius: 14px; font-size: 13px; line-height: 1.45;
     color: var(--textMain); background: rgba(18,22,30,.96); border: 1px solid rgba(255,255,255,.10);
-    border-left: 3px solid var(--textMuted); box-shadow: 0 12px 32px rgba(0,0,0,.45);
+    box-shadow: 0 12px 32px rgba(0,0,0,.45);
     backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
     animation: errorSlideIn .35s var(--easeOut);
   }
-  .tj-notice-error { border-left-color: var(--red); }
-  .tj-notice-warn { border-left-color: var(--amber); }
-  .tj-notice-info { border-left-color: var(--blue); }
-  .tj-notice-ok { border-left-color: var(--green); }
-  .tj-notice-text { flex: 1; min-width: 0; padding-top: 2px; overflow-wrap: anywhere; }
+  /* Severity is a small round badge before the text: red/amber "!", blue "i", green check. */
+  .tj-notice::before {
+    content: ''; flex: 0 0 26px; height: 26px; border-radius: 50%;
+    background-color: rgba(255,255,255,.08); background-repeat: no-repeat; background-position: center; background-size: 14px;
+  }
+  .tj-notice-error::before { background-color: rgba(248,113,113,.16); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f87171' stroke-width='2.6' stroke-linecap='round'%3E%3Cpath d='M12 6v7M12 17.5v.5'/%3E%3C/svg%3E"); }
+  .tj-notice-warn::before { background-color: rgba(251,191,36,.16); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fbbf24' stroke-width='2.6' stroke-linecap='round'%3E%3Cpath d='M12 6v7M12 17.5v.5'/%3E%3C/svg%3E"); }
+  .tj-notice-info::before { background-color: rgba(96,165,250,.16); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2360a5fa' stroke-width='2.6' stroke-linecap='round'%3E%3Cpath d='M12 11v7M12 6.5v.5'/%3E%3C/svg%3E"); }
+  .tj-notice-ok::before { background-color: rgba(52,211,153,.16); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2334d399' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12.5l4 4 8-9'/%3E%3C/svg%3E"); }
+  .tj-notice-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   .tj-notice-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
   .tj-notice-btn {
     background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14); color: var(--textMain);
