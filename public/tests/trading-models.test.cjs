@@ -47,16 +47,18 @@ function installFirestoreDouble() {
     },
     async runTransaction(fn) {const batch=this.batch();await fn({get:r=>r.get({source:'server'}),set:batch.set,delete:batch.delete});return batch.commit();},
     collection(name) {
-      const query = (field, value) => ({
+      const query = (filters) => ({
+        where: (f, op, v) => query(filters.concat([[f, op, v]])),
         get() {
+          if (window.testQueries) testQueries.push({ name, filters });
           const data = saved();
-          const docs = Object.keys(data).filter(k => k.startsWith(name + '/') && (!field || data[k][field] === value))
+          const docs = Object.keys(data).filter(k => k.startsWith(name + '/') && filters.every(([f, op, v]) => op === 'in' ? v.includes(data[k][f]) : data[k][f] === v))
             .map(k => ({ id: k.split('/')[1], data: () => data[k] }));
           return Promise.resolve({ empty: !docs.length, forEach: cb => docs.forEach(cb) });
         }
       });
       return {
-        ...query(), where: (f, op, v) => query(f, v),
+        ...query([]),
         doc(id) {
           id = id || crypto.randomUUID().replaceAll('-', '');
           const key = name + '/' + id;
