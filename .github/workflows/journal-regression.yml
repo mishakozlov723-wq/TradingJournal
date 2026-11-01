@@ -1,7 +1,11 @@
 name: Journal regression checks
 on:
   pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
+  # Reused as the mandatory gate of the live website deployment.
+  workflow_call:
 permissions:
   contents: read
 jobs:
@@ -23,12 +27,8 @@ jobs:
         run: |
           export CHROME_PATH="$(command -v google-chrome || command -v chromium)"
           test -x "$CHROME_PATH"
-          node --check public/app.js
-          node --check public/notes-workspace.js
-          node --check public/replay-space.js
-          node --check public/accounts-space.js
-          node --check accounts-proxy-vercel/api/myfxbook.js
-          node --check accounts-proxy/netlify/functions/myfxbook.js
+          # Every tracked JavaScript source, not a hand-maintained subset.
+          git ls-files -z -- '*.js' '*.cjs' '*.mjs' | xargs -0 -n 1 node --check
           node --test tests/*.test.cjs public/tests/*.test.cjs desktop/tests/*.test.cjs
       - name: Isolated Notes, security and persistence scenarios
         env:

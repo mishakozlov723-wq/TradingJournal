@@ -16,6 +16,7 @@ const { createWindowMotion } = require('./window-motion');
 const { createReturnCompositor } = require('./return-compositor');
 const { handlePreviewInput } = require('./interface-preview-shortcut');
 const { createViewLayout } = require('./view-layout');
+const { initialWindowBounds } = require('./window-bounds');
 const { createWindowWidthPolicy, PAGE_MINIMUM_SCRIPT } = require('./window-width-policy');
 // Production: hardware acceleration remains enabled; no diagnostic switches.
 const APP_URL = 'https://retocker.web.app/';
@@ -49,8 +50,20 @@ let tray = null;
 let isQuitting = false;
 
 const crypto = require('crypto');
-let captureTimer=null, captureHash='';
-function stopCapture(){if(captureTimer)clearInterval(captureTimer);captureTimer=null;captureHash='';}
+let captureTimer=null, captureMark='';
+function stopCapture(){if(captureTimer)clearInterval(captureTimer);captureTimer=null;captureMark='';}
+// Cheap per-tick identity of the clipboard image. Text-only clipboards are
+// skipped by format, raw PNG bytes are hashed when an app provides them and
+// only the bitmap is hashed otherwise; PNG encoding waits for a real change.
+function clipboardFingerprint(){
+  let formats=null;
+  try{formats=clipboard.availableFormats();}catch(_){}
+  if(Array.isArray(formats)&&formats.length&&!formats.some(type=>/^image\//i.test(String(type))))return '';
+  try{const png=clipboard.readBuffer('PNG');if(png&&png.length)return 'png:'+png.length+':'+crypto.createHash('sha256').update(png).digest('hex');}catch(_){}
+  const img=clipboard.readImage();if(img.isEmpty())return '';
+  const z=img.getSize();
+  return 'bitmap:'+z.width+'x'+z.height+':'+crypto.createHash('sha256').update(img.toBitmap()).digest('hex');
+}
 function clipboardPayload(){const img=clipboard.readImage();if(img.isEmpty())return null;const z=img.getSize();if(z.width*z.height>40000000)throw Error('Изображение больше 40 Мп.');const png=img.toPNG();if(png.length>25*1024*1024)throw Error('Изображение больше 25 МБ.');return {hash:crypto.createHash('sha256').update(png).digest('hex'),data:'data:image/png;base64,'+png.toString('base64')};}
 let miniMode = false, miniReady = false, miniPinned = true;
 let fullState = null, miniBounds = null;
@@ -319,11 +332,19 @@ ipcMain.handle('syter:mini-pin', (e, pinned) => {
 ipcMain.handle('syter:clipboard-capture', (e,on)=>{
   if(!fromSite(e)||typeof on!=='boolean')return false;
   stopCapture();if(!on)return false;
-  try{captureHash=clipboardPayload()?.hash||'';}catch(_){}
+  // Whatever is already on the clipboard when capture starts is ignored.
+  try{captureMark=clipboardFingerprint();}catch(err){captureMark='error:'+err.message;}
   captureTimer=setInterval(()=>{
     if(!view||view.webContents.isDestroyed()||!isAppUrl(view.webContents.getURL())){stopCapture();return;}
-    try{const payload=clipboardPayload();if(!payload){captureHash='';return;}if(payload.hash===captureHash)return;captureHash=payload.hash;view.webContents.send('syter:clipboard-captured',payload);}
-    catch(err){if(captureHash!=='error'){captureHash='error';view.webContents.send('syter:clipboard-captured',{error:err.message});}}
+    let mark,failure=null;
+    try{mark=clipboardFingerprint();}catch(err){failure=err;mark='error:'+err.message;}
+    if(mark===captureMark)return;
+    // Mark first: an oversized or unreadable image reports its error only once.
+    captureMark=mark;if(!mark)return;
+    let message;
+    try{if(failure)throw failure;message=clipboardPayload();if(!message)return;}
+    catch(err){message={error:err.message};}
+    view.webContents.send('syter:clipboard-captured',message);
   },650);captureTimer.unref();return true;
 });
 ipcMain.handle('syter:clipboard-image', (e) => {
@@ -372,10 +393,11 @@ function start() {
   const st = loadState();
   miniBounds = st.miniBounds || null;
   miniPinned = st.miniPinned !== false;
-  const b = st.bounds || {};
+  // A saved rectangle on a disconnected monitor must not open off-screen.
+  const b = initialWindowBounds(st.bounds, screen, { titlebarHeight: TITLEBAR_H });
   win = new BrowserWindow({
-    width: b.width || 1440,
-    height: b.height || 900,
+    width: b.width,
+    height: b.height,
     x: b.x, y: b.y,
     minWidth: 380,
     minHeight: 500,
@@ -415,8 +437,10 @@ function start() {
   ['resize', 'maximize', 'unmaximize', 'restore', 'enter-full-screen', 'leave-full-screen', 'show']
     .forEach((ev) => win.on(ev, layout));
 
-  if (st.maximized) win.maximize();
+  // Maximizing a hidden window shows it before the first paint; restore the
+  // maximized state only when the frame is ready, immediately before show().
   win.once('ready-to-show', () => {
+    if (st.maximized) win.maximize();
     widthPolicy.refresh(); layout(); win.show();
   });
   win.on('focus', () => { if (view && !view.webContents.isDestroyed()) view.webContents.focus(); });
