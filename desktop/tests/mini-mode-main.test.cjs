@@ -50,6 +50,7 @@ function setup({ maximized = false, fullscreen = false } = {}) {
       if (name === 'electron-updater') return { autoUpdater: {} };
       if (name === './interface-preview-shortcut') return require('../interface-preview-shortcut');
       if (name === './view-layout') return require('../view-layout');
+      if (name === './window-bounds') return require('../window-bounds');
       if (name === './window-width-policy') return require('../window-width-policy');
       if (name === './return-compositor') return require('../return-compositor');
       if (name === './window-motion') return { createWindowMotion: () => motion };
