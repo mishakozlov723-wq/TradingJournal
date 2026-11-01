@@ -36,7 +36,7 @@ function createTrayMenu({ BrowserWindow, ipcMain, screen, items, version, onPick
   const visible = items.map(({ id, label, hint, icon, separator }) => separator ? { separator: true } : { id, label, hint, icon });
   const ids = new Set(visible.filter(i => !i.separator).map(i => i.id));
   const size = { width: WIDTH, height: menuHeight(visible) };
-  let menuWin = null, ready = false, failed = false, hiddenAt = 0, pendingPoint = null;
+  let menuWin = null, ready = false, failed = false, hiddenAt = 0, pendingPoint = null, watch = null;
   let closing = false, closeTimer = null;
 
   function finishHide() {
@@ -48,8 +48,8 @@ function createTrayMenu({ BrowserWindow, ipcMain, screen, items, version, onPick
   function hide() {
     if (!menuWin || menuWin.isDestroyed() || !menuWin.isVisible() || closing) return;
     hiddenAt = Date.now();
+    clearInterval(watch);
     closing = true;
-    hideCatchers();
     // The page plays the shrink animation, then reports back; the timer is a safety net.
     menuWin.webContents.send('syter:tray-menu-close');
     closeTimer = setTimeout(finishHide, CLOSE_MS + 120);
@@ -58,7 +58,7 @@ function createTrayMenu({ BrowserWindow, ipcMain, screen, items, version, onPick
     menuWin = new BrowserWindow({
       ...size, show: false, frame: false, transparent: true, hasShadow: false, backgroundColor: '#00000000',
       resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
-      skipTaskbar: true, alwaysOnTop: true, focusable: false, title: 'SYTER',
+      skipTaskbar: true, alwaysOnTop: true, focusable: true, title: 'SYTER',
       webPreferences: { preload: path.join(__dirname, 'tray-menu', 'preload.js'), contextIsolation: true,
         sandbox: true, nodeIntegration: false, spellcheck: false }
     });
@@ -69,54 +69,33 @@ function createTrayMenu({ BrowserWindow, ipcMain, screen, items, version, onPick
     wc.on('will-navigate', e => e.preventDefault());
     wc.on('did-fail-load', () => { failed = true; });
     wc.on('render-process-gone', () => { failed = true; ready = false; });
-    menuWin.on('closed', () => { menuWin = null; ready = false; closing = false; clearTimeout(closeTimer); hideCatchers(); });
+    menuWin.on('blur', hide);
+    menuWin.on('closed', () => { menuWin = null; ready = false; closing = false; clearTimeout(closeTimer); });
     menuWin.loadFile(path.join(__dirname, 'tray-menu', 'index.html'),
       { query: { items: JSON.stringify(visible), version: String(version || '') } })
       .catch(() => { failed = true; });
   }
-  // Invisible click catchers over every display: the menu never takes focus (so the
-  // Windows tray overflow panel stays open), and a click anywhere outside closes it,
-  // like a native menu.
-  let catchers = [];
-  function syncCatchers() {
-    const displays = screen.getAllDisplays();
-    if (catchers.length !== displays.length || catchers.some(c => c.isDestroyed())) {
-      catchers.forEach(c => { if (!c.isDestroyed()) c.destroy(); });
-      catchers = displays.map(() => {
-        const c = new BrowserWindow({
-          show: false, frame: false, transparent: true, hasShadow: false, backgroundColor: '#00000000',
-          resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
-          skipTaskbar: true, alwaysOnTop: true, focusable: false, enableLargerThanScreen: true, title: 'SYTER',
-          webPreferences: { preload: path.join(__dirname, 'tray-menu', 'preload.js'), contextIsolation: true,
-            sandbox: true, nodeIntegration: false, spellcheck: false }
-        });
-        c.setAlwaysOnTop(true, 'pop-up-menu');
-        c.setMenu(null);
-        c.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-        c.webContents.on('will-navigate', e => e.preventDefault());
-        c.loadFile(path.join(__dirname, 'tray-menu', 'catcher.html')).catch(() => {});
-        return c;
-      });
-    }
-    catchers.forEach((c, i) => c.setBounds(displays[i].bounds));
-  }
-  function hideCatchers() { catchers.forEach(c => { if (!c.isDestroyed() && c.isVisible()) c.hide(); }); }
   function present(point) {
     clearTimeout(closeTimer); closeTimer = null; closing = false;
     const area = screen.getDisplayNearestPoint(point).workArea;
     const bounds = placeMenu(point, size, area);
-    syncCatchers();
-    catchers.forEach(c => c.showInactive());
     menuWin.setBounds(bounds);
     // The page starts collapsed at the origin before the window becomes visible.
     menuWin.webContents.send('syter:tray-menu-open', originFor(point, bounds));
-    menuWin.showInactive();
-    menuWin.moveTop();
+    menuWin.show();
+    menuWin.focus();
+    // Windows may refuse focus to a background app: retry once, and close the menu
+    // if focus is lost without a blur event so it can never get stuck on screen.
+    let wasFocused = false;
+    clearInterval(watch);
+    setTimeout(() => { if (menuWin && !menuWin.isDestroyed() && menuWin.isVisible() && !menuWin.isFocused()) menuWin.focus(); }, 120);
+    watch = setInterval(() => {
+      if (!menuWin || menuWin.isDestroyed() || !menuWin.isVisible()) { clearInterval(watch); return; }
+      if (menuWin.isFocused()) wasFocused = true; else if (wasFocused) hide();
+    }, 300);
   }
   ipcMain.on('syter:tray-menu', (event, action, id) => {
-    if (!menuWin || menuWin.isDestroyed()) return;
-    if (catchers.some(c => !c.isDestroyed() && event.sender === c.webContents)) { if (action === 'close') hide(); return; }
-    if (event.sender !== menuWin.webContents) return;
+    if (!menuWin || menuWin.isDestroyed() || event.sender !== menuWin.webContents) return;
     if (action === 'ready') {
       ready = true;
       if (pendingPoint) { const p = pendingPoint; pendingPoint = null; present(p); }
@@ -127,7 +106,7 @@ function createTrayMenu({ BrowserWindow, ipcMain, screen, items, version, onPick
 
   return {
     open() {
-      // A click on the tray icon while the menu is open hits a catcher and closes it; do not reopen at once.
+      // A click on the tray icon blurs (closes) an open menu first; do not reopen it at once.
       if (Date.now() - hiddenAt < 250) return;
       const point = screen.getCursorScreenPoint();
       if (failed) { fallback(); return; }
@@ -143,11 +122,7 @@ function createTrayMenu({ BrowserWindow, ipcMain, screen, items, version, onPick
       present(point);
     },
     hide,
-    destroy() {
-      clearTimeout(closeTimer);
-      catchers.forEach(c => { if (!c.isDestroyed()) c.destroy(); }); catchers = [];
-      if (menuWin && !menuWin.isDestroyed()) menuWin.destroy(); menuWin = null;
-    }
+    destroy() { clearInterval(watch); clearTimeout(closeTimer); if (menuWin && !menuWin.isDestroyed()) menuWin.destroy(); menuWin = null; }
   };
 }
 
