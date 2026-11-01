@@ -20,11 +20,18 @@ using Microsoft.Win32;
 [assembly: System.Runtime.Versioning.TargetFramework(".NETFramework,Version=v4.8")]
 namespace SyterInstaller {
  static class Program {
+  [DllImport("user32.dll")]static extern bool AllowSetForegroundWindow(int processId);
+  [DllImport("user32.dll")]static extern bool PostMessage(IntPtr h,int m,IntPtr w,IntPtr l);
   [STAThread] static void Main() {
    bool owner;
    string sid=System.Security.Principal.WindowsIdentity.GetCurrent().User.Value;
    using(var mutex=new Mutex(true,"Local\\SYTER_Installer_"+sid,out owner)) {
-    if(!owner)return;
+    if(!owner){
+     // A repeated launch brings the running installer forward instead of silently doing nothing.
+     AllowSetForegroundWindow(-1);
+     if(InstallerWindow.ActivateMessage!=0)PostMessage((IntPtr)0xFFFF,InstallerWindow.ActivateMessage,IntPtr.Zero,IntPtr.Zero);
+     return;
+    }
     Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(true);
     Application.Run(new InstallerWindow());
    }
@@ -133,6 +140,8 @@ namespace SyterInstaller {
   long lastProcessed=-1,totalWork;float dpiScale=1f;int pollTick;string lastStage="";
   [DllImport("user32.dll")]static extern bool ReleaseCapture();
   [DllImport("user32.dll")]static extern IntPtr SendMessage(IntPtr h,int m,IntPtr w,IntPtr l);
+  [DllImport("user32.dll",CharSet=CharSet.Unicode)]static extern int RegisterWindowMessage(string name);
+  internal static readonly int ActivateMessage=RegisterWindowMessage("SYTER_Installer_Activate_"+System.Security.Principal.WindowsIdentity.GetCurrent().User.Value);
   public InstallerWindow(){
    Text="SYTER Installer";FormBorderStyle=FormBorderStyle.None;ClientSize=new Size(520,440);MinimumSize=Size;MaximumSize=Size;
    Icon=Icon.ExtractAssociatedIcon(Application.ExecutablePath);AutoScaleMode=AutoScaleMode.None;StartPosition=FormStartPosition.CenterScreen;BackColor=Bg;DoubleBuffered=true;KeyPreview=true;
@@ -158,7 +167,8 @@ namespace SyterInstaller {
    close.GotFocus+=(s,e)=>close.Invalidate();close.LostFocus+=(s,e)=>close.Invalidate();
    primary.MouseDown+=(s,e)=>SetKeyboardFocus(false);close.MouseDown+=(s,e)=>SetKeyboardFocus(false);
    MouseDown+=Drag;
-   FormClosing+=(s,e)=>{if(busy)e.Cancel=true;};
+   // Never interrupt a running installation from the window, but do not block Windows shutdown.
+   FormClosing+=(s,e)=>{if(busy&&e.CloseReason!=CloseReason.WindowsShutDown)e.Cancel=true;};
    KeyDown+=(s,e)=>{if(e.KeyCode==Keys.Escape&&!busy)Close();};
    timer.Interval=20;timer.Tick+=(s,e)=>{if(++pollTick%10==0&&busy&&!String.IsNullOrEmpty(session))ReadProgress();progress.Pulse();((BrandLabel)stage).Pulse();};
    Shown+=(s,e)=>{SetKeyboardFocus(false);primary.Focus();};
@@ -167,6 +177,13 @@ namespace SyterInstaller {
   
   void SetKeyboardFocus(bool visible){primary.KeyboardFocusVisible=close.KeyboardFocusVisible=visible;primary.Invalidate();close.Invalidate();}
   protected override bool ProcessDialogKey(Keys keyData){if((keyData&Keys.KeyCode)==Keys.Tab)SetKeyboardFocus(true);return base.ProcessDialogKey(keyData);}
+  protected override void WndProc(ref Message m){
+   if(ActivateMessage!=0&&m.Msg==ActivateMessage){
+    if(WindowState==FormWindowState.Minimized)WindowState=FormWindowState.Normal;
+    Show();Activate();m.Result=IntPtr.Zero;return;
+   }
+   base.WndProc(ref m);
+  }
   protected override void OnLoad(EventArgs e){
    using(var g=CreateGraphics())ApplyLayout(g.DpiX/96f);
    base.OnLoad(e);

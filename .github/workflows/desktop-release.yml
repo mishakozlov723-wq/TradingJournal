@@ -11,14 +11,6 @@ on:
         description: Focus checks on update notes and scrollbar styling; no mini animation or installer redesign checks
         type: boolean
         default: false
-      reuse_verified_update:
-        description: Reuse the verified 1.3.7 update payload; only build the native wrapper
-        type: boolean
-        default: false
-      local_update_test:
-        description: Build a private local 1.3.6 to 1.3.7 update test instead of a release
-        type: boolean
-        default: false
       publish:
         description: Publish the verified installer to syter-releases
         type: boolean
@@ -41,14 +33,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  local-update:
-    if: ${{ inputs.local_update_test }}
-    uses: ./.github/workflows/local-update-test.yml
   windows:
     permissions:
       contents: write
       actions: read
-    if: ${{ !inputs.local_update_test }}
     runs-on: windows-latest
     timeout-minutes: 45
     defaults:
@@ -61,7 +49,7 @@ jobs:
           persist-credentials: false
       - name: Reject incomplete publication checks
         run: |
-          if ('${{ inputs.publish }}' -eq 'true' -and ('${{ github.ref }}' -ne 'refs/heads/main' -or '${{ inputs.notes_only }}' -eq 'true' -or '${{ inputs.installer_only }}' -eq 'true' -or '${{ inputs.reuse_verified_update }}' -eq 'true' -or '${{ inputs.check_only }}' -eq 'true')) { throw 'Publishing requires main and every full verification gate; reduced or reused builds cannot publish' }
+          if ('${{ inputs.publish }}' -eq 'true' -and ('${{ github.ref }}' -ne 'refs/heads/main' -or '${{ inputs.notes_only }}' -eq 'true' -or '${{ inputs.installer_only }}' -eq 'true' -or '${{ inputs.check_only }}' -eq 'true')) { throw 'Publishing requires main and every full verification gate; reduced builds cannot publish' }
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
@@ -153,7 +141,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
       - name: Build installer and updater files
-        if: ${{ !inputs.check_only && !inputs.reuse_verified_update }}
+        if: ${{ !inputs.check_only }}
         env:
           SYTER_SIGNED_RELEASE: ${{ inputs.signed_release }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -161,32 +149,6 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.SYTER_CSC_KEY_PASSWORD }}
           SYTER_PUBLISHER_NAME: ${{ vars.SYTER_PUBLISHER_NAME }}
         run: npm run build
-      - name: Fetch exact verified 1.3.7 updater payload
-        if: ${{ !inputs.check_only && inputs.reuse_verified_update }}
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const fs = require('fs');
-            const source = 'f660c2af3a6b1b0d1c7a3dd80533af88a9e789fe';
-            const diff = await github.rest.repos.compareCommits({owner:context.repo.owner,repo:context.repo.repo,base:source,head:context.sha});
-            for (const f of diff.data.files || []) {
-              if (!f.filename.startsWith('.github/workflows/') && !f.filename.startsWith('desktop/update-test/') && !['desktop/package.json','desktop/package-lock.json','desktop/tests/user-release.test.cjs'].includes(f.filename)) {
-                throw Error('Packaged source changed since the tested payload: '+f.filename);
-              }
-            }
-            const r = await github.rest.actions.downloadArtifact({owner:context.repo.owner,repo:context.repo.repo,artifact_id:11977522018,archive_format:'zip'});
-            fs.writeFileSync('desktop/verified-updater.zip',Buffer.from(r.data));
-      - name: Wrap verified updater in the approved native installer
-        if: ${{ !inputs.check_only && inputs.reuse_verified_update }}
-        run: |
-          if ((Get-Content package.json -Raw|ConvertFrom-Json).version -ne '1.3.7') { throw 'Verified payload only supports version 1.3.7' }
-          if ((Get-FileHash verified-updater.zip -Algorithm SHA256).Hash.ToLower() -ne '2533bf5f4c318d3940f15a40aed0a76162deef77a1f4752f0af9b1887782bae3') { throw 'Verified artifact digest mismatch' }
-          & 'C:/Program Files/7-Zip/7z.exe' x verified-updater.zip -orelease -y
-          if ($LASTEXITCODE -ne 0) { throw 'Verified updater extraction failed' }
-          New-Item dist -ItemType Directory -Force | Out-Null
-          Copy-Item release/SYTER-Setup-1.3.7.exe dist/SYTER-Setup-1.3.7.exe
-          node scripts/build-branded-installer.js
-          if ($LASTEXITCODE -ne 0) { throw 'Native wrapper build failed' }
       - name: Verify visible generated and packaged icons
         if: ${{ !inputs.check_only && !inputs.installer_only && !inputs.notes_only }}
         run: |
@@ -206,19 +168,12 @@ jobs:
           path: desktop/test-artifacts/*icon*.png
           if-no-files-found: warn
           retention-days: 7
-      - name: Download previous test installer for same-runner startup comparison
-        if: ${{ !inputs.check_only && !inputs.installer_only && !inputs.notes_only }}
-        uses: actions/download-artifact@v4
-        with:
-          name: SYTER-windows-release
-          run-id: 38718005829
-          github-token: ${{ github.token }}
-          path: desktop/baseline
       - name: Verify delivered branded installer EXE
         if: ${{ !inputs.check_only && !inputs.notes_only }}
         run: |
           $ErrorActionPreference = 'Stop'
-          ./tests/native-installer.ps1 -SkipBenchmark:('${{ inputs.installer_only }}' -eq 'true')
+          # Startup comparison against an expired historical artifact is no longer a release gate.
+          ./tests/native-installer.ps1 -SkipBenchmark
           if (!(Test-Path test-artifacts/native-installer-success.txt)) { throw 'Native installer verification did not complete' }
       - name: Verify native installer typography, keyboard focus and waiting animation
         if: ${{ !inputs.check_only && !inputs.notes_only }}
@@ -234,30 +189,62 @@ jobs:
             Get-Content test-artifacts/native-installer-ui-test.log
             Get-Content test-artifacts/native-installer-ui-test-error.log
           }
-      - name: Verify real installed 1.3.13 to 1.3.14 update with private loopback feed
-        if: ${{ !inputs.check_only && !inputs.installer_only && !inputs.notes_only && !inputs.reuse_verified_update }}
+      - name: Verify real installed update from the previous published release with private loopback feed
+        if: ${{ !inputs.check_only && !inputs.installer_only && !inputs.notes_only }}
+        env:
+          SYTER_RELEASES_READ_TOKEN: ${{ github.token }}
+        run: |
+          # Baseline = newest PUBLISHED release older than this build, verified
+          # against its own latest.yml; no hand-pinned version or digest.
+          node update-test/previous-release.cjs baseline
+          $lookupExit = $LASTEXITCODE
+          # The read token is for the release lookup only, never the installed apps.
+          Remove-Item Env:SYTER_RELEASES_READ_TOKEN -ErrorAction SilentlyContinue
+          if ($lookupExit -ne 0) { throw 'Cannot resolve and verify the previous published release' }
+          $previous = Get-Content baseline/previous-release.json -Raw | ConvertFrom-Json
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ('${{ inputs.publish }}' -eq 'true' -and $previous.version -ne $previous.latest) { throw "Publishing $version must be tested from the latest published release $($previous.latest), not $($previous.version)" }
+          $from = $previous.version
+          Get-Process SYTER -ErrorAction SilentlyContinue | Stop-Process -Force
+          $p=Start-Process (Resolve-Path $previous.installer).Path -ArgumentList '/S' -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "$from baseline install failed" }
+          Get-Process SYTER -ErrorAction SilentlyContinue | Stop-Process -Force
+          New-Item "$env:APPDATA/syter-desktop" -ItemType Directory -Force | Out-Null
+          'preserve-update-transition' | Set-Content "$env:APPDATA/syter-desktop/update-transition-sentinel.txt"
+          node update-test/package-transition.cjs $from
+          if ($LASTEXITCODE -ne 0) { throw 'Transition pack preparation failed' }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./update-test-pack/Test-Update.ps1 -Automation
+          if ($LASTEXITCODE -ne 0) { throw "Real installed $from -> $version update failed" }
+          if ((Get-Content "$env:APPDATA/syter-desktop/update-transition-sentinel.txt" -Raw).Trim() -ne 'preserve-update-transition') { throw 'Profile sentinel lost' }
+          if (Test-Path update-test-pack/test-session.json) { throw 'Temporary feed was not restored' }
+          "PASS: real installed $from -> $version, consent/download/restart and profile preservation; loopback feed, not public delivery" | Set-Content test-artifacts/update-transition.txt
+          Get-Process SYTER -ErrorAction SilentlyContinue | Stop-Process -Force
+      - name: Verify uninstall removes SYTER registry receipts
+        if: ${{ !inputs.check_only && !inputs.notes_only }}
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          if ($version -ne '1.3.14') { throw 'Transition baseline requires explicit review for a different release version' }
-          if ($version -eq '1.3.14') {
-            New-Item baseline -ItemType Directory -Force | Out-Null
-            Invoke-WebRequest 'https://github.com/mishakozlov723-wq/syter-releases/releases/download/v1.3.13/SYTER-Setup-1.3.13.exe' -OutFile baseline/SYTER-Setup-1.3.13.exe
-            if ((Get-FileHash baseline/SYTER-Setup-1.3.13.exe -Algorithm SHA256).Hash.ToLower() -ne 'c2e574b2d9e1679df4027efdd32c3c28a831ef65a6334ec04c5edc586fcbb591') { throw 'Published 1.3.13 baseline digest mismatch' }
-            Get-Process SYTER -ErrorAction SilentlyContinue | Stop-Process -Force
-            $p=Start-Process (Resolve-Path baseline/SYTER-Setup-1.3.13.exe).Path -ArgumentList '/S' -PassThru -Wait
-            if ($p.ExitCode -ne 0) { throw '1.3.13 baseline install failed' }
-            Get-Process SYTER -ErrorAction SilentlyContinue | Stop-Process -Force
-            New-Item "$env:APPDATA/syter-desktop" -ItemType Directory -Force | Out-Null
-            'preserve-v1314-transition' | Set-Content "$env:APPDATA/syter-desktop/v1314-sentinel.txt"
-            node update-test/package-1314.cjs
-            if ($LASTEXITCODE -ne 0) { throw 'Transition pack preparation failed' }
-            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./update-test-pack/Test-Update.ps1 -Automation
-            if ($LASTEXITCODE -ne 0) { throw 'Real installed 1.3.13 -> 1.3.14 update failed' }
-            if ((Get-Content "$env:APPDATA/syter-desktop/v1314-sentinel.txt" -Raw).Trim() -ne 'preserve-v1314-transition') { throw 'Profile sentinel lost' }
-            if (Test-Path update-test-pack/test-session.json) { throw 'Temporary feed was not restored' }
-            'PASS: real installed 1.3.13 -> 1.3.14, consent/download/restart and profile preservation; loopback feed, not public delivery' | Set-Content test-artifacts/v1314-transition.txt
-            Get-Process SYTER -ErrorAction SilentlyContinue | Stop-Process -Force
-          }
+          $reg = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::CurrentUser, [Microsoft.Win32.RegistryView]::Registry64)
+          $receipt = $reg.OpenSubKey('Software\SYTER\Desktop')
+          if (!$receipt) { throw 'Installed SYTER receipt missing before uninstall' }
+          $installed = [string]$receipt.GetValue('Version'); $location = [string]$receipt.GetValue('InstallLocation'); $receipt.Dispose()
+          if ($installed -ne $version) { throw "Expected installed $version before uninstall, found $installed" }
+          $uninstaller = Join-Path $location 'Uninstall SYTER.exe'
+          if (!(Test-Path $uninstaller)) { throw 'Installed uninstaller missing' }
+          Get-Process SYTER -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Milliseconds 500
+          # NSIS copies the uninstaller to TEMP and continues there: wait for its effects.
+          $p = Start-Process $uninstaller -ArgumentList '/S' -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "Uninstaller failed: $($p.ExitCode)" }
+          $exe = Join-Path $location 'SYTER.exe'
+          $deadline = [DateTime]::UtcNow.AddSeconds(90)
+          do {
+            Start-Sleep -Milliseconds 500
+            $left = @(@('Software\SYTER\Desktop', 'Software\SYTER\Installer') | Where-Object { $k = $reg.OpenSubKey($_); if ($k) { $k.Dispose(); $true } else { $false } })
+          } while (($left.Count -or (Test-Path $exe)) -and [DateTime]::UtcNow -lt $deadline)
+          if ($left.Count) { throw "Uninstall left registry keys behind: $($left -join ', ')" }
+          if (Test-Path $exe) { throw 'Uninstall left SYTER.exe behind' }
+          $reg.Dispose()
+          "PASS: silent uninstall of $version removed HKCU Software\SYTER\Desktop, Software\SYTER\Installer and the installed app" | Set-Content test-artifacts/uninstall-cleanup.txt
       - name: Save branded installer and update previews
         # Optional diagnostic PNG export; native test failures and final EXE export remain blocking.
         continue-on-error: true
@@ -268,7 +255,8 @@ jobs:
           path: |
             desktop/test-artifacts/lifecycle-*.png
             desktop/test-artifacts/local-update-*
-            desktop/test-artifacts/v1314-transition.txt
+            desktop/test-artifacts/update-transition.txt
+            desktop/test-artifacts/uninstall-cleanup.txt
             desktop/update-test-pack/requests.log
             desktop/test-artifacts/branded-exe-*.png
             desktop/test-artifacts/installer-progress.json
@@ -279,7 +267,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - name: Verify release mode and optional publisher signatures
-        if: ${{ !inputs.check_only && !inputs.reuse_verified_update }}
+        if: ${{ !inputs.check_only }}
         env:
           SYTER_PUBLISHER_NAME: ${{ vars.SYTER_PUBLISHER_NAME }}
           SYTER_SIGNED_RELEASE: ${{ inputs.signed_release }}
@@ -296,7 +284,7 @@ jobs:
             const result=await persistPrivate({github,context,kind:'windows'});
             await core.summary.addHeading('Verified Windows installer export').addLink('Private byte-verified build and evidence',result.url).write();
       - name: Publish verified GitHub updater assets
-        if: ${{ inputs.publish && !inputs.check_only && !inputs.notes_only && !inputs.installer_only && !inputs.reuse_verified_update && github.ref == 'refs/heads/main' }}
+        if: ${{ inputs.publish && !inputs.check_only && !inputs.notes_only && !inputs.installer_only && github.ref == 'refs/heads/main' }}
         env:
           GH_TOKEN: ${{ secrets.SYTER_RELEASE_TOKEN }}
         run: |
