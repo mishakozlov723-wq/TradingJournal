@@ -14,4 +14,4 @@ test('notes hide scrollbar chrome without disabling overflow scrolling',()=>{
  assert.match(css,/#notes-text\{[^}]*overflow:auto/);
  assert.match(fs.readFileSync(path.join(root,'lifecycle/window.html'),'utf8'),/<h2 lang="ru">Что нового<\/h2>/);
 });
-test('release versions match',()=>{const pkg=require('../package.json'),lock=require('../package-lock.json');assert.equal(pkg.version,'1.3.15');assert.equal(lock.version,pkg.version);assert.equal(lock.packages[''].version,pkg.version);});
+test('release versions match',()=>{const pkg=require('../package.json'),lock=require('../package-lock.json');assert.equal(pkg.version,'1.3.16');assert.equal(lock.version,pkg.version);assert.equal(lock.packages[''].version,pkg.version);});

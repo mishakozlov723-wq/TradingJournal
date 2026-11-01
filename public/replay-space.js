@@ -2810,6 +2810,7 @@
   }
   function enterWorkspace(){
     if(!canUse()) return;
+    var sw0=document.getElementById('settingsWrap'); if(sw0) sw0.classList.remove('open'); var sb0=document.getElementById('settingsBtn'); if(sb0) sb0.setAttribute('aria-expanded','false');
     buildDom(); loadStyle(); drLoadUi(); drPlaceBars(); loadPrefs();
     curtainQuick(function(){
       if(window.TJAccounts&&window.TJAccounts.state&&window.TJAccounts.state.mode) window.TJAccounts.exit();

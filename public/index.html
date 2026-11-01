@@ -22,7 +22,7 @@
    (~450 KB) loads right after the page is ready instead of before it. Their menu
    entries stay hidden until the code has loaded, exactly as before. */
 (function(){
-  var files=['accounts-config.js?v=af5df91544','accounts-space.js?v=5730b0c50a','vendor/lightweight-charts.js?v=e21cc5caa0','replay-data-config.js?v=da53d8be61','replay-space.js?v=aa83b67eba'];
+  var files=['accounts-config.js?v=af5df91544','accounts-space.js?v=5730b0c50a','vendor/lightweight-charts.js?v=e21cc5caa0','replay-data-config.js?v=da53d8be61','replay-space.js?v=1258d4845b'];
   var started=false;
   function next(i){
     if(i>=files.length)return;
@@ -69,7 +69,7 @@
     } catch (e) {}
   })();
 </script>
-<link rel="stylesheet" href="app.css?v=acb15454c8">
+<link rel="stylesheet" href="app.css?v=8e07fa62a4">
 
 
 
@@ -1234,14 +1234,14 @@ separated by commas or new lines"></textarea>
         <label class="field-label">New password (minimum 6 characters)</label>
         <div class="pass-wrap">
           <input type="password" id="newPass1Input" required minlength="6">
-          <button type="button" class="pass-eye" data-target="newPass1Input">👁</button>
+          <button type="button" class="pass-eye" data-target="newPass1Input" aria-label="Show password"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg></button>
         </div>
       </div>
       <div class="field">
         <label class="field-label">Repeat new password</label>
         <div class="pass-wrap">
           <input type="password" id="newPass2Input" required minlength="6">
-          <button type="button" class="pass-eye" data-target="newPass2Input">👁</button>
+          <button type="button" class="pass-eye" data-target="newPass2Input" aria-label="Show password"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg></button>
         </div>
       </div>
       <button type="submit" class="submit-btn">Save password</button>
@@ -1511,7 +1511,7 @@ separated by commas or new lines"></textarea>
   var db = firebase.firestore();
 </script>
 <script src="calendar-navigation.js?v=c24a235c35"></script>
-<script src="app.js?v=9d5b3cebff"></script>
+<script src="app.js?v=2b8f5c7efd"></script>
 <script src="trade-media.js?v=b4c9d17a13"></script>
 <script src="desktop-autologin.js?v=5cd7b49cc7"></script>
 
