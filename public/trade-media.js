@@ -4,6 +4,10 @@
   // SVG paths from the project Lucide pack (icons/LICENSE-lucide.txt).
   const icons = {"chevron-left":"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m15 18-6-6 6-6\"/></svg>","chevron-right":"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m9 18 6-6-6-6\"/></svg>","x":"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M18 6 6 18\"/><path d=\"m6 6 12 12\"/></svg>","plus":"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12h14\"/><path d=\"M12 5v14\"/></svg>","calendar-days":"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M8 2v3\"/><path d=\"M16 2v3\"/><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M3 9h18\"/><path d=\"M8 13h.01\"/><path d=\"M12 13h.01\"/><path d=\"M16 13h.01\"/><path d=\"M8 17h.01\"/><path d=\"M12 17h.01\"/><path d=\"M16 17h.01\"/></svg>"};
   const $ = id => document.getElementById(id), MAX = 10;
+  // The thumbnail (`chart`) lives inside every trade document and is downloaded with
+  // the whole journal on sign-in, so it stays small. Large views (best trade, note
+  // panel, lightbox) swap in the full first image once it has loaded.
+  const THUMB_MAX = 420, THUMB_Q = .7, LEGACY_THUMB_CHARS = 60000, LEGACY_SHRINK_LIMIT = 25;
   let draft = [], revision = 0, queue = Promise.resolve(), busy = 0;
   const cache = new Map();
   function remember(id,data){cache.delete(id);cache.set(id,data);while(cache.size>40)cache.delete(cache.keys().next().value);}
@@ -71,7 +75,7 @@
     if(docs.length>MAX)throw Error('Слишком много изображений.');
     trade.images=docs.map(x=>({id:x.id}));
     trade.chart=null;
-    if(docs.length){const blob=await(await fetch(docs[0].data)).blob();trade.chart=await compressImage(blob,800,.72);}
+    if(docs.length){const blob=await(await fetch(docs[0].data)).blob();trade.chart=await compressImage(blob,THUMB_MAX,THUMB_Q);}
     delete trade._images;
     return docs;
   }
@@ -96,6 +100,45 @@
       if(!snap.exists)throw Error('Не удалось найти изображение.');
       const data=snap.data().data;remember(ref.id,data);return data;
     }));
+  }
+  async function firstSource(trade) {
+    const ref=Array.isArray(trade&&trade.images)&&trade.images[0];
+    if(!ref||!ref.id)return trade&&trade.chart||'';
+    if(cache.has(ref.id))return cache.get(ref.id);
+    const snap=await db.collection('tradeImages').doc(ref.id).get();
+    if(!snap.exists)return trade.chart||'';
+    const data=snap.data().data;remember(ref.id,data);return data;
+  }
+  // Shows the thumbnail immediately and replaces it with the full image when ready.
+  function sharpen(img,trade) {
+    if(!img||!trade)return;
+    const token={};img._tjSharpen=token;
+    firstSource(trade).then(src=>{if(img._tjSharpen===token&&src&&img.getAttribute('src')!==src)img.src=src;}).catch(()=>{});
+  }
+  // Existing trades were saved with 800px thumbnails. The owner's own client
+  // re-encodes a few of them per session in the background (only the `chart`
+  // field is written), so sign-in gets lighter over time without a migration.
+  let shrinking=false;
+  async function shrinkLegacy(list,owner) {
+    if(shrinking||!Array.isArray(list))return 0;
+    const todo=list.filter(t=>t&&t.id&&typeof t.chart==='string'&&t.chart.startsWith('data:image/')&&t.chart.length>LEGACY_THUMB_CHARS).slice(0,LEGACY_SHRINK_LIMIT);
+    if(!todo.length)return 0;
+    shrinking=true;let done=0;
+    try{
+      for(const trade of todo){
+        if(owner!==viewingUser||navigator.onLine===false)break;
+        try{
+          const blob=await(await fetch(trade.chart)).blob();
+          const chart=await compressImage(blob,THUMB_MAX,THUMB_Q);
+          if(owner!==viewingUser)break;
+          if(!(chart.length<trade.chart.length))continue;
+          await db.collection(trade.backtestId?'backtestTrades':'trades').doc(trade.id).update({chart});
+          trade.chart=chart;done++;
+        }catch(err){console.warn('Thumbnail shrink skipped for',trade.id,err&&err.code||err);}
+        await new Promise(r=>setTimeout(r,400));
+      }
+    }finally{shrinking=false;}
+    return done;
   }
   let galleryToken=0, galleryItems=[], galleryIndex=0;
   const nav=document.createElement('div');nav.className='tj-gallery-nav';
@@ -127,7 +170,7 @@
       paint();box.showModal();
     }catch(err){alert(err.message);}
   }
-  window.TJMedia={reset,add,addData,snapshot,prepare,write,sources,gallery,edit,get revision(){return revision;},get busy(){return busy>0;},clearCache(){cache.clear();galleryToken++;}};
+  window.TJMedia={reset,add,addData,snapshot,prepare,write,sources,firstSource,sharpen,shrinkLegacy,gallery,edit,get revision(){return revision;},get busy(){return busy>0;},clearCache(){cache.clear();galleryToken++;}};
   // Desktop markup arrives after the site loads. These cosmetic changes are
   // served with the site, so installed desktop 1.2.1 needs no replacement.
   function polishDesktop() {
