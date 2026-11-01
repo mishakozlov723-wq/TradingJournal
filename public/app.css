@@ -3061,6 +3061,22 @@
   html.season-spring .spring-particles,
   html.season-summer .summer-particles { opacity: 1; }
 
+  /* Performance: inactive theme layers keep running hidden animations, so they are
+     removed from rendering entirely. Default stars are removed under every season. */
+  html:not(.season-autumn) #autumnParticles,
+  html:not(.season-winter) #winterParticles,
+  html:not(.season-spring) #springParticles,
+  html:not(.season-summer) #summerParticles,
+  html.season-autumn #appParticles, html.season-autumn #loginParticles,
+  html.season-winter #appParticles, html.season-winter #loginParticles,
+  html.season-spring #appParticles, html.season-spring #loginParticles,
+  html.season-summer #appParticles, html.season-summer #loginParticles { display: none; }
+  @starting-style {
+    html.season-autumn .autumn-particles, html.season-winter .winter-particles,
+    html.season-spring .spring-particles, html.season-summer .summer-particles,
+    html:not(.season-autumn):not(.season-winter):not(.season-spring):not(.season-summer) .login-particles { opacity: 0; }
+  }
+
   /* Static seasonal icon in place of the logo box (same as the autumn acorn).
      If the picture file is missing, the normal logo stays. */
   .spring-logo-img, .summer-logo-img {
