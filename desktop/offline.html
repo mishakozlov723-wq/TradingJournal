@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src https://retocker.web.app">
 <title>SYTER</title>
 <style>
   html, body { margin: 0; height: 100%; background: #000; color: #91a0b7; font: 600 15px system-ui, "Segoe UI", sans-serif; }
@@ -19,11 +19,32 @@
   <button id="retry">Retry</button>
 </div>
 <script>
-  var URL_ = 'https://retocker.web.app/';
-  function go() { location.href = URL_; }
+(function () {
+  'use strict';
+  var APP_URL = 'https://retocker.web.app/';
+  // navigator.onLine is also true on a network without internet access, so the
+  // journal is opened only after the site really answers. Probes back off.
+  var DELAYS = [10000, 20000, 40000, 60000], PROBE_TIMEOUT = 8000;
+  var attempt = 0, timer = null, probing = false, leaving = false;
+  function go() { leaving = true; clearTimeout(timer); location.href = APP_URL; }
+  function schedule() {
+    clearTimeout(timer);
+    timer = setTimeout(probe, DELAYS[Math.min(attempt++, DELAYS.length - 1)]);
+  }
+  function probe() {
+    if (probing || leaving) return;
+    probing = true; clearTimeout(timer);
+    var controller = typeof AbortController === 'function' ? new AbortController() : null;
+    var abort = setTimeout(function () { if (controller) controller.abort(); }, PROBE_TIMEOUT);
+    fetch(APP_URL + '?syter-probe=' + Date.now(), { method: 'HEAD', mode: 'no-cors', cache: 'no-store',
+      credentials: 'omit', signal: controller ? controller.signal : undefined })
+      .then(function () { clearTimeout(abort); probing = false; go(); },
+        function () { clearTimeout(abort); probing = false; if (!leaving) schedule(); });
+  }
   document.getElementById('retry').addEventListener('click', go);
-  window.addEventListener('online', go);
-  setInterval(function() { if (navigator.onLine) go(); }, 15000);
+  window.addEventListener('online', function () { attempt = 0; probe(); });
+  schedule();
+})();
 </script>
 </body>
 </html>
