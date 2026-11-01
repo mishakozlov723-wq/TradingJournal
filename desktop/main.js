@@ -106,6 +106,7 @@ const miniShortcut = createMiniShortcut({
 });
 
 function requestMode(mini) {
+  if (isQuitting || !win || win.isDestroyed() || !view || view.webContents.isDestroyed()) return;
   // show()/focus() on an already focused journal can repaint its native frame.
   // A global request still restores a hidden/minimized/background journal.
   if (win && (!win.isVisible() || win.isMinimized() || !win.isFocused())) showWindow();
@@ -221,7 +222,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(start);
 }
 
-app.on('before-quit', () => { isQuitting = true; windowMotion.cancel(true); }); // also covers quitAndInstall() of the updater
+app.on('before-quit', () => { isQuitting = true; miniReady = false; stopCapture(); miniShortcut.dispose(); windowMotion.cancel(true); }); // also covers quitAndInstall() of the updater
 app.on('will-quit', () => miniShortcut.dispose());
 
 app.setAppUserModelId('com.retocker.syter'); // taskbar grouping + notifications
@@ -453,7 +454,7 @@ function start() {
   });
   win.on('hide', () => windowMotion.cancel());
   win.on('minimize', () => windowMotion.cancel());
-  win.on('closed', () => { win = null; view = null; });
+  win.on('closed', () => { miniReady = false; stopCapture(); win = null; view = null; });
 
   createTray();
   miniShortcut.register();

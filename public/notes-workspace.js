@@ -368,6 +368,7 @@
   var notesDirty = false;          // unsaved changes waiting for the debounce
   var notesLoadSeq = 0;            // guards against out-of-order async loads
   var NOTES_CLOUD_LIMIT = 900000;  // Firestore documents are capped at ~1 MiB
+  var notesPublicImageToken = '';
   var notesShareMode = false;      // true on public read-only links (?note=TOKEN)
   var notesHist = { undo:[], redo:[], base:null, open:false, timer:null, applying:false };
   var notesShareCache = {};        // token -> last JSON pushed to notesShares
@@ -983,21 +984,28 @@
     });
   }
   function notesImgCachePut(id, data) { notesImgDb().then(function(d){ if (!d) return; try { d.transaction('img','readwrite').objectStore('img').put(data, id); } catch (_) {} }); }
+  function notesImageCacheKey(id) { return (notesShareMode ? 'share:' + notesPublicImageToken : 'private:' + (notesAuthUid() || 'local')) + ':' + id; }
+  function notesImageDocument(id) {
+    return notesShareMode ? db.collection('notesShares').doc(notesPublicImageToken).collection('images').doc(id) : db.collection('notesImages').doc(id);
+  }
   function notesImageResolve(src) {
     if (!notesIsImageRef(src)) return Promise.resolve(notesValidCoverImage(src) ? src : '');
-    var id = src.slice(6);
-    if (notesImgMem[id]) return Promise.resolve(notesImgMem[id]);
-    if (notesImgWait[id]) return notesImgWait[id];
-    var p = notesImgCacheGet(id).then(function(hit){
+    var id = src.slice(6), key = notesImageCacheKey(id);
+    if (notesImgMem[key]) return Promise.resolve(notesImgMem[key]);
+    if (notesImgWait[key]) return notesImgWait[key];
+    // Shared readers use server-checked copies; never resurrect a revoked link from IndexedDB.
+    var p = (notesShareMode ? Promise.resolve(null) : notesImgCacheGet(key)).then(function(hit){
       if (hit) return hit;
       if (typeof db === 'undefined') throw new Error('offline');
-      return db.collection('notesImages').doc(id).get().then(function(s){
+      if (key !== notesImageCacheKey(id)) throw new Error('account changed');
+      return notesImageDocument(id).get({source:'server'}).then(function(s){
         var d = s.exists ? s.data() : null, data = d && d.data;
         if (!notesValidCoverImage(data)) throw new Error('missing');
-        notesImgCachePut(id, data); return data;
+        if (key !== notesImageCacheKey(id)) throw new Error('account changed');
+        if (!notesShareMode) notesImgCachePut(key, data); return data;
       });
-    }).then(function(data){ notesImgMem[id] = data; delete notesImgWait[id]; return data; }, function(err){ delete notesImgWait[id]; throw err; });
-    notesImgWait[id] = p; return p;
+    }).then(function(data){ delete notesImgWait[key]; if (key !== notesImageCacheKey(id)) throw new Error('account changed'); notesImgMem[key] = data; return data; }, function(err){ delete notesImgWait[key]; throw err; });
+    notesImgWait[key] = p; return p;
   }
   function notesImageUpload(data) {
     var uid = notesAuthUid();
@@ -1006,7 +1014,7 @@
     var id = notesImgToken();
     var owner = notesLoadedFor;
     return db.collection('notesImages').doc(id).set({ uid:uid, data:data, createdAt:Date.now() }).then(function(){
-      notesImgMem[id] = data; notesImgCachePut(id, data);
+      var key = 'private:' + uid + ':' + id; notesImgMem[key] = data; notesImgCachePut(key, data);
       // Track fresh uploads too: an image removed (or undone) before the page was ever saved
       // would otherwise never show up as "removed from the cloud copy".
       notesImgOrphanAdd(owner, [id]);
@@ -1095,8 +1103,10 @@
         return false;
       }).then(function(done){
         if (!done) return;
-        delete notesImgMem[id];
-        notesImgDb().then(function(d){ if (!d) return; try { d.transaction('img','readwrite').objectStore('img').delete(id); } catch (_) {} });
+        // Cache entries are scoped per account (see notesImageCacheKey); also drop a legacy unscoped entry.
+        var key = 'private:' + uid + ':' + id;
+        delete notesImgMem[key];
+        notesImgDb().then(function(d){ if (!d) return; try { var store = d.transaction('img','readwrite').objectStore('img'); store.delete(key); store.delete(id); } catch (_) {} });
         return id;
       });
     })).then(function(results){
@@ -1114,7 +1124,8 @@
   function notesPaintImage(img, src, wrap) {
     if (!notesIsImageRef(src)) { if (src) img.src = src; return; }
     var id = src.slice(6);
-    if (notesImgMem[id]) { img.src = notesImgMem[id]; return; }
+    var key = notesImageCacheKey(id);
+    if (notesImgMem[key]) { img.src = notesImgMem[key]; return; }
     if (wrap) wrap.classList.add('is-loading');
     notesImageResolve(src).then(function(data){ img.src = data; if (wrap) wrap.classList.remove('is-loading'); })
       .catch(function(){ if (wrap) { wrap.classList.remove('is-loading'); wrap.classList.add('is-broken'); } });
@@ -1126,7 +1137,8 @@
     if (!src) { set(''); return; }
     if (!notesIsImageRef(src)) { set('url("' + String(src).replace(/"/g, '%22') + '")'); return; }
     var id = src.slice(6);
-    if (notesImgMem[id]) { set('url("' + notesImgMem[id] + '")'); return; }
+    var key = notesImageCacheKey(id);
+    if (notesImgMem[key]) { set('url("' + notesImgMem[key] + '")'); return; }
     notesImageResolve(src).then(function(d){ if (el.dataset.coverRef === src) set('url("' + d + '")'); }).catch(function(){});
   }
   // Moves inline (legacy or offline-fallback) images out of pages, one upload at a time.
@@ -3762,19 +3774,43 @@
     function clean(){if(notesShareQueues[token]===job)delete notesShareQueues[token];}
     job.then(clean,clean);return job;
   }
+  function notesShareImageIds(value) {
+    var ids = Object.create(null);
+    function visit(v) {
+      if (typeof v === 'string') { if (notesIsImageRef(v)) ids[v.slice(6)] = true; }
+      else if (Array.isArray(v)) v.forEach(visit);
+      else if (v && typeof v === 'object') Object.keys(v).forEach(function(k){ visit(v[k]); });
+    }
+    visit(value); return Object.keys(ids).sort();
+  }
+  async function notesStageShareImages(token, ids, uid, valid) {
+    // Bounded sequential writes avoid giant batches and preserve existing public
+    // snapshots when an image read/upload fails. Never copy from a local cache.
+    for (var i = 0; i < ids.length; i++) {
+      if (!valid()) throw new Error('Sharing context changed');
+      var id = ids[i], snap = await db.collection('notesImages').doc(id).get({source:'server'});
+      var data = snap.exists && snap.data();
+      if (!data || data.uid !== uid || !notesValidCoverImage(data.data)) throw new Error('Shared image unavailable');
+      if (!valid()) throw new Error('Sharing context changed');
+      await db.collection('notesShares').doc(token).collection('images').doc(id).set({uid:uid,data:data.data});
+    }
+  }
   function notesWriteShare(page,ownerKey,force,candidate){
     var uid=notesAuthUid(),owner=ownerKey||notesLoadedFor,token=candidate||(page&&page.shareToken);
     if(!page||!token||typeof db==='undefined'||!notesShareContextValid(page,owner,uid)||notesShareRevoking[token])return Promise.resolve(false);
     if(!candidate&&notesPages.filter(function(p){return p.shareToken===token;}).length>1){notesShareErrors[token]='This legacy link is assigned to multiple pages. Automatic publication is paused; explicitly disable and recreate sharing for the intended page.';notesToast(notesShareErrors[token]);return Promise.resolve(false);}
     var pages=notesShareSubtree(page),json=JSON.stringify(pages);
-    var payload={uid:uid,owner:owner,rootId:page.id,title:page.title||'Untitled',pages:pages,updatedAt:Date.now()};
+    var payload={uid:uid,owner:owner,rootId:page.id,title:page.title||'Untitled',pages:pages,imageIds:notesShareImageIds(pages),updatedAt:Date.now()};
     if(notesJsonBytes(payload)>NOTES_CLOUD_LIMIT){notesShareErrors[token]='Shared page is too large to publish. Reduce its size and retry.';notesToast('Shared page is too large to publish');return Promise.resolve(false);}
     return notesShareQueue(token,function(){
       if(!notesShareContextValid(page,owner,uid)||notesShareRevoking[token]||(!candidate&&page.shareToken!==token))return false;
       if(!force&&notesShareCache[token]===json)return true;
       var ref=db.collection('notesShares').doc(token);
       // Updating an existing link must not recreate a document revoked elsewhere.
-      return (candidate?ref.set(payload):ref.update(payload)).then(function(){
+      return notesStageShareImages(token,payload.imageIds,uid,function(){return notesShareContextValid(page,owner,uid)&&!notesShareRevoking[token]&&(candidate||page.shareToken===token);}).then(function(){
+        if(!notesShareContextValid(page,owner,uid)||notesShareRevoking[token]||(!candidate&&page.shareToken!==token))throw new Error('Sharing context changed');
+        return candidate?ref.set(payload):ref.update(payload);
+      }).then(function(){
         notesShareCache[token]=json;notesShareOwners[token]={owner:owner,uid:uid};delete notesShareErrors[token];return true;
       });
     }).catch(function(err){console.error('Share publish failed:',err);notesShareErrors[token]='The latest changes were not published. The link may show an older version.';if(!candidate&&notesShareContextValid(page,owner,uid))notesToast('Could not update the public link. Retry in Share page.');return false;});
@@ -3921,7 +3957,7 @@
   /* ---------- v3.13: public viewer (?note=TOKEN) ---------- */
   function notesStartShareView(token) {
     notesTabsReset();
-    notesShareMode = true;
+    notesShareMode = true; notesPublicImageToken = token; notesImgMem = Object.create(null); notesImgWait = Object.create(null);
     document.body.classList.add('notes-share-mode', 'notes-workspace-mode');
     document.body.classList.remove('mobile-mode');
     var login = document.getElementById('loginScreen'); if (login) login.style.display = 'none';

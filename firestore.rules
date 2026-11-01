@@ -144,16 +144,27 @@ service cloud.firestore {
         && (isRetocker() || owns(resource.data.uid));
     }
 
+    function imageTradeOwned(data) {
+      let id = data.tradeId;
+      return id is string && id.size() > 0
+        && ((existsAfter(/databases/$(database)/documents/trades/$(id))
+          && getAfter(/databases/$(database)/documents/trades/$(id)).data.uid == data.uid)
+          || (existsAfter(/databases/$(database)/documents/backtestTrades/$(id))
+          && getAfter(/databases/$(database)/documents/backtestTrades/$(id)).data.uid == data.uid));
+    }
+
     // Private chart images. Saved atomically together with their trade.
     match /tradeImages/{imageId} {
       allow read: if isRetocker() || owns(resource.data.uid);
       allow create: if journalUnlocked(request.resource.data.uid) && (isRetocker() || owns(request.resource.data.uid))
+        && imageTradeOwned(request.resource.data)
         && request.resource.data.keys().hasOnly(['id','uid','tradeId','data'])
         && request.resource.data.data is string
         && request.resource.data.data.size() < 650000;
       allow update: if journalUnlocked(resource.data.uid) && (isRetocker() || owns(resource.data.uid))
         && request.resource.data.uid == resource.data.uid
         && request.resource.data.tradeId == resource.data.tradeId
+        && imageTradeOwned(request.resource.data)
         && request.resource.data.keys().hasOnly(['id','uid','tradeId','data'])
         && request.resource.data.data is string
         && request.resource.data.data.size() < 650000;
@@ -325,12 +336,10 @@ service cloud.firestore {
         || owns(resource.data.uid);
     }
 
-    // NEW (v3.38): Notes images, each stored as its own document.
-    // Image ids are long random strings, so an image can be opened only
-    // by someone who already has its link. Nobody can list all images.
-    // Only a signed-in user can upload, and only under their own uid.
+    // Original Notes images are private, including when their id is known.
+    // Public snapshots use revocable, share-scoped copies below.
     match /notesImages/{imageId} {
-      allow get: if true;
+      allow get: if isRetocker() || owns(resource.data.uid);
       allow list: if false;
 
       allow create: if signedIn()
@@ -342,6 +351,23 @@ service cloud.firestore {
 
       allow delete: if isRetocker()
         || owns(resource.data.uid);
+    }
+
+    match /notesShares/{token}/images/{imageId} {
+      allow get: if exists(/databases/$(database)/documents/notesShares/$(token))
+        && imageId in get(/databases/$(database)/documents/notesShares/$(token)).data.get('imageIds', [])
+        && resource.data.uid == get(/databases/$(database)/documents/notesShares/$(token)).data.uid;
+      allow list: if false;
+      // Staging is allowed before creating the parent, but the copy is unreadable
+      // until the parent explicitly publishes this image id. Cannot copy others' images.
+      allow create, update: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid','data'])
+        && request.resource.data.uid == request.auth.uid
+        && (!exists(/databases/$(database)/documents/notesShares/$(token))
+          || get(/databases/$(database)/documents/notesShares/$(token)).data.uid == request.auth.uid)
+        && get(/databases/$(database)/documents/notesImages/$(imageId)).data.uid == request.auth.uid
+        && request.resource.data.data == get(/databases/$(database)/documents/notesImages/$(imageId)).data.data;
+      allow delete: if isRetocker() || owns(resource.data.uid);
     }
 
     // Myfxbook history cache. The client reads known IDs, never lists this collection.

@@ -1,23 +1,14 @@
 'use strict';
 
-const crypto=require('crypto');
+const security=require('./lib/security');
+const {sealCredentials,openCredentials}=security;
 
 const budget=require('./lib/request-budget'),connectionState=require('./lib/connection-state');
 
 const MYFXBOOK_API='https://www.myfxbook.com/api';
 const IDENTITY_LOOKUP='https://identitytoolkit.googleapis.com/v1/accounts:lookup';
-const CONNECTION_VERSION='v2';
 
-function corsHeaders(){
-  return {
-    'Access-Control-Allow-Origin':process.env.ALLOWED_ORIGIN||'*',
-    'Access-Control-Allow-Headers':'Authorization, Content-Type, X-TJ-Accounts-Connection',
-    'Access-Control-Allow-Methods':'GET, POST, OPTIONS',
-    'Content-Type':'application/json; charset=utf-8',
-    'Cache-Control':'no-store, max-age=0'
-  };
-}
-function reply(status,body){ return {statusCode:status,headers:corsHeaders(),body:JSON.stringify(body)}; }
+function response(status,body,headers){return {statusCode:status,headers:security.cors(headers),body:JSON.stringify(body)};}
 function bearer(headers){
   const raw=(headers&&((headers.authorization)||(headers.Authorization)))||'';
   const m=String(raw).match(/^Bearer\s+(.+)$/i); return m?m[1]:'';
@@ -69,33 +60,6 @@ function publicAccount(a){
     commission:a.commission,currency:a.currency,profitFactor:a.profitFactor,pips:a.pips,server:a.server&&a.server.name?{name:a.server.name}:null
   };
 }
-function rootSecret(){
-  const raw=String(process.env.ACCOUNTS_CREDENTIAL_SECRET||process.env.MYFXBOOK_PASSWORD||'');
-  if(!raw){const err=new Error('Server configuration is missing ACCOUNTS_CREDENTIAL_SECRET.');err.status=500;throw err;}
-  return crypto.createHash('sha256').update('tj-accounts-v1|'+raw).digest();
-}
-function b64url(buf){return Buffer.from(buf).toString('base64url');}
-function unb64url(s){return Buffer.from(String(s||''),'base64url');}
-function sealCredentials(uid,email,password,generation){
-  const iv=crypto.randomBytes(12),cipher=crypto.createCipheriv('aes-256-gcm',rootSecret(),iv);
-  const payload=Buffer.from(JSON.stringify({uid:String(uid),email:String(email),password:String(password),iat:Date.now(),generation:String(generation)}),'utf8');
-  const ciphertext=Buffer.concat([cipher.update(payload),cipher.final()]),tag=cipher.getAuthTag();
-  return [CONNECTION_VERSION,b64url(iv),b64url(ciphertext),b64url(tag)].join('.');
-}
-function openCredentials(token,expectedUid){
-  try{
-    const parts=String(token||'').split('.');
-    if(parts.length!==4||parts[0]!==CONNECTION_VERSION)throw new Error('format');
-    const decipher=crypto.createDecipheriv('aes-256-gcm',rootSecret(),unb64url(parts[1]));
-    decipher.setAuthTag(unb64url(parts[3]));
-    const payload=JSON.parse(Buffer.concat([decipher.update(unb64url(parts[2])),decipher.final()]).toString('utf8'));
-    if(!payload||String(payload.uid)!==String(expectedUid)||!payload.email||!payload.password)throw new Error('binding');
-    if(!Number.isFinite(payload.iat)||payload.iat>Date.now()+60000||Date.now()-payload.iat>30*86400000||!payload.generation)throw new Error('expired');
-    return {email:String(payload.email),password:String(payload.password),generation:String(payload.generation)};
-  }catch(_){
-    const err=new Error('Myfxbook connection is invalid. Reconnect this Trading Journal user.');err.status=401;err.code='CONNECTION_INVALID';throw err;
-  }
-}
 async function withCredentialsSession(credentials,run){
   const login=await mfb('login',{email:credentials.email,password:credentials.password});
   if(!login.session)throw new Error('Myfxbook did not create a session.');
@@ -113,7 +77,9 @@ async function listAccounts(session){
 }
 
 async function handler(event){
-  if(event.httpMethod==='OPTIONS')return {statusCode:204,headers:corsHeaders(),body:''};
+  const reply=(status,body)=>response(status,body,event.headers);
+  if(!security.originAllowed(event.headers))return {statusCode:403,headers:{'Content-Type':'application/json','Cache-Control':'no-store'},body:JSON.stringify({ok:false,error:'Origin is not allowed.',code:'ORIGIN_DENIED'})};
+  if(event.httpMethod==='OPTIONS')return {statusCode:204,headers:security.cors(event.headers),body:''};
   if(event.httpMethod!=='GET'&&event.httpMethod!=='POST')return reply(405,{ok:false,error:'Method not allowed.'});
   try{
     const token=bearer(event.headers);
@@ -138,9 +104,11 @@ async function handler(event){
     const credentials=openCredentials(encrypted,user.localId);
     if(credentials.generation!==await connectionState.generation(user.localId))throw Object.assign(new Error('Myfxbook connection was revoked. Reconnect.'),{status:401,code:'CONNECTION_INVALID'});
 
+    const refreshedConnection=credentials.legacy?sealCredentials(user.localId,credentials.email,credentials.password,credentials.generation,credentials.iat):undefined;
+
     return await withCredentialsSession(credentials,async session=>{
       const listed=await listAccounts(session),rawAccounts=listed.rawAccounts,accounts=listed.accounts;
-      if(action==='accounts')return reply(200,{ok:true,accounts});
+      if(action==='accounts')return reply(200,{ok:true,accounts,connectionToken:refreshedConnection});
       if(action!=='details')return reply(400,{ok:false,error:'Unknown action.'});
       const id=String((event.queryStringParameters&&event.queryStringParameters.id)||'').trim();
       if(!/^\d+$/.test(id))return reply(400,{ok:false,error:'Invalid account id.'});
@@ -154,7 +122,7 @@ async function handler(event){
         safeMfb('get-open-trades',{session,id},'Open trades',errors),
         safeMfb('get-data-daily',{session,id,start:yyyyMmDd(start),end:yyyyMmDd(new Date())},'Daily data',errors)
       ]);
-      return reply(200,{ok:true,account:publicAccount(rawAccount),history:historyData.history||[],openTrades:openData.openTrades||[],daily:dailyData.dataDaily||[],partialErrors:errors});
+      return reply(200,{ok:true,account:publicAccount(rawAccount),connectionToken:refreshedConnection,history:historyData.history||[],openTrades:openData.openTrades||[],daily:dailyData.dataDaily||[],partialErrors:errors});
     });
   }catch(err){
     console.error('Accounts proxy error:',err&&err.message?err.message:err);
@@ -162,4 +130,4 @@ async function handler(event){
   }
 };
 
-exports.handler=event=>budget.run(()=>handler(event));
+exports.handler=event=>budget.run(async()=>{try{return await handler(event);}catch(_){return {statusCode:503,headers:{'Content-Type':'application/json','Cache-Control':'no-store'},body:JSON.stringify({ok:false,error:'Accounts security configuration is invalid.',code:'SECURITY_CONFIG'})};}});

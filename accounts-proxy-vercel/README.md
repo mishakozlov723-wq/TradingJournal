@@ -11,7 +11,7 @@ See `.env.example` for a template. Set them in Vercel → Project → Settings �
 Required:
 
 - `FIREBASE_WEB_API_KEY` — the Web API key of the Firebase project (used to verify users' ID tokens).
-- `ACCOUNTS_CREDENTIAL_SECRET` — a long random server-only secret used to encrypt per-user connection tokens. Changing it disconnects every user (they reconnect once).
+- `ACCOUNTS_CREDENTIAL_SECRET` — a long random server-only secret (at least 32 bytes) used to encrypt per-user connection tokens. A shorter value is rejected: every Accounts request answers `503`. If it is not set, the key is derived from `FIREBASE_SERVICE_ACCOUNT`. Changing the secret (or, without it, the service account key) disconnects every user (they reconnect once).
 - `FIREBASE_SERVICE_ACCOUNT` — the **full JSON** of a Firebase service account key, pasted as one value. The proxy uses it to read/write `accountConnectionRevocations/{uid}` (so "Disconnect" really revokes old tokens). Without it every Accounts request fails with `503 REVOCATION_NOT_CONFIGURED`.
   - Create it in Firebase console → Project settings → Service accounts → *Generate new private key*.
   - Its `project_id` must match `FIREBASE_PROJECT_ID` (default `retocker`).
@@ -19,7 +19,7 @@ Required:
 
 Recommended:
 
-- `ALLOWED_ORIGIN` — the exact site origin that may call the proxy from a browser, e.g. `https://retocker.web.app` (this is also what the desktop app loads). One origin only, no trailing slash. If empty, CORS answers `*` (any site); requests still need a valid Firebase sign-in, but restricting the origin is safer.
+- `ALLOWED_ORIGIN` — exact HTTPS site origins that may call the proxy from a browser, comma-separated, no trailing slash, e.g. `https://retocker.web.app` (this is also what the desktop app loads). If empty or `*`, only `https://retocker.web.app` and `https://retocker.firebaseapp.com` are allowed. Other browser origins get `403`; every request still needs a valid Firebase sign-in.
 
 Optional:
 
@@ -28,7 +28,7 @@ Optional:
 
 Migration compatibility:
 
-- Existing v3.23 deployments can keep the old `MYFXBOOK_PASSWORD` Vercel secret. v3.24 can use it as the encryption root when `ACCOUNTS_CREDENTIAL_SECRET` has not been created yet.
+- Connection tokens issued by older versions (encrypted with `ACCOUNTS_CREDENTIAL_SECRET` or the old `MYFXBOOK_PASSWORD`) are only read for a limited time and replaced with new tokens on the next successful request. New tokens are never encrypted with `MYFXBOOK_PASSWORD`. Details: `docs/security-1.3.15.md`.
 - `MYFXBOOK_EMAIL` is no longer used for per-user account access.
 
 ## How Myfxbook sessions are used

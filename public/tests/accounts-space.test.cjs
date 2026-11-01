@@ -101,7 +101,7 @@ test('Connect creates an encrypted UID-bound token and returns sanitized account
   assert.equal(body.ok,true);
   assert.equal(body.accounts[0].name,'FundedNext 1');
   assert.equal(body.accounts[0].invitationUrl,undefined);
-  assert.match(body.connectionToken,/^v2\./);
+  assert.match(body.connectionToken,/^v3\./); // 1.3.15: new tokens never use the v2 password-derived key
   assert.doesNotMatch(body.connectionToken,/user1@example\.test|user-one-password/);
   assert.ok(calls.some(u=>u.includes('/logout.json')));
 });

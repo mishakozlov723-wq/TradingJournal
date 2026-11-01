@@ -35,13 +35,13 @@ test('sweep deletes only unreferenced images older than the grace period',async(
   store.set('tjNotesImgOrphansV1:alice',JSON.stringify({[A]:old,[B]:old,[C]:Date.now(),[D]:old}));
   ctx.notesPages=[JSON.parse(page('p1',B))];                // B is back in the live workspace
   ctx.notesHist.undo=[{pages:JSON.stringify([JSON.parse(page('p9',D))])}]; // D can still be restored by undo
-  ctx.notesImgMem[A]='data:image/png;base64,AAAA';
+  ctx.notesImgMem['private:U1:'+A]='data:image/png;base64,AAAA';     // account-scoped cache key
   const n=await ctx.notesImgSweep(true);
   assert.equal(n,1);
   assert.deepEqual(deleted,['notesImages/'+A]);
   await new Promise(r=>setTimeout(r,0));
-  assert.deepEqual(idbDeleted,[A]);
-  assert.equal(ctx.notesImgMem[A],undefined);
+  assert.deepEqual(idbDeleted,['private:U1:'+A,A]);                   // scoped entry and any legacy unscoped one
+  assert.equal(ctx.notesImgMem['private:U1:'+A],undefined);
   const q=JSON.parse(store.get('tjNotesImgOrphansV1:alice'));
   assert.deepEqual(Object.keys(q).sort(),[C,D].sort(),'B dropped (live), C waits, D waits for history');
 });

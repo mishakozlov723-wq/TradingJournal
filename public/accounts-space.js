@@ -188,6 +188,7 @@
         err.status=response.status;
         throw err;
       }
+      if(data.connectionToken && options.connection!==false && accCurrentUid()===requestUid && accConnectionToken(requestUid)===connection)accSaveConnectionToken(data.connectionToken,requestUid);
       return data;
     } finally { if(timer)clearTimeout(timer); }
   }
