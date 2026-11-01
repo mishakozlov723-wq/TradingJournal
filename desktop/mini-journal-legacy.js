@@ -64,6 +64,9 @@
     if (enabled && (backtestTradeMode || $('modelCreateOverlay').classList.contains('open') || $('modelDeleteOverlay').classList.contains('open'))) {
       notice('Сначала завершите редактирование бэктеста или модели. Мини-журнал предназначен для обычных сделок.'); return;
     }
+    if (enabled && document.body.classList.contains('replay-fullscreen')) {
+      notice('Мини-журнал недоступен во время сессии Replay.'); return;
+    }
     switching = true;
     var modeOwner = viewingUser;
     var wasInert = form.inert;
