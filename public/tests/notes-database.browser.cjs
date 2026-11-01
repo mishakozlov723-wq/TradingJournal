@@ -29,7 +29,6 @@ NT.start();
 let html=require('./assembled-html.cjs')();
 html=html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/g,(all,attrs,body)=>{
   if(attrs.includes('calendar-navigation.js'))return all;
-  if(attrs.includes('notes-database.js'))return all;
   if(attrs.includes('notes-workspace-script'))return '<script>('+bootstrap.toString()+')();</script><script>'+body.replace(/\}\)\(\);\s*$/,access+'\n})();')+'</script>';
   return '';
 });
