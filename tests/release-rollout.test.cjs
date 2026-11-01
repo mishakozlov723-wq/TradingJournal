@@ -35,6 +35,58 @@ test('workflow defaults to Hosting-only, keeps durable backup and explicit rules
  assert.match(s,/HOSTING_ONLY: \$\{\{ !inputs.deploy_rules \}\}/);
  assert.ok(s.indexOf('Persist rollback snapshot BEFORE any production write')<s.indexOf('Deploy verified frontend Hosting'));
  assert.match(s,/verify-unchanged-rules/);
- const p=fs.readFileSync(path.join(__dirname,'../scripts/firebase-release-preflight.cjs'),'utf8');
- assert.match(p,/hostingOnly\?'firestore.rules':'verification\/production-rules-baseline.rules'/);
+});
+
+const {knownRules,matchLiveRules,committedRules}=require('../scripts/firebase-release-preflight.cjs');
+function rulesFixture({shallow=false,history={}}={}){
+ const files={'firestore.rules':'current rules\n','verification/production-rules-baseline.rules':'baseline rules\n'},gitCalls=[];
+ const shas=Object.keys(history);
+ return {gitCalls,readFile:p=>{if(!(p in files))throw Error('unexpected read '+p);return files[p];},git:args=>{gitCalls.push(args.join(' '));
+  if(args[0]==='rev-parse')return shallow?'true\n':'false\n';
+  if(args[0]==='log')return shas.join('\n')+'\n';
+  if(args[0]==='show'){const sha=args[1].split(':')[0];if(history[sha]===null)throw Error('deleted');return history[sha];}
+  throw Error('unexpected git '+args.join(' '));}};
+}
+test('Hosting-only preflight accepts only the current firestore.rules and never reads history',()=>{
+ const f=rulesFixture({history:{['a'.repeat(40)]:'old committed rules'}});
+ const {candidates,shallow}=knownRules({hostingOnly:true,readFile:f.readFile,git:f.git});
+ assert.deepEqual(candidates.map(c=>c.label),['firestore.rules']);
+ assert.equal(shallow,false);assert.deepEqual(f.gitCalls,[]);
+ assert.equal(matchLiveRules([{content:'current rules'}],candidates).label,'firestore.rules');
+ assert.equal(matchLiveRules([{content:'baseline rules'}],candidates),null);
+ assert.equal(matchLiveRules([{content:'old committed rules'}],candidates),null);
+});
+test('rules publication preflight recognizes baseline, current and every committed rules version only',()=>{
+ const a='a'.repeat(40),b='b'.repeat(40),c='c'.repeat(40);
+ const f=rulesFixture({history:{[a]:'current rules',[b]:'previous release rules\r\n',[c]:null}});
+ const {candidates,shallow}=knownRules({hostingOnly:false,readFile:f.readFile,git:f.git});
+ assert.equal(shallow,false);
+ assert.deepEqual(candidates.map(x=>x.label),['verification/production-rules-baseline.rules','firestore.rules','firestore.rules@'+a.slice(0,12),'firestore.rules@'+b.slice(0,12)]);
+ assert.equal(matchLiveRules([{content:'baseline rules'}],candidates).label,'verification/production-rules-baseline.rules');
+ assert.equal(matchLiveRules([{content:'current rules'}],candidates).label,'firestore.rules');
+ assert.equal(matchLiveRules([{content:'previous release rules'}],candidates).label,'firestore.rules@'+b.slice(0,12));
+ assert.equal(matchLiveRules([{content:'out-of-band console edit'}],candidates),null);
+ assert.equal(matchLiveRules([{content:'current rules'},{content:'extra'}],candidates),null);
+ assert.equal(matchLiveRules([],candidates),null);
+ assert.equal(matchLiveRules(undefined,candidates),null);
+ assert.equal(matchLiveRules([{content:42}],candidates),null);
+});
+test('rules history reports shallow checkouts and tolerates git failures',()=>{
+ const f=rulesFixture({shallow:true});
+ assert.equal(knownRules({hostingOnly:false,readFile:f.readFile,git:f.git}).shallow,true);
+ const broken=committedRules(()=>{throw Error('no git');});
+ assert.deepEqual(broken,{versions:[],shallow:true});
+});
+test('website deploy checks out full history for rules preflight and is gated by the full regression workflow',()=>{
+ const s=fs.readFileSync(path.join(__dirname,'../.github/workflows/deploy-website.yml'),'utf8');
+ const deploy=s.split('\n  deploy:\n')[1].split(/\n  [a-z_-]+:\n/)[0];
+ assert.match(deploy,/needs: regression/);
+ assert.match(deploy,/fetch-depth: 0/);
+ const regression=s.split('\n  regression:\n')[1].split(/\n  [a-z_-]+:\n/)[0];
+ assert.match(regression,/uses: \.\/\.github\/workflows\/journal-regression\.yml/);
+ assert.match(regression,/contents: read/);
+ const r=fs.readFileSync(path.join(__dirname,'../.github/workflows/journal-regression.yml'),'utf8');
+ assert.match(r,/workflow_call:/);
+ assert.match(r,/push:\n\s+branches: \[main\]/);
+ assert.match(r,/git ls-files -z -- '\*\.js' '\*\.cjs' '\*\.mjs' \| xargs -0 -n 1 node --check/);
 });

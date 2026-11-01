@@ -3,10 +3,22 @@
   'use strict';
   const overlay=document.getElementById('modalOverlay'),root=document.getElementById('appRoot');
   if(!overlay||!root||window.syterJournalView)return;
-  let entry=null,parkedOwner=null;
-  function scrolls(){return [root,...root.querySelectorAll('*'),overlay.querySelector('.modal-box')]
-    .filter(el=>el&&(el.scrollTop||el.scrollLeft))
-    .map(el=>({el,top:el.scrollTop,left:el.scrollLeft}));}
+  let entry=null,parkedOwner=null,parkedTimer=null;
+  // Remember only elements the user (or the app) actually scrolled instead of
+  // reading scroll offsets from every node of the journal on each mode switch.
+  const scrolled=new Set();
+  function prune(){for(const el of scrolled)if(!el.isConnected)scrolled.delete(el);}
+  document.addEventListener('scroll',e=>{
+    const el=e.target;
+    if(!el||el.nodeType!==1||!(root.contains(el)||overlay.contains(el)))return;
+    scrolled.add(el);if(scrolled.size>256)prune();
+  },{capture:true,passive:true});
+  function scrolls(){
+    prune();
+    return [...new Set([root,...scrolled,overlay.querySelector('.modal-box')])]
+      .filter(el=>el&&(el.scrollTop||el.scrollLeft))
+      .map(el=>({el,top:el.scrollTop,left:el.scrollLeft}));
+  }
   function restoreScroll(){
     if(!entry||document.body.classList.contains('syter-mini'))return;
     for(const p of entry.scrolls)if(p.el.isConnected){p.el.scrollTop=p.top;p.el.scrollLeft=p.left;}
@@ -22,7 +34,7 @@
     },
     leave(owner){
       if(!entry||entry.owner!==owner){this.invalidate();return;}
-      if(!entry.modalOpen){parkedOwner=owner;overlay.classList.remove('open');}
+      if(!entry.modalOpen){parkedOwner=owner;overlay.classList.remove('open');watchParked();}
       restoreScroll();
     },
     finish(owner){
@@ -45,9 +57,13 @@
     if(owner!==parkedOwner||typeof currentUser==='undefined'||!currentUser){state.invalidate();return;}
     e.preventDefault();e.stopImmediatePropagation();state.openDraft(owner,()=>{});
   },true);
-  setInterval(()=>{
+  // A parked draft is discarded when its owner signs out or switches journal.
+  // The check runs only while a draft is actually parked.
+  function watchParked(){if(parkedTimer===null)parkedTimer=setInterval(checkParked,250);}
+  function checkParked(){
+    if(parkedOwner===null){clearInterval(parkedTimer);parkedTimer=null;return;}
     const owner=typeof viewingUser==='undefined'?null:viewingUser;
-    if(parkedOwner!==null&&(owner!==parkedOwner||typeof currentUser==='undefined'||!currentUser||root.style.display==='none')){
+    if(owner!==parkedOwner||typeof currentUser==='undefined'||!currentUser||root.style.display==='none'){
       state.invalidate(true);const form=document.getElementById('tradeForm');if(form)form.reset();
       const notes=document.getElementById('syterTradeNotes');if(notes)notes.value='';
       if(window.TJMedia)window.TJMedia.reset();if(typeof currentScreenshot!=='undefined')currentScreenshot=null;
@@ -55,5 +71,5 @@
       const wrap=document.getElementById('screenshotPreviewWrap');if(wrap)wrap.style.display='none';
       const filename=document.getElementById('screenshotFileName');if(filename)filename.textContent='No file chosen';
     }
-  },250);
+  }
 })();

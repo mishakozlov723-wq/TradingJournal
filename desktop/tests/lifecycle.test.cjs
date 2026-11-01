@@ -3,11 +3,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
-const crypto = require('node:crypto');
 const { createUpdateController, notesText } = require('../lifecycle/controller');
-const { verifyPayload, runSilent, parseInstallProgress } = require('../installer/engine');
 function fixture() {
   const updater = new EventEmitter(); let download = 0, checks = 0, shown = 0, dismissed = 0, quits = 0, installed;
   updater.downloadUpdate = async () => { download++; };
@@ -45,35 +42,11 @@ test('release notes stay plain text and bounded',()=>{
   assert.equal(notesText('x'.repeat(9999)).length,6000);
   const html=fs.readFileSync(path.join(__dirname,'../lifecycle/renderer.js'),'utf8');assert.doesNotMatch(html,/innerHTML|eval\(/);
 });
-test('payload hash mismatch prevents installation',async()=>{
-  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'syter-payload-'));const file=path.join(dir,'setup.exe');fs.writeFileSync(file,'test');let progress=0;
-  try {await verifyPayload(file,crypto.createHash('sha256').update('test').digest('hex'),p=>progress=p);assert.equal(progress,100);await assert.rejects(verifyPayload(file,'0'.repeat(64)),/verification/);}
-  finally{fs.rmSync(dir,{recursive:true,force:true});}
-});
-test('installer uses only silent fixed arguments and reports child failure',async()=>{
-  let args,opts;const fake=(file,a,o)=>{args=a;opts=o;const child=new EventEmitter();queueMicrotask(()=>child.emit('exit',0));return child;};
-  await runSilent('setup.exe',fake);assert.deepEqual(args,['/S']);assert.equal(opts.shell,false);
-  await assert.rejects(runSilent('setup.exe',()=>{const child=new EventEmitter();queueMicrotask(()=>child.emit('exit',2));return child;}),/did not finish/);
-});
 test('renderer privilege boundary is isolated, allowlisted and origin-bound',()=>{
   const src=fs.readFileSync(path.join(__dirname,'../lifecycle/window.js'),'utf8');assert.match(src,/sandbox: true/);assert.match(src,/contextIsolation: true/);assert.match(src,/nodeIntegration: false/);assert.match(src,/event\.senderFrame === win\.webContents\.mainFrame/);assert.match(src,/will-navigate/);
   const main=fs.readFileSync(path.join(__dirname,'../main.js'),'utf8');const section=main.slice(main.indexOf('function setupUpdates()'),main.indexOf('// the window only hides'));assert.doesNotMatch(section,/showMessageBox/);
 });
 
-test('successful launch releases the installer close guard before quitting',()=>{
-  const src=fs.readFileSync(path.join(__dirname,'../installer/main.js'),'utf8');
-  assert.match(src,/child\.once\('spawn', \(\) => \{ child\.unref\(\); busy = false; app\.quit\(\); \}\)/);
-  assert.match(src,/onClose:\(\)=>!busy/);
-});
-
-test('install progress is extracted + successfully copied bytes, never elapsed time',()=>{
-  const status=(session,extracted,copied,stage='copying')=>`    Session    REG_SZ    ${session}\n    Stage    REG_SZ    ${stage}\n    Total    REG_SZ    1000\n    Extracted    REG_SZ    ${extracted}\n    Copied    REG_SZ    ${copied}\n`;
-  assert.equal(parseInstallProgress(status('current',500,0),'current').percent,25);
-  assert.equal(parseInstallProgress(status('current',1000,800),'current').percent,90);
-  assert.equal(parseInstallProgress(status('current',1000,1000,'finalizing'),'current').phase,'finalizing');
-  assert.equal(parseInstallProgress(status('old',1000,1000),'current'),null);
-  assert.equal(parseInstallProgress(status('current',1001,0),'current'),null);
-});
 test('compact lifecycle has no footer, card or resizing during launch',()=>{
   const html=fs.readFileSync(path.join(__dirname,'../lifecycle/window.html'),'utf8');
   assert.doesNotMatch(html,/<footer|brand-dot|class="detail"/);

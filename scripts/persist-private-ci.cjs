@@ -17,7 +17,7 @@ function selectFiles(kind,root,sourceSha){
   // Revalidate actual packaged updater mode and feed/EXE digests before export.
   const report=require(path.join(desktop,'scripts/verify-update-artifacts.js')).verifyArtifacts(path.join(desktop,'release'),version);
   const files=report.assets.map(a=>path.join(desktop,'release',a.name));
-  for(const name of ['release-integrity.json','v1313-transition.txt','native-installer-success.txt','native-installer-ui-success.txt']){
+  for(const name of ['release-integrity.json','update-transition.txt','uninstall-cleanup.txt','native-installer-success.txt','native-installer-ui-success.txt']){
    const file=path.join(desktop,'test-artifacts',name);if(fs.existsSync(file))files.push(file);
   }
   return files;
