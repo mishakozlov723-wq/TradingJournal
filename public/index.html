@@ -1458,7 +1458,7 @@ separated by commas or new lines"></textarea>
   }
   function end(ok, path) {
     pending = Math.max(0, pending - 1);
-    if (!ok && !/^notesImages\//.test(path || '')) { shownWaiting = false; show('Could not save to the server', 'error'); hideSoon(6000); }
+    if (!ok && !/^notesImages\//.test(path || '') && !/^notesShares\/[^/]+\/images\//.test(path || '')) { shownWaiting = false; show('Could not save to the server', 'error'); hideSoon(6000); }
     else if (pending === 0) {
       clearTimeout(waitTimer); waitTimer = null;
       if (shownWaiting) { shownWaiting = false; show('Saved', 'ok'); hideSoon(1600); }
@@ -1638,7 +1638,7 @@ separated by commas or new lines"></textarea>
 </script>
 
 <!-- Notes v3.20.3: database runtime and styles are embedded; no additional asset request. -->
-<script src="notes-workspace.js?v=fcb16ac161"></script>
+<script src="notes-workspace.js?v=b122e6c907"></script>
 
 
 

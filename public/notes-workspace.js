@@ -998,9 +998,10 @@
       if (hit) return hit;
       if (typeof db === 'undefined') throw new Error('offline');
       if (key !== notesImageCacheKey(id)) throw new Error('account changed');
-      return notesImageDocument(id).get({source:'server'}).then(function(s){
-        var d = s.exists ? s.data() : null, data = d && d.data;
-        if (!notesValidCoverImage(data)) throw new Error('missing');
+      function readDoc(ref){ return ref.get({source:'server'}).then(function(s){ var d = s.exists ? s.data() : null, data = d && d.data; if (!notesValidCoverImage(data)) throw new Error('missing'); return data; }); }
+      // Public links prefer the share-scoped copy and fall back to the original (readable by its link).
+      var read = notesShareMode ? readDoc(notesImageDocument(id)).catch(function(){ return readDoc(db.collection('notesImages').doc(id)); }) : readDoc(notesImageDocument(id));
+      return read.then(function(data){
         if (key !== notesImageCacheKey(id)) throw new Error('account changed');
         if (!notesShareMode) notesImgCachePut(key, data); return data;
       });
@@ -3788,11 +3789,13 @@
     // snapshots when an image read/upload fails. Never copy from a local cache.
     for (var i = 0; i < ids.length; i++) {
       if (!valid()) throw new Error('Sharing context changed');
-      var id = ids[i], snap = await db.collection('notesImages').doc(id).get({source:'server'});
-      var data = snap.exists && snap.data();
-      if (!data || data.uid !== uid || !notesValidCoverImage(data.data)) throw new Error('Shared image unavailable');
+      // An image that cannot be copied (missing, uploaded from another account, legacy
+      // format) is skipped; the public viewer falls back to the original by its link.
+      var id = ids[i], data = null;
+      try { var snap = await db.collection('notesImages').doc(id).get({source:'server'}); data = snap.exists && snap.data(); } catch (_) { data = null; }
+      if (!data || data.uid !== uid || !notesValidCoverImage(data.data)) continue;
       if (!valid()) throw new Error('Sharing context changed');
-      await db.collection('notesShares').doc(token).collection('images').doc(id).set({uid:uid,data:data.data});
+      try { await db.collection('notesShares').doc(token).collection('images').doc(id).set({uid:uid,data:data.data}); } catch (_) {}
     }
   }
   function notesWriteShare(page,ownerKey,force,candidate){
