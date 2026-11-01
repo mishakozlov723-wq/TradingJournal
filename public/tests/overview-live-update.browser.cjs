@@ -208,9 +208,9 @@ test('overview live update browser regression', { timeout: 90000 }, async t => {
       assert([...el('allTradesBody').children].every((tr,i)=>tr===__rows[i]),'rows kept');
     `);
     await check('delete via table button + interrupting animation', `
-      el('allTradesBody').querySelector('.del-btn[data-id="lt2"]').click();
+      el('allTradesBody').querySelector('.del-btn[data-id="lt2"]').click();el('tjConfirmOk').click();
       await tick(); __morphFrame(2000); __morphFrame(2150);
-      el('allTradesBody').querySelector('.del-btn[data-id="lt3"]').click();
+      el('allTradesBody').querySelector('.del-btn[data-id="lt3"]').click();el('tjConfirmOk').click();
       await tick(); __morphFrame(2200); __morphFrame(3000);
       assert(!overviewChartState.anim,'done');
       assert(el('allTradesBody').children.length===4,'4 rows');

@@ -7,7 +7,7 @@ function storage(){const map=new Map();return {get length(){return map.size},key
 const clone=x=>JSON.parse(JSON.stringify(x));
 function fixture(store=storage()){
  const remote={},commits=[],auth={uid:'auth-A'};let failAt=0,attempt=0,hold;
- const c={Promise,Date,Math,JSON,Object,Array,String,Number,encodeURIComponent,localStorage:store,console:{warn(){},error(){}},window:{addEventListener(){}},viewingUser:'A',tjDataGeneration:1,activeBacktestId:null,
+ const c={Promise,Date,Math,JSON,Object,Array,String,Number,encodeURIComponent,localStorage:store,console:{warn(){},error(){},info(){}},window:{addEventListener(){}},viewingUser:'A',tjDataGeneration:1,activeBacktestId:null,
  findUser:o=>({uid:'uid-'+o}),firebase:{auth:()=>({currentUser:auth})},navigator:{},tjBacktestFlushes:Object.create(null),tjBacktestActiveLoads:Object.create(null),tjBacktestSequence:0,
  document:{body:{classList:{remove(){}}}},saveBacktestLocal(){c.saved=(c.saved||0)+1;},renderBacktests(){},showBacktestSyncError:m=>c.error=m,
  db:{collection:collection=>({doc:id=>({key:collection+'/'+id})}),batch(){const writes=[];return {set(r,v,o){writes.push({key:r.key,data:clone(v),merge:o.merge});},delete:r=>writes.push({key:r.key,remove:true}),async commit(){attempt++;if(hold)await hold;if(attempt===failAt)throw Error('offline');commits.push(clone(writes));for(const w of writes){if(w.remove)delete remote[w.key];else remote[w.key]=Object.assign({},w.merge?remote[w.key]:{},w.data);}}};}}};
@@ -36,7 +36,14 @@ test('an acknowledged write during an older query remains in that query overlay'
  assert.equal(h.c.tjBacktestOutbox('A').length,0);assert.equal(h.c.tjOverlayBacktestOutbox([],'backtestTrades','A',intents)[0].r,3);
 });
 test('another authenticated account cannot drain the original user outbox',async()=>{
- const h=fixture();h.fail(1);await assert.rejects(h.c.tjBacktestWrite('backtests','bt',{uid:'uid-A'}));h.auth.uid='auth-B';h.fail(0);await assert.rejects(h.c.tjFlushBacktestOutbox('A'),/original account/);assert.equal(h.commits.length,0);assert.equal(h.c.tjBacktestOutbox('A').length,1);
+ const h=fixture();h.fail(1);await assert.rejects(h.c.tjBacktestWrite('backtests','bt',{uid:'uid-A'}));h.auth.uid='auth-B';h.fail(0);await h.c.tjFlushBacktestOutbox('A');assert.equal(h.commits.length,0);assert.equal(h.c.tjBacktestOutbox('A').length,1);
+});
+test('foreign-account operations do not block this account (no head-of-line stall)',async()=>{
+ const h=fixture();h.fail(1);await assert.rejects(h.c.tjBacktestWrite('backtests','bt-a',{uid:'uid-A',by:'A'}));
+ h.auth.uid='auth-B';h.fail(0);await h.c.tjBacktestWrite('backtests','bt-b',{uid:'uid-A',by:'B'});
+ assert.equal(h.remote['backtests/bt-b'].by,'B');assert.equal(h.remote['backtests/bt-a'],undefined);
+ const left=h.c.tjBacktestOutbox('A');assert.equal(left.length,1);assert.equal(left[0].authUid,'auth-A');
+ h.auth.uid='auth-A';await h.c.tjFlushBacktestOutbox('A');assert.equal(h.remote['backtests/bt-a'].by,'A');assert.equal(h.c.tjBacktestOutbox('A').length,0);
 });
 test('large deletion resumes after the acknowledged chunk and atomically removes trade images',async()=>{
  const h=fixture(),records=Array.from({length:500},(_,i)=>({id:'t'+i,backtestId:'bt',images:[{id:'im'+i}]}));

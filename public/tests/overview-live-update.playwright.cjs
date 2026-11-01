@@ -79,9 +79,9 @@ async function check(name,body){await evaluate('(async()=>{const assert=(v,m)=>{
       assert([...el('allTradesBody').children].every((tr,i)=>tr===__rows[i]),'rows kept');
     `);
     await check('delete via table button + interrupting animation', `
-      el('allTradesBody').querySelector('.del-btn[data-id="lt2"]').click();
+      el('allTradesBody').querySelector('.del-btn[data-id="lt2"]').click();el('tjConfirmOk').click();
       await new Promise(r=>setTimeout(r,150));
-      el('allTradesBody').querySelector('.del-btn[data-id="lt3"]').click();
+      el('allTradesBody').querySelector('.del-btn[data-id="lt3"]').click();el('tjConfirmOk').click();
       await new Promise(r=>setTimeout(r,900));
       assert(!overviewChartState.anim,'done');
       assert(el('allTradesBody').children.length===4,'4 rows');
