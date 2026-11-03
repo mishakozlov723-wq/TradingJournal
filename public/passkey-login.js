@@ -69,13 +69,13 @@
   var registerOptions = cache(function () { return idToken().then(function (t) { return post('register-options', {}, t); }); });
 
   // ---------- Login screen button ----------
-  var loginBtn = $('passkeyLoginBtn'), loginLabel = $('passkeyLoginLabel'), loginBusy = false;
+  var loginBtn = $('passkeyLoginBtn'), loginBusy = false;
   function loginScreenVisible() { var s = $('loginScreen'); return !!(s && s.style.display !== 'none'); }
   function refreshLoginButton() {
     if (!loginBtn) return;
     var stored = readStored();
     loginBtn.style.display = stored ? '' : 'none';
-    if (loginLabel) loginLabel.textContent = 'Sign in with ' + (isIOS ? 'Face ID' : 'fingerprint');
+    loginBtn.setAttribute('aria-label', 'Sign in with ' + BIO); loginBtn.title = 'Sign in with ' + BIO;
     if (stored && loginScreenVisible() && !loginOptions.fresh()) loginOptions.load().catch(function () {});
   }
   function loginError(msg) {
@@ -112,7 +112,7 @@
     loginBtn.classList.remove('is-loading');
     var code = err && err.code;
     if (err && err.name === 'NotAllowedError') {
-      if (freshFetch) loginError('Tap “Sign in with ' + BIO + '” once more.');
+      if (freshFetch) loginError('Tap the ' + BIO + ' button once more.');
       return;
     }
     if (code === 'PASSKEY_UNKNOWN') {
@@ -182,7 +182,15 @@
     document.body.appendChild(o);
     return o;
   }
-  function closeOffer() { if (offer) { offer.classList.remove('open'); offer.setAttribute('aria-hidden', 'true'); } }
+  // While the offer is open the journal underneath must not scroll or swipe: choose Turn on or Not now.
+  function blockTouch(e) { if (offer && offer.classList.contains('open')) e.preventDefault(); }
+  function lockPage(on) {
+    document.documentElement.classList.toggle('passkey-offer-lock', on);
+    var fn = on ? 'addEventListener' : 'removeEventListener';
+    document[fn]('touchmove', blockTouch, { passive: false });
+    document[fn]('wheel', blockTouch, { passive: false });
+  }
+  function closeOffer() { if (offer) { offer.classList.remove('open'); offer.setAttribute('aria-hidden', 'true'); } lockPage(false); }
   function showOffer(login) {
     offer = offer || buildOffer();
     $('passkeyOfferTitle').textContent = 'Sign in with ' + BIO + '?';
@@ -194,7 +202,7 @@
       enable(login).then(function (r) {
         if (r === 'again') { ok.disabled = false; ok.textContent = 'Tap again'; return; }
         $('passkeyOfferTitle').textContent = BIO + ' is on';
-        $('passkeyOfferMessage').textContent = 'Next time, tap “Sign in with ' + BIO + '” on the login screen.';
+        $('passkeyOfferMessage').textContent = 'Next time, tap the ' + BIO + ' button next to Sign in.';
         setTimeout(closeOffer, 1600);
       }).catch(function (e) {
         if (e && e.name === 'NotAllowedError') { setDeclined(login); closeOffer(); return; }
@@ -203,9 +211,10 @@
       });
     };
     later.onclick = function () { setDeclined(login); closeOffer(); };
-    offer.onclick = function (e) { if (e.target === offer) { setDeclined(login); closeOffer(); } };
+    offer.onclick = null;
     offer.setAttribute('aria-hidden', 'false');
     offer.classList.add('open');
+    lockPage(true);
   }
   function maybeOffer(login) {
     if (!login || enabledHere(login) || declined(login)) return;
