@@ -84,6 +84,16 @@
     firstReveal = false;
     setTimeout(function () { requestAnimationFrame(function () { if (readStored()) loginRow.classList.add('has-passkey'); }); }, delay);
   }
+  // Face ID verified -> the button shows its spinner (is-loading); mirror that on the row
+  // so the icon stretches to full width and pushes Sign in out. Reverses on failure.
+  if (loginRow && window.MutationObserver) {
+    new MutationObserver(function () {
+      var on = loginBtn.classList.contains('is-loading');
+      if (on !== loginRow.classList.contains('pk-expand')) requestAnimationFrame(function () {
+        loginRow.classList.toggle('pk-expand', loginBtn.classList.contains('is-loading'));
+      });
+    }).observe(loginBtn, { attributes: true, attributeFilter: ['class'] });
+  }
   function refreshLoginButton() {
     if (!loginBtn) return;
     var stored = readStored();

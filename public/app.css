@@ -2073,7 +2073,15 @@
   .login-submit-row.has-passkey .passkey-login-btn:hover { background: rgba(52,211,153,.08); opacity: 1; transform: none; }
   .login-submit-row.has-passkey .passkey-login-btn:active { transform: scale(.94); transition-duration: .12s; }
   .passkey-login-btn .btn-text { display: flex; align-items: center; justify-content: center; }
-  @media (prefers-reduced-motion: reduce) { .passkey-slot, .login-card .passkey-login-btn { transition: none; } }
+  /* After Face ID is verified the icon becomes the full-width loading bar and squeezes
+     Sign in out completely (same duration/easing as the reveal). */
+  .login-submit-row #loginSubmitBtn { white-space: nowrap; overflow: hidden;
+    transition: padding var(--pk-dur) var(--pk-ease), opacity calc(var(--pk-dur) * .55) ease, border-width var(--pk-dur) var(--pk-ease), transform .2s ease; }
+  .login-card .passkey-login-btn { transition: transform var(--pk-dur) var(--pk-ease), opacity calc(var(--pk-dur) * .7) ease, width var(--pk-dur) var(--pk-ease), background-color .2s ease; }
+  .login-submit-row.pk-expand .passkey-slot { width: 100%; }
+  .login-submit-row.pk-expand .passkey-login-btn { width: 100%; }
+  .login-submit-row.pk-expand #loginSubmitBtn { padding-left: 0; padding-right: 0; border-width: 0; opacity: 0; pointer-events: none; transform: none; }
+  @media (prefers-reduced-motion: reduce) { .passkey-slot, .login-card .passkey-login-btn, .login-submit-row #loginSubmitBtn { transition: none; } }
   .passkey-offer-overlay { background: rgba(0,0,0,.72); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); touch-action: none; overscroll-behavior: contain; }
   html.passkey-offer-lock, html.passkey-offer-lock body { overflow: hidden !important; overscroll-behavior: none; touch-action: none; }
   .passkey-offer-box { text-align: center; }
