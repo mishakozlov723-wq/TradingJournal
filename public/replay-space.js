@@ -2868,6 +2868,18 @@
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',bind); else bind();
 
+  /* Replay screen: no page zoom (pinch goes to the chart), no double-tap zoom, no text selection. */
+  (function(){
+    var meta=document.querySelector('meta[name="viewport"]'), base=meta?meta.getAttribute('content'):'', locked=false;
+    function lock(on){
+      if(on===locked) return; locked=on;
+      if(meta) meta.setAttribute('content',on?'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover':base);
+    }
+    var inReplay=function(){ return document.body.classList.contains('replay-fullscreen'); };
+    ['gesturestart','gesturechange','gestureend'].forEach(function(t){ document.addEventListener(t,function(e){ if(inReplay()) e.preventDefault(); },{ passive:false }); });
+    document.addEventListener('touchmove',function(e){ if(inReplay()&&e.touches&&e.touches.length>1&&!(e.target.closest&&e.target.closest('#rpChart'))) e.preventDefault(); },{ passive:false });
+    if(window.MutationObserver) new MutationObserver(function(){ lock(inReplay()); }).observe(document.body,{ attributes:true, attributeFilter:['class'] });
+  })();
   window.TJReplay={ enter:enterWorkspace, exit:function(){ exitWorkspace(true); }, state:S, drawGeo:function(id){ var d=drById(id); if(!d) return null; var r=$('rpChart').getBoundingClientRect(), off=function(q){ return q?{ x:q.x+r.left, y:q.y+r.top }:null; }; return { pts:(drPxs(d)||[]).map(off), handles:drHandles(d).map(function(h){ return { id:h.id, x:h.x+r.left, y:h.y+r.top }; }) }; } };
 })();
 
