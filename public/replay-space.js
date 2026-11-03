@@ -282,7 +282,7 @@
             '<div class="rp-stats" id="rpStats"></div>'+
           '</div></div></div></div>'+
       '</div>'+
-      '<div class="rp-bottombar"><div class="rp-ctl">'+
+      '<div class="rp-bottombar"><div class="rp-ctl" id="rpCtl"><div class="rpd-grip rp-ctl-grip" data-grip="ctl" title="Drag">'+ICO.grip+'</div>'+
         '<button class="rp-cbtn" id="rpBtnCut" type="button" title="Cut: hover a candle and click — the chart is cut there (Esc — cancel)">'+ICON_CUT+'<span>Cut</span></button>'+
         '<i class="rp-sep"></i>'+
         '<button class="rp-cbtn rp-ico" id="rpBtnPlay" type="button" title="Play / pause (Space)">'+ICON_PLAY+'</button>'+
@@ -2544,15 +2544,15 @@
     ['line','ray','rect','brush'].forEach(function(k){ var x=src&&src[k]; if(!x) return; var df=S.dr.def[k]; if(parseColor(x.color)) df.color=x.color; if(k==='rect'&&parseColor(x.fill)) df.fill=x.fill; if(x.w>=1&&x.w<=4) df.w=Math.round(x.w); if(DR_STYLES[x.style]&&k!=='brush') df.style=x.style; if(k==='rect'&&x.mid&&typeof x.mid==='object') df.mid={ on:!!x.mid.on, color:parseColor(x.mid.color)?x.mid.color:'#2962ff', w:Math.min(4,Math.max(1,Math.round(+x.mid.w)||1)), style:DR_STYLES[x.mid.style]?x.mid.style:'dashed' }; });
   }
   function drLoadUi(){
-    var D=S.dr; D.def=JSON.parse(JSON.stringify(DR_DEF)); D.ui.tools=null; D.ui.props=null; D.defAt='';
+    var D=S.dr; D.def=JSON.parse(JSON.stringify(DR_DEF)); D.ui.tools=null; D.ui.props=null; D.ui.ctl=null; D.defAt='';
     var key=drUiKey();
     if(key) try {
       var u=JSON.parse(localStorage.getItem(key)||'null');
-      if(u){ D.ui.tools=u.tools||null; D.ui.props=u.props||null; drApplyDef(u.def); D.defAt=String(u.at||''); }
+      if(u){ D.ui.tools=u.tools||null; D.ui.props=u.props||null; D.ui.ctl=u.ctl||null; drApplyDef(u.def); D.defAt=String(u.at||''); }
     } catch(_){}
     D.defSig=JSON.stringify(D.def);
   }
-  function drWriteUi(){ var key=drUiKey(); if(!key) return; try { localStorage.setItem(key,JSON.stringify({ tools:S.dr.ui.tools, props:S.dr.ui.props, def:S.dr.def, at:S.dr.defAt||'' })); } catch(_){} }
+  function drWriteUi(){ var key=drUiKey(); if(!key) return; try { localStorage.setItem(key,JSON.stringify({ tools:S.dr.ui.tools, props:S.dr.ui.props, ctl:S.dr.ui.ctl, def:S.dr.def, at:S.dr.defAt||'' })); } catch(_){} }
   function drSaveUi(){
     var D=S.dr, sig=JSON.stringify(D.def);
     if(sig!==D.defSig){ D.defSig=sig; D.defAt=new Date().toISOString(); clearTimeout(D.uiTm); D.uiTm=setTimeout(drPushUi,1000); }
@@ -2602,14 +2602,16 @@
     pop.addEventListener('click',onDrPopClick); pop.addEventListener('input',onDrPopInput);
     pop.addEventListener('change',function(e){ var p=S.dr.pop, c=e.target.closest('[data-mon]'); if(p&&p.kind==='mid'&&c) drSetMid({ on:!!c.checked }); });
     ci.addEventListener('input',function(){ var p=S.dr.pop; if(p&&p.kind==='mid'){ var mn=parseColor(ci.value); if(!mn) return; mn.a=(parseColor(drMidOf().color)||{ a:1 }).a; drSetMid({ on:true, color:colorCss(mn) },'mid:color'); return; } if(!p||p.kind!=='color') return; var n=parseColor(ci.value); if(!n) return; var cur=parseColor(drPropValue(p.key))||{ a:1 }; n.a=cur.a; drSetColor(p.key,n); });
-    [tools,props].forEach(function(bar){
+    var ctlBar=$('rpCtl');
+    [tools,props,ctlBar].forEach(function(bar){
       bar.addEventListener('pointerdown',function(e){ e.stopPropagation(); },false);
       bar.addEventListener('contextmenu',function(e){ e.preventDefault(); e.stopPropagation(); });
     });
-    [['tools',tools],['props',props]].forEach(function(pr){
+    [['tools',tools],['props',props],['ctl',ctlBar]].forEach(function(pr){
       var key=pr[0], bar=pr[1], grip=bar.querySelector('.rpd-grip');
       grip.addEventListener('pointerdown',function(e){
         if(e.button!==0) return; e.preventDefault(); drClosePop();
+        if(bar.parentNode!==card) return;
         var cr=card.getBoundingClientRect(), br=bar.getBoundingClientRect(), dx=e.clientX-br.left, dy=e.clientY-br.top;
         try { grip.setPointerCapture(e.pointerId); } catch(_){}
         var mv=function(ev){
@@ -2624,11 +2626,33 @@
     window.addEventListener('resize',function(){ drClosePop(); drPlaceBars(); });
     drSync();
   }
+  /* Phones: the playback bar floats on the chart (drag it by the dots) and the clock sits in the
+     empty corner under the price scale, so the chart reaches the bottom of the screen. */
+  var PHONE_MQ='(max-width:760px), (max-height:500px) and (pointer:coarse)';
+  function phoneLayout(){ return !!(window.matchMedia&&window.matchMedia(PHONE_MQ).matches); }
+  function syncPhoneLayout(){
+    var ses=$('rpSession'), card=ses&&ses.querySelector('.rp-chart-card'), bb=ses&&ses.querySelector('.rp-bottombar'), ctl=$('rpCtl'), clk=$('rpClockBtn');
+    if(!card||!bb||!ctl||!clk) return false;
+    var on=phoneLayout();
+    ses.classList.toggle('rp-phone',on);
+    if(on&&ctl.parentNode!==card){ card.appendChild(ctl); card.appendChild(clk); }
+    else if(!on&&ctl.parentNode!==bb){ ctl.style.left=ctl.style.top=''; clk.style.width=clk.style.height=''; bb.appendChild(ctl); bb.appendChild(clk); }
+    if(on) syncPhoneClock();
+    return on;
+  }
+  function syncPhoneClock(){
+    var clk=$('rpClockBtn'); if(!clk||!S.chart) return;
+    try { var w=S.chart.priceScale('right').width(), h=S.chart.timeScale().height(); if(w>0) clk.style.width=w+'px'; if(h>0) clk.style.height=h+'px'; } catch(_){}
+  }
+  setInterval(function(){ if(S.sess&&!document.hidden&&$('rpSession')&&$('rpSession').classList.contains('rp-phone')) syncPhoneClock(); },800);
   function drPlaceBars(){
-    var card=document.querySelector('#rpSession .rp-chart-card'); if(!card) return; var cw=card.clientWidth, ch=card.clientHeight;
-    [['tools',$('rpdTools'),50],['props',$('rpdProps'),98]].forEach(function(r){
+    var card=document.querySelector('#rpSession .rp-chart-card'); if(!card) return;
+    var phone=syncPhoneLayout(), cw=card.clientWidth, ch=card.clientHeight, tb=$('rpdTools');
+    var rows=[['tools',tb,50],['props',$('rpdProps'),98]];
+    if(phone) rows.push(['ctl',$('rpCtl'),null]);
+    rows.forEach(function(r){
       var bar=r[1]; if(!bar||!bar.offsetWidth) return; var pos=S.dr.ui[r[0]], x,y;
-      if(pos&&isFinite(pos.x)&&isFinite(pos.y)){ x=pos.x; y=pos.y; } else { x=Math.round((cw-bar.offsetWidth)/2); y=r[2]; }
+      if(pos&&isFinite(pos.x)&&isFinite(pos.y)){ x=pos.x; y=pos.y; } else { x=Math.round((cw-bar.offsetWidth)/2); y=r[2]!=null?r[2]:(tb&&tb.offsetHeight?tb.offsetTop+tb.offsetHeight:84)+8; }
       x=Math.min(Math.max(0,x),Math.max(0,cw-bar.offsetWidth)); y=Math.min(Math.max(0,y),Math.max(0,ch-bar.offsetHeight));
       bar.style.left=x+'px'; bar.style.top=y+'px';
     });
