@@ -8358,6 +8358,8 @@
         document.body.classList.remove('mobile-mode');
         enterApp();
       }
+      // passkey-login.js: offers Face ID after a manual phone sign-in and updates its Settings switch.
+      try { window.dispatchEvent(new CustomEvent('tj:signed-in', { detail: { login: profile.login, manual: !resume } })); } catch (e) {}
     }).catch(function(authErr) {
       btn.classList.remove('is-loading');
       console.error('Firebase sign-in failed:', authErr);
@@ -8396,6 +8398,19 @@
       ], { duration: 520, easing: 'ease-in-out' });
     }
   }
+
+  // Face ID / fingerprint sign-in (passkey-login.js) has already signed in to Firebase with the
+  // passkey; continue through the same session-reuse path as the desktop auto sign-in.
+  window.tjShowLoginError = showLoginError;
+  window.tjPasskeyContinue = function(login, btn) {
+    var found = tjLoginTarget(login);
+    if (!found || !btn || !firebase.auth().currentUser) return false;
+    tjTypedLogin = found.login;
+    document.getElementById('loginError').style.display = 'none';
+    btn.classList.add('is-loading');
+    proceedLogin(found, '', btn, true);
+    return true;
+  };
 
   document.getElementById('loginForm').addEventListener('submit', function(e) {
     e.preventDefault();

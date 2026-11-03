@@ -2,6 +2,9 @@
   "functions": {
     "api/myfxbook.js": {
       "maxDuration": 30
+    },
+    "api/passkey.js": {
+      "maxDuration": 15
     }
   }
 }
