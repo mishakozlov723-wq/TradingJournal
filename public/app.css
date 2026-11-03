@@ -2057,10 +2057,14 @@
   .login-field .field-label { font-size: 14px; margin-bottom: 6px; }
   .login-field input { font-size: 16px; padding: 13px 15px; border-radius: 14px; }
   .login-card .submit-btn { padding: 15px; border-radius: 14px; font-size: 16px; }
-  /* Face ID / fingerprint sign-in (passkey-login.js) */
-  .login-card .passkey-login-btn { margin-top: 10px; background: transparent; color: var(--green); border: 1px solid rgba(52,211,153,.38); }
+  /* Face ID / fingerprint sign-in (passkey-login.js): a square icon next to Sign in */
+  .login-submit-row { display: flex; gap: 10px; align-items: stretch; }
+  .login-submit-row #loginSubmitBtn { flex: 1 1 auto; min-width: 0; }
+  .login-card .passkey-login-btn { flex: 0 0 55px; width: 55px; padding: 0; background: transparent; color: var(--green); border: 1px solid rgba(52,211,153,.38); display: flex; align-items: center; justify-content: center; }
   .login-card .passkey-login-btn:hover { background: rgba(52,211,153,.08); opacity: 1; }
-  .passkey-login-btn .btn-text { display: inline-flex; align-items: center; justify-content: center; gap: 9px; }
+  .passkey-login-btn .btn-text { display: flex; align-items: center; justify-content: center; }
+  .passkey-offer-overlay { background: rgba(0,0,0,.72); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); touch-action: none; overscroll-behavior: contain; }
+  html.passkey-offer-lock, html.passkey-offer-lock body { overflow: hidden !important; overscroll-behavior: none; touch-action: none; }
   .passkey-offer-box { text-align: center; }
   .passkey-offer-icon { color: var(--green); display: flex; justify-content: center; margin: 2px 0 10px; }
   .passkey-offer-title { margin-bottom: 8px; }
