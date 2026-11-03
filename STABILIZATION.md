@@ -30,7 +30,7 @@ Additional confirmed defects fixed during regression work:
 - Encrypted connection tokens are version 2, UID-bound, generation-bound and limited to 30 days, with a future-time sanity check. Old version 1 tokens require reconnection.
 - Disconnect rotates server-only Firestore revocation state; a copied pre-disconnect token is rejected on subsequent requests. The client clears a connection only after `revoked: true`, not after an ignored server error.
 - All upstream fetches share a 25-second request budget. History, open trades and daily data are fetched concurrently and retain explicit partial-error reporting.
-- Vercel helpers live under root `lib/`, not `api/`, so helper files do not become API endpoints. Netlify helpers live under `netlify/functions/lib/`.
+- Vercel helpers live under root `lib/`, not `api/`, so helper files do not become API endpoints. (The former Netlify copy was removed; Vercel is the only proxy.)
 
 ### Required before deployment
 

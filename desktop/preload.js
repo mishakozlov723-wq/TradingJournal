@@ -23,4 +23,6 @@ contextBridge.exposeInMainWorld('syterDesktop', {
   // Call after a successful MANUAL sign-in: starts the 6 hour timer.
   rememberLogin: (login) => ipcRenderer.invoke('syter:remember-set', String(login || '')),
   forgetLogin: () => ipcRenderer.invoke('syter:remember-clear'),
+  // "Close SYTER" in the site settings: quit the whole program (not just hide to the tray).
+  quitApp: () => ipcRenderer.invoke('syter:quit'),
 });

@@ -417,12 +417,6 @@ service cloud.firestore {
         || (ownSnapshotId() && owns(resource.data.get('uid', null)));
     }
 
-
-    // Movie/series tracker.
-    match /movieTrackerApp/mt_d51e19c9c35f0d8fe46d560e7fc3d1a6 {
-      allow read, write: if true;
-    }
-
     // Deny everything not explicitly allowed above.
     match /{document=**} {
       allow read, write: if false;

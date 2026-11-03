@@ -5158,6 +5158,9 @@
     var v = (h == null || !isFinite(h)) ? null : Math.round(Math.max(TJ_CHART_H_MIN, Math.min(TJ_CHART_H_MAX, h)));
     tjChartHeightSaved = v;
     if (tjResizeLive || tjResizeAnim.dragging) return;
+    // A just-finished drag is still waiting to be saved: the user's newer
+    // height stays on screen (and is saved), never the older loaded value.
+    if (tjChartHeightSaveTimer) return;
     if (v === tjChartHeight) return;
     tjChartHeight = v;
     var root = document.documentElement;
@@ -5440,6 +5443,7 @@
     var v = (h == null || !isFinite(h)) ? null : Math.round(tjBtClamp(h));
     tjBtResize.saved = v;
     if (tjBtResizeLive || tjBtResize.dragging) return;
+    if (tjBtResize.saveTimer) return; // pending save of a newer drag wins
     if (v === tjBtResize.h) return;
     tjBtResize.h = v;
     var root = document.documentElement;
@@ -7963,6 +7967,16 @@
       wrap.classList.add('wiggle');
     });
   });
+  // Desktop app only: "Close SYTER" quits the program completely (not just into the tray).
+  (function() {
+    var section = document.getElementById('syterQuitSection'), btn = document.getElementById('syterQuitBtn'), bridge = window.syterDesktop;
+    if (!section || !btn || !bridge || typeof bridge.quitApp !== 'function') return;
+    section.style.display = '';
+    btn.addEventListener('click', function() {
+      btn.disabled = true;
+      Promise.resolve().then(function() { return bridge.quitApp(); }).catch(function() { btn.disabled = false; });
+    });
+  })();
   // Only actual version choices may change the global site theme. Other settings
   // controls (for example Notes) intentionally reuse .version-option styling.
   Array.prototype.forEach.call(document.querySelectorAll('.version-option[data-version]'), function(option) {

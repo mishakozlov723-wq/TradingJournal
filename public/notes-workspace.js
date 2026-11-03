@@ -1810,6 +1810,17 @@
         notesCloudRevision=notesRevision(meta);notesCloudConflict=false;
         if(!notesDirty)notesSaveLocal(ownerKey,Object.assign({},snapshot,{cloudBase:notesCloudRevision,pending:false,conflict:false}));
         notesSyncShares(ownerKey);
+      } else {
+        // The workspace switched to another owner while this commit ran (admin user switch).
+        // Record in that owner's local copy that the cloud now holds this commit; otherwise the
+        // next open compares against the old revision and shows a false "Cloud conflict".
+        try {
+          var stored = JSON.parse(localStorage.getItem(notesStorageKey(ownerKey)) || 'null');
+          if (stored && !stored.conflict && stored.cloudBase === expectedRevision) {
+            var exact = Number(stored.updatedAt) === now;
+            notesSaveLocal(ownerKey, Object.assign({}, stored, { cloudBase:notesRevision(meta), pending:exact ? false : stored.pending, conflict:false }));
+          }
+        } catch (_) {}
       }
       notesRemoteSaveInFlight = false; notesRemoteSaveOwner = null;
       var pending = notesRemoteSavePending; notesRemoteSavePending = false;

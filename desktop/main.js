@@ -381,6 +381,7 @@ ipcMain.handle('syter:remember-set', (e, login) => {
   try { fs.writeFileSync(rememberFile(), JSON.stringify({ login, at: Date.now() })); return true; } catch (err) { return false; }
 });
 ipcMain.handle('syter:remember-clear', (e) => { if (fromSite(e)) clearRemember(); return true; });
+ipcMain.handle('syter:quit', (e) => { if (!fromSite(e)) return false; isQuitting = true; setImmediate(() => app.quit()); return true; });
 
 // ── window size / position remembered between launches ──
 const stateFile = () => path.join(app.getPath('userData'), 'window-state.json');
@@ -531,8 +532,16 @@ let updateController = null, updateWindow = null;
 let updateTrustError = '';
 async function setupUpdates() {
   if (!app.isPackaged || updateController) return;
+  // update.log never grows without bound: past 256 KB the old log is kept once as update.log.old.
+  const writeUpdateLog = err => {
+    try {
+      const file = path.join(app.getPath('userData'), 'update.log');
+      try { if (fs.statSync(file).size > 256 * 1024) fs.renameSync(file, file + '.old'); } catch (_) {}
+      fs.appendFileSync(file, new Date().toISOString() + ' ' + (err && err.stack || err) + '\n');
+    } catch (_) {}
+  };
   try { await require('./lifecycle/update-trust').requireUpdatePublisher(autoUpdater, require('./package.json').syterUpdatePolicy || 'github'); }
-  catch(error) { updateTrustError=error.message;console.error(error.message);return; }
+  catch(error) { updateTrustError=error.message;console.error(error.message);writeUpdateLog('Updates disabled: '+error.message);return; }
   const { createUpdateController } = require('./lifecycle/controller');
   const { createLifecycleWindow, publishLifecycleState } = require('./lifecycle/window');
   const reveal = () => {
@@ -546,12 +555,12 @@ async function setupUpdates() {
     publish: state => publishLifecycleState(updateWindow, state),
     reveal, dismiss: () => { if (updateWindow && !updateWindow.isDestroyed()) updateWindow.hide(); },
     prepareQuit: () => { isQuitting = true; }, restoreQuit: () => { isQuitting = false; },
-    log: err => { try { fs.appendFileSync(path.join(app.getPath('userData'), 'update.log'), new Date().toISOString() + ' ' + (err && err.stack || err) + '\n'); } catch (_) {} }
+    log: writeUpdateLog
   });
   const timer = setTimeout(() => updateController.check(), 5000);
   const interval = setInterval(() => updateController.check(), UPDATE_EVERY_MS);
   app.once('will-quit', () => { clearTimeout(timer); clearInterval(interval); updateController.stop(); });
 }
 
-// the window only hides into the tray, so the app quits via the tray menu (or an update restart)
+// the window only hides into the tray, so the app quits via the tray menu, "Close SYTER" in the site settings (or an update restart)
 app.on('window-all-closed', () => { if (isQuitting) app.quit(); });
