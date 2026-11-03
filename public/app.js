@@ -398,22 +398,6 @@
     day: new Date().getDate(),
     hour: pad2(new Date().getHours()),
     minute: pad2(new Date().getMinutes()),
-    dragPart: null,
-    dragStartY: 0,
-    dragStartValue: 0,
-    dragTargetValue: 0,
-    dragLastY: 0,
-    dragMoved: false,
-    suppressWheelClick: false,
-    mouseDown: false,
-    pendingSteps: 0,
-    stepTimer: null,
-    lastStepAt: 0,
-    wheelLockUntil: { hour: 0, minute: 0 },
-    wheelPending: { hour: 0, minute: 0 },
-    wheelTimer: { hour: null, minute: null },
-    wheelDelay: { hour: 190, minute: 190 },
-    lastWheelAt: { hour: 0, minute: 0 },
     calendarAnimation: null,
     level: 'days',
     minDate: null,
@@ -421,8 +405,6 @@
     title: null,
     dateOnly: false
   };
-  var TIME_WHEEL_RANGE = 3;
-  function timeWheelStep() { return window.innerWidth <= 520 ? 26 : 28; }
 
   function pad2(n) { return n < 10 ? '0' + n : '' + n; }
 
@@ -496,187 +478,258 @@
     else datetimePickerState.minute = pad2(value);
   }
 
-  function ensureTimeWheelSlots(track, part) {
-    if (!track) return;
-    if (track.getAttribute('data-wheel-ready') === '1') return;
-    var html = '';
-    for (var offset = -TIME_WHEEL_RANGE; offset <= TIME_WHEEL_RANGE; offset++) {
-      html += '<button type="button" class="datetime-time-slot" data-wheel-part="' + part + '" data-wheel-offset="' + offset + '" aria-hidden="true"></button>';
+  // ===== Apple-style time drum =====
+  // Each wheel is a native scroll container (real inertia + scroll-snap on
+  // phones and trackpads). The list is repeated several times and silently
+  // re-centred after every settle, so it loops forever (23 -> 00, 59 -> 00).
+  // Items are bent onto a virtual cylinder with rotateX on every scroll frame.
+  var TIME_WHEEL_COPIES = { hour: 9, minute: 7 };
+  var timeWheels = {};
+  function timeWheelReducedMotion() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+  function timeWheelEl(part) {
+    return document.getElementById(part === 'hour' ? 'datetimeHourWheel' : 'datetimeMinuteWheel');
+  }
+  function timeWheelMetrics(w) {
+    var first = w.items[0];
+    var h = first ? first.offsetHeight : 0;
+    if (h) w.itemH = h;
+    w.viewH = w.el.clientHeight || w.viewH || 0;
+    return w.itemH && w.viewH;
+  }
+  function timeWheelIndexAt(w) {
+    return Math.round(w.el.scrollTop / w.itemH);
+  }
+  function timeWheelMiddleIndex(w, value) {
+    return w.max * Math.floor(w.copies / 2) + value;
+  }
+  function paintTimeWheel(w) {
+    if (!timeWheelMetrics(w)) return;
+    var top = w.el.scrollTop;
+    var centre = top / w.itemH;
+    var radius = w.viewH / 2;
+    var stepAngle = w.itemH / radius;
+    var from = Math.max(0, Math.floor(centre) - 5);
+    var to = Math.min(w.items.length - 1, Math.ceil(centre) + 5);
+    var nearest = Math.round(centre);
+    // Reset items painted last frame that left the visible window.
+    if (w.painted) {
+      for (var p = w.painted[0]; p <= w.painted[1]; p++) {
+        if (p < from || p > to) { var gone = w.items[p]; gone.style.transform = ''; gone.style.opacity = '0'; if (gone._active) { gone._active = false; gone.classList.remove('is-active'); } }
+      }
     }
-    track.innerHTML = html;
-    track.setAttribute('data-wheel-ready', '1');
-    track.addEventListener('click', function(e) {
-      var slot = e.target && e.target.closest ? e.target.closest('.datetime-time-slot') : null;
-      if (!slot || slot.parentNode !== track) return;
-      e.preventDefault();
-      e.stopPropagation();
-      if (datetimePickerState.suppressWheelClick) {
-        datetimePickerState.suppressWheelClick = false;
-        return;
+    for (var i = from; i <= to; i++) {
+      var item = w.items[i];
+      var d = i - centre;
+      var angle = d * stepAngle;
+      var abs = Math.abs(angle);
+      if (abs >= Math.PI / 2) {
+        item.style.opacity = '0';
+        item.style.transform = '';
+      } else {
+        var dy = radius * Math.sin(angle) - d * w.itemH;
+        var cos = Math.cos(angle);
+        item.style.transform = 'translate3d(0,' + dy.toFixed(2) + 'px,0) perspective(' + Math.round(radius * 5) + 'px) rotateX(' + (-angle * 57.2958).toFixed(2) + 'deg) scale(' + (1 - 0.06 * (1 - cos)).toFixed(3) + ')';
+        item.style.opacity = Math.max(0, Math.pow(cos, 2.2)).toFixed(3);
       }
-      var raw = slot.getAttribute('data-wheel-value');
-      if (raw === null || raw === '') return;
-       var previous = wheelValue(part);
-       var next = parseInt(raw, 10);
-       setWheelValue(part, next);
-       renderTimeWheel(part);
-       triggerWheelAnimation(part, next === previous ? 0 : 1);
-    });
+      var active = i === nearest;
+      if (active !== item._active) { item._active = active; item.classList.toggle('is-active', active); }
+    }
+    w.painted = [from, to];
+    // Keep the shared state live so Apply always uses what is under the band.
+    var live = ((nearest % w.max) + w.max) % w.max;
+    if (live !== wheelValue(w.part)) setWheelValue(w.part, live);
   }
-
-  function renderTimeWheel(part) {
-    var track = document.getElementById(part === 'hour' ? 'datetimeHourTrack' : 'datetimeMinuteTrack');
-    if (!track) return;
-    ensureTimeWheelSlots(track, part);
-    var value = wheelValue(part);
-    var max = part === 'hour' ? 24 : 60;
-    var slots = track.querySelectorAll('.datetime-time-slot');
-    var step = timeWheelStep();
-    Array.prototype.forEach.call(slots, function(slot) {
-      var offset = parseInt(slot.getAttribute('data-wheel-offset'), 10);
-      var item = (value + offset + max) % max;
-      var distance = Math.abs(offset);
-      var opacity = distance === 0 ? 1 : (distance === 1 ? 0.74 : (distance === 2 ? 0.42 : 0.18));
-      var scale = distance === 0 ? 1 : (distance === 1 ? 0.95 : (distance === 2 ? 0.86 : 0.76));
-      slot.setAttribute('data-wheel-value', item);
-      slot.textContent = pad2(item);
-      slot.classList.toggle('is-active', offset === 0);
-      slot.style.transform = 'translate3d(0,' + (offset * step) + 'px,0) scale(' + scale + ')';
-      slot.style.opacity = String(opacity);
-      slot.style.zIndex = String(20 - distance);
-    });
-    updateDateTimePickerApplyState();
+  function timeWheelScrollTo(w, index, smooth) {
+    index = Math.max(0, Math.min(w.items.length - 1, index));
+    var top = index * w.itemH;
+    if (smooth && !timeWheelReducedMotion() && Math.abs(w.el.scrollTop - top) > 0.5) {
+      w.programmatic = true;
+      w.el.scrollTo({ top: top, behavior: 'smooth' });
+    } else {
+      w.el.scrollTop = top;
+      paintTimeWheel(w);
+    }
   }
-
-  function triggerWheelAnimation(part, dir) {
-    var el = document.getElementById(part === 'hour' ? 'datetimeHourWheel' : 'datetimeMinuteWheel');
-    if (!el) return;
-    el.classList.remove('is-step-change', 'is-step-up', 'is-step-down');
-    void el.offsetWidth;
-    el.classList.add('is-step-change');
-    if (dir > 0) el.classList.add('is-step-up');
-    else if (dir < 0) el.classList.add('is-step-down');
-  }
-
-  function scheduleWheelSteps(part) {
-    if (datetimePickerState.wheelTimer[part] !== null) return;
-    var tick = function() {
-      datetimePickerState.wheelTimer[part] = null;
-      if (!datetimePickerState.target || !datetimePickerState.wheelPending[part]) return;
-      var pending = datetimePickerState.wheelPending[part];
-      var direction = pending > 0 ? 1 : -1;
-      datetimePickerState.wheelPending[part] -= direction;
-      setWheelValue(part, wheelValue(part) + direction);
-      renderTimeWheel(part);
-      triggerWheelAnimation(part, direction);
-      if (datetimePickerState.wheelPending[part]) {
-        datetimePickerState.wheelTimer[part] = setTimeout(tick, datetimePickerState.wheelDelay[part]);
-      }
-    };
-    datetimePickerState.wheelTimer[part] = setTimeout(tick, 0);
-  }
-
-  // One wheel event means one time step. Rapid wheel input is queued rather
-  // than dropped, and the queue is drained faster when the input arrives
-  // faster, while keeping a smooth, bounded animation between values.
-  function handleTimeWheel(part, deltaY) {
-    if (!datetimePickerState.target || !deltaY) return;
-    var now = Date.now();
-    var direction = deltaY > 0 ? 1 : -1;
-    var magnitude = Math.abs(deltaY);
-    var sinceLast = datetimePickerState.lastWheelAt[part] ? now - datetimePickerState.lastWheelAt[part] : 999;
-    // Small, deliberate turns remain slow; larger/faster bursts are drained
-    // sooner. The limits prevent either a sluggish response or a jumpy one.
-    var baseDelay = 218 - Math.min(86, magnitude * 0.55);
-    if (sinceLast < 85) baseDelay -= Math.min(62, (85 - sinceLast) * 0.72);
-    datetimePickerState.wheelDelay[part] = Math.max(70, Math.min(218, Math.round(baseDelay)));
-    datetimePickerState.lastWheelAt[part] = now;
-    var nextPending = datetimePickerState.wheelPending[part] + direction;
-    datetimePickerState.wheelPending[part] = Math.max(-12, Math.min(12, nextPending));
-    scheduleWheelSteps(part);
-  }
-
-  // Apply drag input at a human-readable pace. Pointer events can arrive much
-  // faster than the eye can follow; queueing steps also prevents a single fast
-  // mouse movement from jumping through the whole clock instantly.
-  function scheduleTimeWheelSteps(part) {
-    if (datetimePickerState.stepTimer) return;
-    var tick = function() {
-      datetimePickerState.stepTimer = null;
-      if (datetimePickerState.dragPart !== part || !datetimePickerState.pendingSteps) return;
-      var dir = datetimePickerState.pendingSteps > 0 ? 1 : -1;
-      datetimePickerState.pendingSteps -= dir;
-      setWheelValue(part, wheelValue(part) + dir);
-      renderTimeWheel(part);
-      var el = document.getElementById(part === 'hour' ? 'datetimeHourWheel' : 'datetimeMinuteWheel');
-      triggerWheelAnimation(part, dir);
-      if (datetimePickerState.pendingSteps) {
-        datetimePickerState.stepTimer = setTimeout(tick, 145);
-      }
-    };
-    datetimePickerState.stepTimer = setTimeout(tick, Math.max(0, 145 - (Date.now() - datetimePickerState.lastStepAt)));
-  }
-
-  function beginTimeDrag(part, clientY) {
-    if (datetimePickerState.stepTimer) { clearTimeout(datetimePickerState.stepTimer); datetimePickerState.stepTimer = null; }
-    datetimePickerState.pendingSteps = 0;
-    datetimePickerState.suppressWheelClick = false;
-    datetimePickerState.dragPart = part;
-    datetimePickerState.dragStartY = clientY;
-    datetimePickerState.dragLastY = clientY;
-    datetimePickerState.dragStartValue = wheelValue(part);
-    datetimePickerState.dragTargetValue = wheelValue(part);
-    datetimePickerState.dragMoved = false;
-    datetimePickerState.mouseDown = true;
-    var el = document.getElementById(part === 'hour' ? 'datetimeHourWheel' : 'datetimeMinuteWheel');
-    if (el) el.classList.add('is-dragging');
-  }
-
-  function updateTimeDrag(clientY) {
-    if (!datetimePickerState.dragPart) return;
-    // A missed mouseup must never turn subsequent cursor movement into time
-    // changes. The browser exposes the physical button state on mousemove.
-    if (datetimePickerState.mouseDown === false) {
-      endTimeDrag();
+  function settleTimeWheel(w) {
+    w.settleTimer = null;
+    if (w.touching || w.dragging) return;
+    if (!timeWheelMetrics(w)) return;
+    var index = timeWheelIndexAt(w);
+    var exact = index * w.itemH;
+    // Some engines stop a fraction of a pixel off; snap must look exact.
+    if (Math.abs(w.el.scrollTop - exact) > 1 && !w.el.classList.contains('is-grabbing')) {
+      timeWheelScrollTo(w, index, true);
       return;
     }
-    var diff = datetimePickerState.dragStartY - clientY;
-    var stepPx = timeWheelStep();
-    var steps = diff > 0 ? Math.floor(diff / stepPx) : Math.ceil(diff / stepPx);
-    if (!steps) return;
-    datetimePickerState.dragMoved = true;
-    var max = datetimePickerState.dragPart === 'hour' ? 24 : 60;
-    var next = ((datetimePickerState.dragStartValue + steps) % max + max) % max;
-    if (next === datetimePickerState.dragTargetValue) return;
-    var direction = next > datetimePickerState.dragTargetValue ? 1 : -1;
-    datetimePickerState.dragTargetValue = next;
-    // The pointer position is the single source of truth. Do not queue or
-    // replay extra steps after release.
-    setWheelValue(datetimePickerState.dragPart, next);
-    renderTimeWheel(datetimePickerState.dragPart);
-    triggerWheelAnimation(datetimePickerState.dragPart, direction);
+    var value = ((index % w.max) + w.max) % w.max;
+    var middle = timeWheelMiddleIndex(w, value);
+    // Silent loop: jump to the identical item in the middle copy.
+    if (Math.abs(index - middle) >= w.max) {
+      w.el.scrollTop = middle * w.itemH;
+    }
+    w.el.classList.remove('is-grabbing');
+    w.wheelTarget = null;
+    w.programmatic = false;
+    paintTimeWheel(w);
+    setWheelValue(w.part, value);
+    updateDateTimePickerApplyState();
+  }
+  function scheduleTimeWheelSettle(w, delay) {
+    if (w.settleTimer) clearTimeout(w.settleTimer);
+    w.settleTimer = setTimeout(function() { settleTimeWheel(w); }, delay);
+  }
+  function setupTimeWheel(part) {
+    if (timeWheels[part]) return timeWheels[part];
+    var el = timeWheelEl(part);
+    var track = document.getElementById(part === 'hour' ? 'datetimeHourTrack' : 'datetimeMinuteTrack');
+    if (!el || !track) return null;
+    var max = part === 'hour' ? 24 : 60;
+    var copies = TIME_WHEEL_COPIES[part];
+    var html = '';
+    for (var i = 0; i < max * copies; i++) {
+      html += '<div class="datetime-time-slot" data-i="' + i + '">' + pad2(i % max) + '</div>';
+    }
+    track.innerHTML = html;
+    var w = {
+      part: part, el: el, track: track, max: max, copies: copies,
+      items: Array.prototype.slice.call(track.children),
+      itemH: 32, viewH: 0, painted: null, raf: 0, settleTimer: null,
+      touching: false, dragging: false, wheelTarget: null, programmatic: false, moved: false
+    };
+    timeWheels[part] = w;
+    el.setAttribute('tabindex', '0');
+    el.setAttribute('role', 'spinbutton');
+
+    el.addEventListener('scroll', function() {
+      if (!w.raf) w.raf = requestAnimationFrame(function() { w.raf = 0; paintTimeWheel(w); });
+      scheduleTimeWheelSettle(w, 'onscrollend' in window ? 260 : 140);
+    }, { passive: true });
+    el.addEventListener('scrollend', function() { scheduleTimeWheelSettle(w, 0); });
+
+    el.addEventListener('touchstart', function() { w.touching = true; w.wheelTarget = null; }, { passive: true });
+    var touchUp = function() { w.touching = false; scheduleTimeWheelSettle(w, 160); };
+    el.addEventListener('touchend', touchUp, { passive: true });
+    el.addEventListener('touchcancel', touchUp, { passive: true });
+
+    // Mouse wheel: one notch = one item, smoothly; trackpads scroll natively.
+    el.addEventListener('wheel', function(e) {
+      var dy = e.deltaY || e.deltaX;
+      if (!dy) return;
+      var notch = e.deltaMode !== 0 || (Math.abs(dy) >= 50 && Math.abs(dy - Math.round(dy)) < 0.01);
+      if (!notch) return;
+      e.preventDefault();
+      if (!timeWheelMetrics(w)) return;
+      var base = w.wheelTarget !== null ? w.wheelTarget : timeWheelIndexAt(w);
+      w.wheelTarget = base + (dy > 0 ? 1 : -1);
+      timeWheelScrollTo(w, w.wheelTarget, true);
+      scheduleTimeWheelSettle(w, 400);
+    }, { passive: false });
+
+    // Desktop mouse drag with a flick, like a phone.
+    var startY = 0, startTop = 0, samples = [];
+    el.addEventListener('pointerdown', function(e) {
+      if (e.pointerType !== 'mouse' || e.button !== 0) return;
+      if (!timeWheelMetrics(w)) return;
+      e.preventDefault();
+      if (el.focus) el.focus({ preventScroll: true });
+      w.dragging = true; w.moved = false; w.wheelTarget = null;
+      startY = e.clientY; startTop = el.scrollTop; samples = [{ y: e.clientY, t: performance.now() }];
+      el.classList.add('is-grabbing', 'is-dragging');
+      try { el.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    el.addEventListener('pointermove', function(e) {
+      if (!w.dragging) return;
+      if ((e.buttons & 1) === 0) { endWheelDrag(e); return; }
+      var dy = e.clientY - startY;
+      if (Math.abs(dy) > 3) w.moved = true;
+      el.scrollTop = startTop - dy;
+      var now = performance.now();
+      samples.push({ y: e.clientY, t: now });
+      while (samples.length > 2 && now - samples[0].t > 90) samples.shift();
+    });
+    function endWheelDrag(e) {
+      if (!w.dragging) return;
+      w.dragging = false;
+      el.classList.remove('is-dragging');
+      try { if (e && e.pointerId !== undefined) el.releasePointerCapture(e.pointerId); } catch (err) {}
+      var velocity = 0; // px per ms, in scroll direction
+      if (samples.length > 1) {
+        var a = samples[0], b = samples[samples.length - 1];
+        if (b.t - a.t > 0 && performance.now() - b.t < 90) velocity = -(b.y - a.y) / (b.t - a.t);
+      }
+      var projected = el.scrollTop + velocity * 260;
+      var index = Math.round(projected / w.itemH);
+      timeWheelScrollTo(w, index, true);
+      scheduleTimeWheelSettle(w, 700);
+    }
+    el.addEventListener('pointerup', endWheelDrag);
+    el.addEventListener('pointercancel', endWheelDrag);
+    el.addEventListener('lostpointercapture', endWheelDrag);
+
+    // Tap/click an item to bring it to the centre.
+    track.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (w.moved) { w.moved = false; return; }
+      var slot = e.target && e.target.closest ? e.target.closest('.datetime-time-slot') : null;
+      if (!slot || slot.parentNode !== track) return;
+      if (!timeWheelMetrics(w)) return;
+      timeWheelScrollTo(w, parseInt(slot.getAttribute('data-i'), 10), true);
+      scheduleTimeWheelSettle(w, 600);
+    });
+
+    el.addEventListener('keydown', function(e) {
+      var dir = e.key === 'ArrowDown' ? 1 : (e.key === 'ArrowUp' ? -1 : 0);
+      if (!dir || !timeWheelMetrics(w)) return;
+      e.preventDefault();
+      var base = w.wheelTarget !== null ? w.wheelTarget : timeWheelIndexAt(w);
+      w.wheelTarget = base + dir;
+      timeWheelScrollTo(w, w.wheelTarget, true);
+      scheduleTimeWheelSettle(w, 400);
+    });
+    return w;
   }
 
+  // Show the current state value. Programmatic changes (Today, opening the
+  // picker) glide along the shortest way round; unchanged values do nothing.
+  function renderTimeWheel(part) {
+    var w = setupTimeWheel(part);
+    if (!w) return;
+    if (!timeWheelMetrics(w)) return;
+    if (w.touching || w.dragging) return;
+    var value = wheelValue(part);
+    var current = timeWheelIndexAt(w);
+    var shown = ((current % w.max) + w.max) % w.max;
+    var open = document.getElementById('datetimePickerOverlay').classList.contains('open');
+    if (shown === value && w.el.scrollTop > 0 && Math.abs(current - timeWheelMiddleIndex(w, value)) < w.max * 2) {
+      paintTimeWheel(w);
+      return;
+    }
+    if (open && w.el.scrollTop > 0) {
+      var diff = value - shown;
+      if (diff > w.max / 2) diff -= w.max;
+      if (diff < -w.max / 2) diff += w.max;
+      timeWheelScrollTo(w, current + diff, true);
+      scheduleTimeWheelSettle(w, 700);
+    } else {
+      timeWheelScrollTo(w, timeWheelMiddleIndex(w, value), false);
+    }
+  }
+
+  // Kept for the global blur handlers.
   function endTimeDrag() {
-    var part = datetimePickerState.dragPart;
-    if (part) {
-      // Value is already committed from the pointer position. Only cancel any
-      // stale timer left by an earlier interaction.
-      setWheelValue(part, datetimePickerState.dragTargetValue);
-      renderTimeWheel(part);
-      if (datetimePickerState.dragMoved) datetimePickerState.suppressWheelClick = true;
-    }
-    if (part) {
-      var el = document.getElementById(part === 'hour' ? 'datetimeHourWheel' : 'datetimeMinuteWheel');
-      if (el) el.classList.remove('is-dragging');
-    }
-    datetimePickerState.pendingSteps = 0;
-    if (datetimePickerState.stepTimer) { clearTimeout(datetimePickerState.stepTimer); datetimePickerState.stepTimer = null; }
-    datetimePickerState.dragPart = null;
-    datetimePickerState.mouseDown = false;
-    if (datetimePickerState.suppressWheelClick) {
-      setTimeout(function() { datetimePickerState.suppressWheelClick = false; }, 300);
-    }
+    ['hour', 'minute'].forEach(function(part) {
+      var w = timeWheels[part];
+      if (!w) return;
+      w.touching = false;
+      if (w.dragging) {
+        w.dragging = false;
+        w.el.classList.remove('is-dragging');
+        scheduleTimeWheelSettle(w, 0);
+      }
+    });
   }
 
   function renderDateTimePicker() {
@@ -762,18 +815,17 @@
       var fallback = datetimePickerState.minDate || datetimePickerState.maxDate || pickerDayKey(now.getFullYear(), now.getMonth(), now.getDate());
       var fp = fallback.split('-'); datetimePickerState.year = +fp[0]; datetimePickerState.month = +fp[1] - 1; datetimePickerState.day = +fp[2];
     }
-    datetimePickerState.wheelLockUntil.hour = 0;
-    datetimePickerState.wheelLockUntil.minute = 0;
-    datetimePickerState.wheelPending.hour = 0;
-    datetimePickerState.wheelPending.minute = 0;
-    datetimePickerState.lastWheelAt.hour = 0;
-    datetimePickerState.lastWheelAt.minute = 0;
     if (input && input.closest && input.closest('.inline-edit-popup')) document.body.classList.add('inline-datetime-open');
     renderDateTimePicker();
     document.querySelector('#datetimePickerOverlay .datetime-picker-box').classList.toggle('date-only', datetimePickerState.dateOnly);
     document.body.classList.add('datetime-picker-open');
     document.documentElement.classList.add('datetime-picker-open');
     document.getElementById('datetimePickerOverlay').classList.add('open');
+    // Layout is final now: place both drums exactly (no glide on open).
+    ['hour', 'minute'].forEach(function(part) {
+      var w = setupTimeWheel(part);
+      if (w && timeWheelMetrics(w)) { w.wheelTarget = null; timeWheelScrollTo(w, timeWheelMiddleIndex(w, wheelValue(part)), false); }
+    });
   }
 
   function closeDateTimePicker() {
@@ -784,16 +836,7 @@
     document.documentElement.classList.remove('datetime-picker-open');
     datetimePickerState.target = null;
     datetimePickerState.minDate = null; datetimePickerState.maxDate = null; datetimePickerState.title = null; datetimePickerState.dateOnly = false;
-    datetimePickerState.wheelLockUntil.hour = 0;
-    datetimePickerState.wheelLockUntil.minute = 0;
-    datetimePickerState.wheelPending.hour = 0;
-    datetimePickerState.wheelPending.minute = 0;
-    ['hour', 'minute'].forEach(function(part) {
-      if (datetimePickerState.wheelTimer[part] !== null) {
-        clearTimeout(datetimePickerState.wheelTimer[part]);
-        datetimePickerState.wheelTimer[part] = null;
-      }
-    });
+    endTimeDrag();
   }
 
   // Models live in the existing per-user settings document, not in trade records.
@@ -7116,57 +7159,13 @@
   }, true);
   document.addEventListener('wheel', function(e) {
     if (!document.body.classList.contains('datetime-picker-open')) return;
-    var wheel = e.target && e.target.closest ? e.target.closest('.datetime-time-wheel') : null;
-    if (!wheel) {
-      e.preventDefault();
-      e.stopPropagation();
-      return;
-    }
+    // Page stays locked; inside a time drum the wheel scrolls the drum itself.
+    if (e.target && e.target.closest && e.target.closest('.datetime-time-wheel')) return;
     e.preventDefault();
     e.stopPropagation();
-    var part = wheel.id === 'datetimeHourWheel' ? 'hour' : 'minute';
-    handleTimeWheel(part, e.deltaY || e.deltaX);
   }, { passive: false, capture: true });
-  ['hour', 'minute'].forEach(function(part) {
-    var wheel = document.getElementById(part === 'hour' ? 'datetimeHourWheel' : 'datetimeMinuteWheel');
-    if (!wheel) return;
-    wheel.addEventListener('mousedown', function(e) {
-      e.preventDefault();
-      beginTimeDrag(part, e.clientY);
-    });
-    wheel.addEventListener('touchstart', function(e) {
-      if (!e.touches || !e.touches[0]) return;
-      beginTimeDrag(part, e.touches[0].clientY);
-    }, { passive: true });
-  });
-  document.addEventListener('mousemove', function(e) {
-    if (datetimePickerState.dragPart && e.buttons !== undefined && (e.buttons & 1) === 0) {
-      endTimeDrag();
-      return;
-    }
-    updateTimeDrag(e.clientY);
-  });
-  document.addEventListener('mouseup', function() {
-    datetimePickerState.mouseDown = false;
-    endTimeDrag();
-  });
-  document.addEventListener('touchmove', function(e) {
-    if (!datetimePickerState.dragPart || !e.touches || !e.touches[0]) return;
-    updateTimeDrag(e.touches[0].clientY);
-  }, { passive: true });
-  document.addEventListener('touchend', function() {
-    endTimeDrag();
-  });
-  document.addEventListener('touchcancel', function() {
-    endTimeDrag();
-  });
-  // Releasing the mouse outside the document (or switching windows) may not
-  // dispatch a normal mouseup, so explicitly cancel the drag in those cases.
   window.addEventListener('blur', function() {
     endTimeDrag();
-  });
-  document.addEventListener('mouseleave', function() {
-    if (datetimePickerState.dragPart) endTimeDrag();
   });
   document.getElementById('dtMonthLabel').addEventListener('click', function() {
     window.TJCalendarNav.up(datetimePickerState);
