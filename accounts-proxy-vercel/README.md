@@ -46,3 +46,12 @@ Run `UPGRADE-MULTIUSER.bat`.
 The endpoint remains:
 
 `https://trading-journal-accounts-proxy.vercel.app/api/myfxbook`
+
+## Face ID / fingerprint sign-in (`api/passkey.js`)
+
+Phones can sign in to SYTER with Face ID or a fingerprint (WebAuthn passkeys). The
+phone keeps the private key; this function stores only the public key in Firestore
+`/passkeyCredentials` (server-only, browsers are denied by the default rule), checks
+the signature and returns a short-lived Firebase sign-in token. It reuses the existing
+`FIREBASE_SERVICE_ACCOUNT` and `FIREBASE_WEB_API_KEY`; no new settings are needed.
+The normal password sign-in always keeps working.
