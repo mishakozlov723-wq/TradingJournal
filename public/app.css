@@ -2937,7 +2937,7 @@
     isolation: isolate;
     user-select: none;
     -webkit-user-select: none;
-    touch-action: none;
+    touch-action: pan-y;
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
   }
   .datetime-time-field::after {
@@ -2948,7 +2948,7 @@
     top: 50%;
     height: 38px;
     transform: translateY(-50%);
-    border-radius: 14px;
+    border-radius: 12px;
     border: 1px solid rgba(255,255,255,0.09);
     background:
       linear-gradient(180deg, rgba(96,165,250,0.14), rgba(255,255,255,0.06) 52%, rgba(96,165,250,0.08));
@@ -2962,85 +2962,61 @@
     backdrop-filter: blur(14px) saturate(1.12);
     -webkit-backdrop-filter: blur(14px) saturate(1.12);
   }
+  /* Apple-style drum: native scroll + snap, cylinder painted from JS. */
   .datetime-time-wheel {
+    --dt-wheel-h: 156px;
+    --dt-item-h: 34px;
     position: relative;
-    height: 102px;
-    overflow: hidden;
+    height: var(--dt-wheel-h);
+    overflow-x: hidden;
+    overflow-y: scroll;
+    overscroll-behavior: contain;
+    scroll-snap-type: y mandatory;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
     border-radius: 14px;
-    cursor: ns-resize;
-    touch-action: none;
+    cursor: grab;
+    touch-action: pan-y;
     z-index: 1;
-    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.005));
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 26%, #000 74%, transparent 100%);
+    mask-image: linear-gradient(180deg, transparent 0%, #000 26%, #000 74%, transparent 100%);
   }
-  .datetime-time-wheel::before,
-  .datetime-time-wheel::after {
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    height: 28px;
-    z-index: 2;
-    pointer-events: none;
-  }
-  .datetime-time-wheel::before {
-    top: 0;
-    background: linear-gradient(180deg, rgba(8,10,15,0.9) 0%, rgba(8,10,15,0.65) 45%, rgba(8,10,15,0.08) 100%);
-  }
-  .datetime-time-wheel::after {
-    bottom: 0;
-    background: linear-gradient(0deg, rgba(8,10,15,0.9) 0%, rgba(8,10,15,0.65) 45%, rgba(8,10,15,0.08) 100%);
-  }
-  .datetime-time-wheel.is-dragging .datetime-time-slot.is-active {
-    color: #dbeafe;
-  }
-  .datetime-time-wheel.is-step-change .datetime-time-slot.is-active {
-    animation: datetimeWheelValueIn .56s var(--easeOut);
-  }
-  .datetime-time-wheel.is-step-up .datetime-time-slot.is-active {
-    --wheel-step-y: 5px;
-  }
-  .datetime-time-wheel.is-step-down .datetime-time-slot.is-active {
-    --wheel-step-y: -5px;
-  }
-  @keyframes datetimeWheelValueIn {
-    from { opacity: .35; transform: translate3d(0,var(--wheel-step-y,0),0) scale(.92); }
-    to { opacity: 1; transform: translate3d(0,0,0) scale(1); }
-  }
+  .datetime-time-wheel::-webkit-scrollbar { display: none; width: 0; height: 0; }
+  .datetime-time-wheel.is-grabbing { scroll-snap-type: none; }
+  .datetime-time-wheel.is-dragging { cursor: grabbing; }
   .datetime-time-track {
     position: relative;
-    height: 100%;
+    padding: calc((var(--dt-wheel-h) - var(--dt-item-h)) / 2) 0;
   }
   .datetime-time-slot {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 50%;
-    margin-top: -16px;
-    height: 32px;
+    position: relative;
+    height: var(--dt-item-h);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 17px;
+    scroll-snap-align: center;
+    scroll-snap-stop: normal;
+    font-size: 19px;
     line-height: 1;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.04em;
-    color: rgba(255,255,255,0.30);
-    background: transparent;
-    border: none;
-    padding: 0;
-    outline: none;
-    -webkit-appearance: none;
-    appearance: none;
-    box-shadow: none;
-    will-change: transform, opacity, color;
+    color: rgba(255,255,255,0.42);
+    opacity: 0;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    will-change: transform, opacity;
     transform-origin: center center;
-    transition: transform .32s var(--easeOut), opacity .32s var(--easeOut), color .32s var(--easeOut);
+    transition: color .18s ease;
+    user-select: none;
+    -webkit-user-select: none;
+    pointer-events: auto;
   }
   .datetime-time-slot.is-active {
     color: var(--textMain);
-    text-shadow: 0 1px 10px rgba(96,165,250,0.08);
+    text-shadow: 0 1px 12px rgba(96,165,250,0.14);
   }
   .datetime-time-separator {
     position: relative;
@@ -3073,8 +3049,8 @@
   @media (max-width: 520px) {
     .datetime-picker-box { padding: 10px; border-radius: 18px; max-width: 336px; }
     .datetime-time-field { gap: 6px; padding: 8px 10px; }
-    .datetime-time-wheel { height: 94px; }
-    .datetime-time-slot { font-size: 16px; height: 28px; margin-top: -14px; }
+    .datetime-time-wheel { --dt-wheel-h: 140px; --dt-item-h: 32px; }
+    .datetime-time-slot { font-size: 18px; }
     .datetime-time-separator { font-size: 26px; }
   }
 
