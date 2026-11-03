@@ -461,3 +461,86 @@ body.replay-fullscreen .autumn-leaf, body.replay-fullscreen .winter-snowflake { 
 /* Sessions settings scroll normally without a browser scrollbar. */
 .rps-pane.rps-no-scrollbar { scrollbar-width:none; -ms-overflow-style:none; }
 .rps-pane.rps-no-scrollbar::-webkit-scrollbar { display:none; width:0; height:0; }
+
+/* ===== Phones: big chart, compact controls, nothing overlaps ===== */
+@media (max-width:760px), (max-height:500px) and (pointer:coarse) {
+  .rp-session { gap:6px; padding:calc(6px + env(safe-area-inset-top)) calc(6px + env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) calc(6px + env(safe-area-inset-left)); }
+  /* top bar → row 1: back · asset · tools, row 2: timeframes, row 3: thin progress */
+  .rp-topbar { gap:5px; }
+  .rp-topbar > * { order:3; }
+  .rp-topbar .rp-btn { height:28px; padding:0 9px; font-size:11px; border-radius:9px; box-sizing:border-box; }
+  .rp-topbar .rp-btn:hover { transform:none; }
+  .rp-back { order:1; width:30px; padding:0 !important; font-size:0 !important; display:inline-flex; align-items:center; justify-content:center; }
+  .rp-back .back-arrow { margin:0; font-size:15px; line-height:0; }
+  .rp-back svg { width:15px; height:15px; }
+  .rp-chip { order:2; height:28px; box-sizing:border-box; padding:0 10px 0 8px; font-size:11px; gap:6px; }
+  .rp-topbar .rp-spacer { order:2; }
+  #rpFvgBtn, #rpHideDate { font-size:0 !important; }
+  #rpFvgBtn::after { content:'FVG'; font-size:11px; }
+  #rpHideDate::after { content:'Dates'; font-size:11px; }
+  #rpFsBtn { width:30px; padding:0 !important; display:inline-flex; align-items:center; justify-content:center; }
+  #rpTfs { order:4; flex:1 1 100%; display:flex; gap:1px; padding:2px; border-radius:10px; overflow-x:auto; scrollbar-width:none; }
+  #rpTfs::-webkit-scrollbar { display:none; }
+  #rpTfs button { flex:1 0 auto; min-width:32px; padding:5px 4px; font-size:11px; border-radius:8px; }
+  .rp-progress { order:5; flex:1 1 100%; min-width:0; margin:0 2px; flex-direction:row; align-items:center; gap:8px; }
+  .rp-progress-text { flex:none; font-size:10px; gap:8px; }
+  .rp-progress-track { flex:1 1 auto; height:3px; }
+  /* chart */
+  .rp-chart-card { border-radius:14px; }
+  #rpChart { touch-action:none; }
+  .rp-legend { left:8px; top:6px; right:64px; font-size:10px; gap:1px 8px; }
+  .rp-banner, .rp-toast { font-size:11.5px; }
+  /* drawing toolbar */
+  .rpd-bar { padding:2px 4px 2px 2px; border-radius:10px; gap:0; }
+  .rpd-b { min-width:30px; height:30px; padding:0 3px; }
+  .rpd-grip { width:14px; height:30px; }
+  /* trade panel: small card bottom-left */
+  .rp-trade { left:6px; bottom:28px; width:178px; border-radius:13px; font-size:11px; }
+  .rp-trade-head { padding:6px 8px 6px 10px; font-size:11px; }
+  .rp-trade-body { padding:0 8px 8px; max-height:calc(100vh - 300px); max-height:calc(100dvh - 300px); }
+  .rp-trade-body > * + * { margin-top:7px; }
+  #rpPanelWrap.is-open .rp-trade-body { overflow-y:auto; overscroll-behavior:contain; scrollbar-width:none; }
+  .rp-trade-body::-webkit-scrollbar { display:none; }
+  .rp-trade-btns { gap:6px; }
+  .rp-trade-btns button { padding:6px 0; font-size:12px; border-radius:9px; }
+  .rp-trade-row label { font-size:10.5px; }
+  /* 16px inputs: iPhone does not zoom the page when they get focus */
+  #rpSession .rp-input { font-size:16px; }
+  .rp-trade-row .rp-input { width:92px; height:30px; padding:2px 8px; }
+  .rp-draft { padding:7px; gap:6px; border-radius:10px; }
+  .rp-draft-grid { grid-template-columns:1fr; gap:5px; }
+  .rp-draft-grid label { flex-direction:row; align-items:center; justify-content:space-between; gap:6px; }
+  .rp-draft-grid .rp-input { width:100px; height:30px; padding:2px 8px; }
+  .rp-draft-actions .rp-primary { padding:6px 0; font-size:12px; }
+  .rp-draft-actions .rp-btn { padding:6px 8px; font-size:11.5px; }
+  .rp-pos { padding:5px 6px; gap:6px; }
+  .rp-pos-px { font-size:10.5px; } .rp-pos-pl { font-size:11px; }
+  .rp-stats { font-size:10.5px; gap:2px 8px; padding-top:6px; }
+  /* bottom bar: controls left, clock right */
+  .rp-bottombar { display:flex; align-items:center; justify-content:space-between; gap:6px; }
+  .rp-ctl { padding:3px; gap:1px; border-radius:12px; }
+  .rp-cbtn { height:30px; min-width:30px; padding:0 8px; font-size:11.5px; gap:5px; }
+  .rp-cbtn.rp-ico { width:32px; }
+  #rpBtnCut span { display:none; }
+  #rpBtnCut { padding:0; width:32px; }
+  .rp-sep { margin:0 3px; height:16px; }
+  .rp-clock { height:30px; padding:0 8px; font-size:11.5px; flex:none; }
+  /* lobby */
+  .rp-assets { gap:10px; }
+}
+/* Phone turned sideways: one scrollable top row so the chart keeps its height */
+@media (max-height:500px) and (pointer:coarse) {
+  .rp-session { gap:5px; padding:calc(4px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left)); }
+  .rp-topbar { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; }
+  .rp-topbar::-webkit-scrollbar { display:none; }
+  .rp-topbar > * { flex-shrink:0; }
+  #rpTfs { order:3; flex:0 0 auto; overflow:visible; }
+  #rpTfs button { flex:none; }
+  .rp-progress { order:2; flex:0 0 auto; flex-direction:column; align-items:stretch; gap:3px; margin:0 4px; }
+  .rp-progress-track { flex:none; }
+  .rp-topbar .rp-btn { order:4; }
+  .rp-topbar .rp-back { order:0; }
+  .rp-topbar .rp-spacer { display:none; }
+  .rp-trade-body { max-height:calc(100vh - 175px); max-height:calc(100dvh - 175px); }
+  .rp-trade { bottom:24px; }
+}

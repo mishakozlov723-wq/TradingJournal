@@ -263,7 +263,7 @@
         '<button class="rp-btn" id="rpSessBtn" type="button" title="Trading sessions on the chart (Asia, Frankfurt, London, New York)">Sessions</button>'+
         '<button class="rp-btn" id="rpFvgBtn" type="button" aria-pressed="false" title="Show three-candle imbalances (FVG)">imb-detector</button>'+
         '<button class="rp-btn" id="rpHideDate" type="button" title="Hide dates on the chart">Hide dates</button>'+
-        '<button class="rp-btn" id="rpFsBtn" type="button" title="Browser full screen">⛶</button>'+
+        '<button class="rp-btn" id="rpFsBtn" type="button" title="Browser full screen"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg></button>'+
       '</div>'+
       '<div class="rp-chart-card"><div class="rp-legend" id="rpLegend"></div><div id="rpChart"></div><div class="rp-banner" id="rpBanner"></div><div class="rp-toast" id="rpToast"></div>'+
         '<div class="rp-trade" id="rpTrade">'+
@@ -320,6 +320,7 @@
     $('rpRangeBtn').addEventListener('click',pickRange);
     bindResume(); bindTradeUi(); bindChartDrag(); bindDrawing(); bindContextMenu(); buildDrawDom();
     $('rpFsBtn').addEventListener('click',toggleBrowserFullscreen);
+    if(!document.fullscreenEnabled||!document.documentElement.requestFullscreen) $('rpFsBtn').style.display='none'; /* iPhone has no page full screen */
     $('rpTfs').addEventListener('click',function(e){ var b=e.target.closest('button[data-tf]'); if(b&&!b.disabled) setTF(b.getAttribute('data-tf')); });
     $('rpBtnStep').addEventListener('click',stepTF);
     $('rpBtnPlay').addEventListener('click',togglePlay);
@@ -807,7 +808,7 @@
     if(S.style&&!S.set&&o.ind){ var ns=normSess(o.ind); if(JSON.stringify(ns)!==JSON.stringify(S.style.sess)){ S.style.sess=ns; updateSessBtn(); requestDraw(); } }
     if(S.style&&!S.set){ var nf=normStyle({ fvg:o.fvg }).fvg; if(JSON.stringify(nf)!==JSON.stringify(S.style.fvg)){ S.style.fvg=nf; updateSessBtn(); requestDraw(); } }
     if(document.activeElement!==r) r.value=(typeof o.risk==='number'&&isFinite(o.risk)&&o.risk>=0)?o.risk:RISK_DEF;
-    var t=$('rpTrade'); if(t){ var c=false; try { var k=COLLAPSE_KEY+(uid()?'_'+uid():''); c=!!uid()&&localStorage.getItem(k)==='1'; } catch(_){} t.classList.toggle('is-collapsed',c); }
+    var t=$('rpTrade'); if(t){ var c=false; try { var k=COLLAPSE_KEY+(uid()?'_'+uid():''); var v=localStorage.getItem(k); c=!!uid()&&(v==='1'||(v===null&&window.matchMedia&&window.matchMedia('(max-width:760px), (max-height:500px) and (pointer:coarse)').matches)); /* phones start with the panel folded */ } catch(_){} t.classList.toggle('is-collapsed',c); }
     if(S.models&&S.models.length) modelOptions();
   }
   /* everything the panel remembers is re-read for the current account (also when the account changes without a reload) */
