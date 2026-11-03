@@ -1439,7 +1439,7 @@
      Settings live in S.style.sess (kept per account in the prefs document, not in chart templates).
      Session times are stored in UTC minutes; the settings window shows them in the chosen time zone (no daylight saving). */
   var SESS_TFS={ '5m':1, '15m':1, '30m':1, '1h':1, '4h':1 };
-  var SESS_DAYS=180;
+  var SESS_DAYS=420;
   var SESS_TZ=[ { id:'UTC', name:'UTC', off:0 }, { id:'TYO', name:'Tokyo (UTC+9)', off:540 }, { id:'MSK', name:'Moscow (UTC+3)', off:180 } ];
   var SESS_STYLES=[ { id:'box', name:'Box' }, { id:'solid', name:'Solid' } ];
   var SESS_LINES=[ { id:'dotted', name:'Dotted' }, { id:'dashed', name:'Dashed' }, { id:'solid', name:'Solid' } ];
@@ -1511,22 +1511,25 @@
     var s=S.sess, cfg=S.style&&S.style.sess; if(!s||!S.chart||!S.series||!cfg||!cfg.on||!SESS_TFS[S.tf]) return;
     var C=sessInstances(); if(!C) return;
     var ts=S.chart.timeScale(), a0=ts.logicalToCoordinate(0), a1=ts.logicalToCoordinate(1), vl=ts.getVisibleLogicalRange(); if(a0==null||a1==null||!vl) return;
-    var ctx=sc.context, hr=sc.horizontalPixelRatio, vr=sc.verticalPixelRatio, W=sc.mediaSize.width, Hh=sc.mediaSize.height, bs=Math.abs(a1-a0)||6;
-    var bk=buckets(s.d,S.tf), b2=bk.b2, intra=(S.tf==='5m'||S.tf==='15m'||S.tf==='30m'), mi=intra?s.d.m5Idx:0, lw=Math.max(1,Math.round(hr));
+    var ctx=sc.context, hr=sc.horizontalPixelRatio, vr=sc.verticalPixelRatio, W=sc.mediaSize.width, Hh=sc.mediaSize.height, Hb=Math.round(Hh*vr);
+    var bk=buckets(s.d,S.tf), b2=bk.b2, Tm=bk.Tm, d=s.d, intra=(S.tf==='5m'||S.tf==='15m'||S.tf==='30m'), mi=intra?s.d.m5Idx:0, lw=Math.max(1,Math.round(hr)), tfs=TFSEC[S.tf]||3600;
+    /* exact time -> fractional bar position, so a session that starts or ends inside a candle (e.g. on 4h) is drawn to scale */
+    var tLg=function(i,t){ var b=b2[i], st=Math.floor(Tm[b]/tfs)*tfs, f=(t-st)/tfs; if(f<0) f=0; else if(f>1) f=1; return b-S.dispFrom-.5+f; };
     cfg.list.forEach(function(x,k){
       if(!x.show) return;
       C.arr[k].forEach(function(it){
         var a=Math.max(it.i0,mi); if(it.i1<a) return;
         var bA=b2[a]-S.dispFrom, bB=b2[it.i1]-S.dispFrom; if(b2[a]<0||b2[it.i1]<0||bB<vl.from-2||bA>vl.to+2) return;
-        var xa=lgToX(bA), xb=lgToX(bB); if(xa==null||xb==null) return;
-        var L=xa-bs/2, R=xb+bs/2, solid=x.style==='solid', yT, yB;
-        if(solid){ yT=0; yB=Hh/vr; }
+        var L=lgToX(tLg(a,d.T[a])), R=lgToX(tLg(it.i1,Math.min(it.e,d.T[it.i1]+d.D[it.i1]))); if(L==null||R==null) return;
+        var solid=x.style==='solid', yT, yB;
+        if(solid){ yT=0; yB=Hh; }
         else { yT=S.series.priceToCoordinate(it.hi); yB=S.series.priceToCoordinate(it.lo); if(yT==null||yB==null) return; }
         var l=Math.round(L*hr), r=Math.max(l+lw*2,Math.round(R*hr)), t=Math.round(yT*vr), b=Math.max(t+lw*2,Math.round(yB*vr));
-        if(!solid&&(b<0||t>Hh)) return; /* scrolled out of sight vertically: nothing to draw */
+        if(!solid&&(b<0||t>Hb)) return; /* scrolled out of sight vertically: nothing to draw */
         ctx.fillStyle=x.fill; ctx.fillRect(l,t,r-l,b-t);
+        if(r-l<4*hr) return; /* zoomed far out: a thin box is just its fill, no dotted outline or name */
         if(solid){
-          sessLine(ctx,x.bstyle,x.border,lw,l+lw/2,0,l+lw/2,Hh); sessLine(ctx,x.bstyle,x.border,lw,r-lw/2,0,r-lw/2,Hh);
+          sessLine(ctx,x.bstyle,x.border,lw,l+lw/2,0,l+lw/2,Hb); sessLine(ctx,x.bstyle,x.border,lw,r-lw/2,0,r-lw/2,Hb);
         } else {
           sessLine(ctx,x.bstyle,x.border,lw,l+lw/2,t,l+lw/2,b); sessLine(ctx,x.bstyle,x.border,lw,r-lw/2,t,r-lw/2,b);
           sessLine(ctx,x.bstyle,x.border,lw,l,t+lw/2,r,t+lw/2); sessLine(ctx,x.bstyle,x.border,lw,l,b-lw/2,r,b-lw/2);
