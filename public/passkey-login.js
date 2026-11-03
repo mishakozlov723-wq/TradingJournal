@@ -42,7 +42,9 @@
       .then(function (r) {
         return r.json().catch(function () { return {}; }).then(function (data) {
           if (!r.ok || !data || data.ok === false) {
-            var err = new Error((data && data.error) || 'Face ID sign-in failed.'); err.code = data && data.code; err.status = r.status; throw err;
+            var msg = String((data && data.error) || 'Face ID sign-in failed.');
+            if (!isIOS) msg = msg.replace(/Face ID or fingerprint/g, 'Fingerprint').replace(/Face ID/g, 'Fingerprint');
+            var err = new Error(msg); err.code = data && data.code; err.status = r.status; throw err;
           }
           return data;
         });
@@ -307,10 +309,16 @@
     if (!u) { currentLogin = ''; closeOffer(); refreshSettings(); setTimeout(refreshLoginButton, 0); }
   });
 
+  // Android: fingerprint icon (Lucide "fingerprint") instead of the Face ID frame.
+  var FINGER = '<path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/><path d="M14 13.12c0 2.38 0 6.38-1 8.88"/><path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/>' +
+    '<path d="M2 12a10 10 0 0 1 18-6"/><path d="M2 16h.01"/><path d="M21.8 16c.2-2 .131-5.354 0-6"/><path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/>' +
+    '<path d="M8.65 22c.21-.66.45-1.32.57-2"/><path d="M9 6.8a6 6 0 0 1 9 5.2v2"/>';
   function faceIcon(size) {
+    if (!isIOS) return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size + '" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + FINGER + '</svg>';
     return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size + '" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
       '<path d="M3 8V6a3 3 0 0 1 3-3h2"/><path d="M16 3h2a3 3 0 0 1 3 3v2"/><path d="M21 16v2a3 3 0 0 1-3 3h-2"/><path d="M8 21H6a3 3 0 0 1-3-3v-2"/>' +
       '<path d="M9 9v1.5"/><path d="M15 9v1.5"/><path d="M12 9v4h-1"/><path d="M9 16c1.6 1.3 4.4 1.3 6 0"/></svg>';
   }
   window.tjPasskey.faceIcon = faceIcon;
+  if (!isIOS && loginBtn) { var bt = loginBtn.querySelector('.btn-text'); if (bt) bt.innerHTML = faceIcon(24); }
 })();
