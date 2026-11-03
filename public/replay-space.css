@@ -544,3 +544,11 @@ body.replay-fullscreen .autumn-leaf, body.replay-fullscreen .winter-snowflake { 
   .rp-trade-body { max-height:calc(100vh - 175px); max-height:calc(100dvh - 175px); }
   .rp-trade { bottom:24px; }
 }
+
+/* Phones: floating playback bar (drag by the six dots) + clock in the price-scale corner */
+.rp-ctl-grip { display:none; }
+.rpd-grip { touch-action:none; }
+.rp-session.rp-phone .rp-bottombar { display:none; }
+.rp-session.rp-phone .rp-ctl { position:absolute; z-index:8; left:0; top:0; padding:2px 4px 2px 2px; border:1px solid rgba(255,255,255,.08); border-radius:10px; background:#1e1f23; box-shadow:0 12px 30px rgba(0,0,0,.45); user-select:none; -webkit-user-select:none; }
+.rp-session.rp-phone .rp-ctl-grip { display:flex; width:14px; height:30px; }
+.rp-session.rp-phone #rpClockBtn { position:absolute; z-index:7; right:0; bottom:0; width:64px; height:28px; padding:0; justify-content:center; border-radius:0; background:transparent; font-size:10px; overflow:hidden; }
