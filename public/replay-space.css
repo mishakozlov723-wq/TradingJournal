@@ -504,13 +504,16 @@ body.replay-fullscreen .autumn-leaf, body.replay-fullscreen .winter-snowflake { 
   .rp-trade-btns { gap:6px; }
   .rp-trade-btns button { padding:6px 0; font-size:12px; border-radius:9px; }
   .rp-trade-row label { font-size:10.5px; }
-  /* 16px inputs: iPhone does not zoom the page when they get focus */
-  #rpSession .rp-input { font-size:16px; }
-  .rp-trade-row .rp-input { width:92px; height:30px; padding:2px 8px; }
+  /* page zoom is locked on the replay screen, so inputs can stay small */
+  #rpSession .rp-input { font-size:12.5px; }
+  #rpSession .rp-dd { font-size:12px; }
+  .rp-menu { font-size:12px; padding:5px; }
+  .rp-menu-item { padding:7px 9px; }
+  .rp-trade-row .rp-input { width:92px; height:28px; padding:2px 8px; }
   .rp-draft { padding:7px; gap:6px; border-radius:10px; }
   .rp-draft-grid { grid-template-columns:1fr; gap:5px; }
   .rp-draft-grid label { flex-direction:row; align-items:center; justify-content:space-between; gap:6px; }
-  .rp-draft-grid .rp-input { width:100px; height:30px; padding:2px 8px; }
+  .rp-draft-grid .rp-input { width:96px; height:28px; padding:2px 8px; }
   .rp-draft-actions .rp-primary { padding:6px 0; font-size:12px; }
   .rp-draft-actions .rp-btn { padding:6px 8px; font-size:11.5px; }
   .rp-pos { padding:5px 6px; gap:6px; }
@@ -552,3 +555,7 @@ body.replay-fullscreen .autumn-leaf, body.replay-fullscreen .winter-snowflake { 
 .rp-session.rp-phone .rp-ctl { position:absolute; z-index:8; left:0; top:0; padding:2px 4px 2px 2px; border:1px solid rgba(255,255,255,.08); border-radius:10px; background:#1e1f23; box-shadow:0 12px 30px rgba(0,0,0,.45); user-select:none; -webkit-user-select:none; }
 .rp-session.rp-phone .rp-ctl-grip { display:flex; width:14px; height:30px; }
 .rp-session.rp-phone #rpClockBtn { position:absolute; z-index:7; right:0; bottom:0; width:64px; height:28px; padding:0; justify-content:center; border-radius:0; background:transparent; font-size:10px; overflow:hidden; }
+
+/* Replay screen: no text selection / tap flash / double-tap zoom (inputs still selectable) */
+#rpSession, .rp-menu, .rps-pop { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; -webkit-tap-highlight-color:transparent; touch-action:manipulation; }
+#rpSession input, #rpSession textarea { -webkit-user-select:text; user-select:text; }
