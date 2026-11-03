@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '..', '..');
 const html = require('./assembled-html.cjs')();
 const front = fs.readFileSync(path.join(root, 'public', 'accounts-space.js'), 'utf8');
 const config = fs.readFileSync(path.join(root, 'public', 'accounts-config.js'), 'utf8');
-const proxyPath = path.join(root, 'accounts-proxy', 'netlify', 'functions', 'myfxbook.js');
+const proxyPath = path.join(root, 'accounts-proxy-vercel', 'api', 'myfxbook.js');
 
 function jsonResponse(obj, status = 200) {
   return { ok: status >= 200 && status < 300, status, async json(){ return obj; }, async text(){ return JSON.stringify(obj); } };
@@ -37,10 +37,13 @@ function installEnv() {
   process.env.ALLOWED_ORIGIN = 'https://journal.example.test';
 }
 
+// The Vercel function is the only proxy. Wrap it in a small event adapter so
+// tests can call it with {httpMethod, headers, queryStringParameters, body}.
 function freshProxy() {
   global.fetch=serverStateMock(global.fetch);
   delete require.cache[require.resolve(proxyPath)];
-  return require(proxyPath);
+  const handle=require(proxyPath);
+  return {handler:async e=>{let code,result;await handle({method:e.httpMethod,headers:e.headers,query:e.queryStringParameters,body:e.body},{setHeader(){},status(n){code=n;return this;},json(v){result=v;return this;},end(){}});return {statusCode:code,body:JSON.stringify(result)};}};
 }
 
 function event(method, action, token='firebase-user-1', extra={}) {
@@ -195,12 +198,8 @@ test('Switching accounts never renders stale detail data from the previous accou
   assert.match(css, /\.accounts-detail-content\.is-account-switch\s*\{\s*display:none;/);
 });
 
-for(const provider of ['netlify','vercel']){
-  function loadHandler(){
-    if(provider==='netlify')return freshProxy().handler;
-    const p=path.join(root,'accounts-proxy-vercel/api/myfxbook.js');delete require.cache[require.resolve(p)];global.fetch=serverStateMock(global.fetch);const handle=require(p);
-    return async e=>{let code,result;await handle({method:e.httpMethod,headers:e.headers,query:e.queryStringParameters,body:e.body},{setHeader(){},status(n){code=n;return this;},json(v){result=v;return this;},end(){}});return {statusCode:code,body:JSON.stringify(result)};};
-  }
+for(const provider of ['vercel']){
+  function loadHandler(){return freshProxy().handler;}
   test(provider+': disconnect revokes a copied connection token for the same Firebase UID',async()=>{
     installEnv();let logins=0;
     global.fetch=async url=>{const u=String(url);if(u.includes('identitytoolkit'))return jsonResponse({users:[{localId:'user-1'}]});if(u.includes('/login.json')){logins++;return jsonResponse({session:'s'});}if(u.includes('/get-my-accounts.json'))return jsonResponse({accounts:[]});if(u.includes('/logout.json'))return jsonResponse({});throw Error('Unexpected URL');};
@@ -226,7 +225,6 @@ for(const provider of ['netlify','vercel']){
     for(const iat of [Date.now()-31*86400000,Date.now()+120000])assert.equal((await handler(event('GET','accounts','id-token',{headers:{'x-tj-accounts-connection':token(iat)}}))).statusCode,401);
   });
 }
-test('provider copies of trusted revocation and deadline modules stay identical',()=>{for(const name of ['connection-state','request-budget'])assert.equal(fs.readFileSync(path.join(root,'accounts-proxy/netlify/functions/lib/'+name+'.js'),'utf8'),fs.readFileSync(path.join(root,'accounts-proxy-vercel/lib/'+name+'.js'),'utf8'));});
 test('a request deadline is shared across awaits, never reset for each upstream call',async()=>{
  const vm=require('node:vm'),code=fs.readFileSync(path.join(root,'accounts-proxy-vercel/lib/request-budget.js'),'utf8');let now=1000,calls=0;
  const c={require,module:{exports:{}},Date:{now:()=>now},AbortSignal,Math,Error,fetch:async(_url,options)=>{calls++;assert.ok(options.signal);return jsonResponse({});}};

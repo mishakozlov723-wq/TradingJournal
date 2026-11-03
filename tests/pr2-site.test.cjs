@@ -138,7 +138,7 @@ test('22 trades sent to Backtests use the chart time zone',()=>{
 });
 
 test('23 proxy setup documents every variable the code reads',()=>{
-  for(const dir of ['accounts-proxy','accounts-proxy-vercel']){
+  for(const dir of ['accounts-proxy-vercel']){
     const docs=source(dir+'/README.md')+source(dir+'/.env.example');
     for(const name of ['FIREBASE_WEB_API_KEY','ACCOUNTS_CREDENTIAL_SECRET','FIREBASE_SERVICE_ACCOUNT','ALLOWED_ORIGIN','FIREBASE_PROJECT_ID','ACCOUNTS_ENFORCE_ALLOWLIST','ALLOWED_FIREBASE_UIDS'])
       assert.ok(docs.includes(name),dir+': '+name);

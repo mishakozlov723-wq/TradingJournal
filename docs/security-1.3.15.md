@@ -9,7 +9,9 @@ native object is destroyed. Closing clears readiness and clipboard polling;
 quit also unregisters the shortcut early. Existing GitHub publisher identity,
 consent, profile preservation and all installer gates remain enabled.
 
-## Accounts proxy (Vercel and Netlify)
+## Accounts proxy (Vercel)
+
+> Update (desktop 1.3.20 / site 3.45.4): the duplicate Netlify proxy was removed; the site only uses the Vercel function.
 
 - No wildcard CORS response. Default permitted origins are the two production
   journal hosts. An existing `ALLOWED_ORIGIN=*` is narrowed to those hosts.
@@ -36,7 +38,12 @@ consent, profile preservation and all installer gates remain enabled.
 
 ## Notes images
 
-Original `notesImages` documents are owner/admin-readable, not public by ID.
+> Update (hotfix #19): by the owner's decision, original `notesImages` documents are
+> again readable by anyone who has the exact long image ID (`allow get: if true`; listing
+> stays denied), so public links and images inserted from another account keep working.
+> The text below describes the 1.3.15 design.
+
+In 1.3.15, original `notesImages` documents were owner/admin-readable, not public by ID.
 Public snapshots publish separate `notesShares/{token}/images/{imageId}` copies.
 Copies can be staged only from the authenticated owner's exact original bytes;
 anonymous access requires an existing parent, matching owner and explicit image
