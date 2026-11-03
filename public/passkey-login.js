@@ -187,7 +187,13 @@
     var ready = registerOptions.take();
     if (ready) return runRegister(ready, login).then(function () { return 'on'; });
     return registerOptions.load().then(function () { return runRegister(registerOptions.take(), login); })
-      .then(function () { return 'on'; }, function (e) { if (e && e.name === 'NotAllowedError') return 'again'; throw e; });
+      .then(function () { return 'on'; }, function (e) { if (e && e.name === 'NotAllowedError') { lastErr = e; return 'again'; } throw e; });
+  }
+  var lastErr = null, againCount = 0;
+  function errText(e) {
+    if (!e) return '';
+    var m = String(e.message || e.error || '').replace(/\s+/g, ' ').slice(0, 140);
+    return (e.name && e.name !== 'Error' ? e.name : (e.code || 'Error')) + (m ? ': ' + m : '');
   }
 
   // SYTER-styled offer (same look as the journal's confirmation dialog).
@@ -269,10 +275,24 @@
           .then(function () { writeStored(null); refreshLoginButton(); refreshSettings(); registerOptions.load().catch(function () {}); });
         return;
       }
-      enable(login).then(function (r) {
-        refreshSettings();
-        if (r === 'again' && setLabel) setLabel.textContent = 'Tap again to turn on ' + BIO;
-      }).catch(function () { refreshSettings(); if (setLabel) setLabel.textContent = 'Could not turn on ' + BIO + ' — tap to retry'; });
+      // iPhone: call create() synchronously inside the tap (Safari is strict about that).
+      var uv = (!isIOS && PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) ? PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().catch(function () { return null; }) : null;
+      var go = function (avail) {
+        if (avail === false) {
+          refreshSettings();
+          if (setLabel) setLabel.textContent = 'Chrome says no ' + BIO + ' is available. Set a screen lock + fingerprint and turn on Google Password Manager, then retry';
+          return;
+        }
+        return enable(login).then(function (r) {
+          refreshSettings();
+          if (r === 'on') { againCount = 0; return; }
+          againCount++;
+          if (setLabel) setLabel.textContent = againCount > 1 ? 'Could not turn on ' + BIO + ' — ' + errText(lastErr) : 'Tap again to turn on ' + BIO;
+        });
+      };
+      var fail = function (e) { refreshSettings(); if (setLabel) setLabel.textContent = 'Could not turn on ' + BIO + ' — ' + errText(e); };
+      if (uv) uv.then(go).catch(fail);
+      else { try { var p = go(null); if (p) p.catch(fail); } catch (e) { fail(e); } }
     });
   }
 
