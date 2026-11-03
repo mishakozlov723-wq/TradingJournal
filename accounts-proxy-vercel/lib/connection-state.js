@@ -38,4 +38,4 @@ async function state(uid,generation){
   if(typeof value!=='string'||!value)throw Object.assign(Error('Accounts revocation state is invalid.'),{status:503,code:'REVOCATION_UNAVAILABLE'});
   return value;
 }
-module.exports={generation:uid=>state(uid),revoke:uid=>state(uid,crypto.randomBytes(16).toString('hex'))};
+module.exports={generation:uid=>state(uid),revoke:uid=>state(uid,crypto.randomBytes(16).toString('hex')),accessToken,configuration,resetAccess:()=>{cachedAccess=null;}};
