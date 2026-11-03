@@ -5186,7 +5186,6 @@ body.mobile-mode #secondaryActions #settingsBtn {
 }
 body.mobile-mode #secondaryActions #settingsBtn { width: 28px; padding: 0; }
 body.mobile-mode #secondaryActions #settingsBtn .settings-icon { width: 13px; height: 13px; }
-body.mobile-mode #openReplayWorkspaceBtn { display: none !important; }
 
 /* Mobile gear: keep its shell stationary through press/release. The SVG
    retains one compositor layer and one fixed rotation centre in both states,
