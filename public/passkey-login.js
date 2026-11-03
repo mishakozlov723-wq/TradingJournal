@@ -71,10 +71,23 @@
   // ---------- Login screen button ----------
   var loginBtn = $('passkeyLoginBtn'), loginBusy = false;
   function loginScreenVisible() { var s = $('loginScreen'); return !!(s && s.style.display !== 'none'); }
+  var loginRow = loginBtn && loginBtn.closest('.login-submit-row'), firstReveal = true;
+  // Show/hide the icon by animating the row. The first reveal waits until the login
+  // card has finished appearing so the motion is actually seen.
+  function setLoginButton(on) {
+    if (!loginRow) return;
+    loginBtn.tabIndex = on ? 0 : -1;
+    loginBtn.setAttribute('aria-hidden', on ? 'false' : 'true');
+    if (!on) { loginRow.classList.remove('has-passkey'); return; }
+    if (loginRow.classList.contains('has-passkey')) return;
+    var delay = firstReveal ? Math.max(0, 520 - performance.now()) : 0;
+    firstReveal = false;
+    setTimeout(function () { requestAnimationFrame(function () { if (readStored()) loginRow.classList.add('has-passkey'); }); }, delay);
+  }
   function refreshLoginButton() {
     if (!loginBtn) return;
     var stored = readStored();
-    loginBtn.style.display = stored ? '' : 'none';
+    setLoginButton(!!stored);
     loginBtn.setAttribute('aria-label', 'Sign in with ' + BIO); loginBtn.title = 'Sign in with ' + BIO;
     if (stored && loginScreenVisible() && !loginOptions.fresh()) loginOptions.load().catch(function () {});
   }
