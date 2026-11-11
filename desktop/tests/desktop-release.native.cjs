@@ -312,13 +312,14 @@ async function main() {
   w.unmaximize(); await wait(100);
 
   for (const layout of ['00000419', '00000409']) {
-    w.hide(); await wait(450);
+    // > 1.1 s between presses: a quicker callback is treated as a held key.
+    w.hide(); await wait(1200);
     const before = shortcutCalls;
     pressShortcut(layout);
     await until(() => shortcutCalls === before + 1, 'real global OEM_3 event ' + layout);
     await settled(true);
     assert.equal(w.isVisible(), true);
-    await wait(450); pressShortcut(layout); await settled(false);
+    await wait(1200); pressShortcut(layout); await settled(false);
   }
 
   await wc.executeJavaScript("modalOverlay.classList.remove('open');activeTab='calendar';");

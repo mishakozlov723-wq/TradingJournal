@@ -39,6 +39,7 @@ body.syter-mini #tradeModalSubmitBtn { padding: 11px; font-size: 12px; }
 body.syter-mini .datetime-picker-box { max-height: calc(100vh - 24px); overflow: auto; }
 body.syter-mini #tjSavePill { max-width: calc(100vw - 40px); }
 .syter-capture-toggle{display:flex;align-items:center;gap:6px;font-size:11px;color:#9baabd;margin-bottom:5px}.syter-capture-toggle input{accent-color:#70dbb6}.syter-capture-toggle span{margin-left:auto;font-size:9px;color:#70dbb6}
+.syter-capture-toggle span[data-on="false"]{color:#7d8a9b}
 body.syter-mini #tradeScreenshotField{padding:8px;border-style:solid}body.syter-mini .syter-trade-notes textarea{min-height:38px;height:42px}body.syter-mini .field-label{margin-bottom:3px}body.syter-mini #tradeForm{gap:6px 8px}body.syter-mini #modalOverlay>.modal-box{padding-left:12px;padding-right:12px}body.syter-mini .syter-mini-header{margin-bottom:5px;padding:8px 0}
 
 /* Compact, dark controls with no instructional copy. */

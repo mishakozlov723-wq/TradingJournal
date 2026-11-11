@@ -121,13 +121,21 @@ function loadCapture(clipboard) {
     clearInterval(timer) { if (timer) timer.cleared = true; },
   };
   vm.createContext(context);
-  vm.runInContext(read('main.js') + '\nglobalThis.testCapture = { setView(v) { view = v; } };', context);
+  vm.runInContext(read('main.js') + '\nglobalThis.testCapture = { setView(v) { view = v; }, setWindow(w) { win = w; },' +
+    ' setMini(on) { miniMode = on; syncCapture(); }, sync() { syncCapture(); } };', context);
   const frame = { url: 'https://retocker.web.app/' };
   const contents = { mainFrame: frame, isDestroyed: () => false, getURL: () => frame.url, send: (...args) => sent.push(args) };
   context.testCapture.setView({ webContents: contents });
+  // Capture may read the clipboard only while the MINI journal is on screen.
+  const shown = { visible: true, minimized: false };
+  context.testCapture.setWindow({ isDestroyed: () => false, isVisible: () => shown.visible, isMinimized: () => shown.minimized });
+  context.testCapture.setMini(true);
   const event = { sender: contents, senderFrame: frame };
   return {
-    sent, frame,
+    sent, frame, shown,
+    setMini: on => context.testCapture.setMini(on),
+    sync: () => context.testCapture.sync(),
+    running: () => intervals.some(timer => timer.ms === 650 && !timer.cleared),
     capture: on => handlers['syter:clipboard-capture'](event, on),
     timer: () => intervals.filter(timer => timer.ms === 650).at(-1),
     tick(times = 1) { for (let i = 0; i < times; i++) this.timer().fn(); },
@@ -186,6 +194,44 @@ test('oversized or unreadable clipboard images report one error per change; navi
   m.frame.url = 'https://example.com/';
   m.tick();
   assert.equal(m.timer().cleared, true, 'capture stops when the journal is no longer loaded');
+});
+
+test('clipboard capture works only while the mini journal is on screen', async () => {
+  const c = fakeClipboard();
+  const m = loadCapture(c.clipboard);
+  const formats = c.clipboard.availableFormats; let reads = 0;
+  c.clipboard.availableFormats = () => { reads++; return formats(); };
+
+  m.setMini(false);
+  assert.equal(await m.capture(true), true, 'the checkbox wish is kept in the full journal');
+  assert.equal(m.running(), false);
+  c.set({ image: { width: 10, height: 10, pixels: 'taken-in-full-journal' } });
+  assert.equal(reads, 0, 'the full journal never reads the clipboard');
+
+  m.setMini(true);
+  assert.equal(m.running(), true);
+  m.tick(3);
+  assert.deepEqual(m.sent, [], 'a screenshot taken before the mini journal opened is ignored');
+
+  m.shown.visible = false; m.sync();
+  assert.equal(m.running(), false, 'hidden in the tray: no capture');
+  c.set({ image: { width: 10, height: 10, pixels: 'taken-while-hidden' } });
+  m.shown.visible = true; m.sync();
+  assert.equal(m.running(), true);
+  m.tick(3);
+  assert.deepEqual(m.sent, [], 'a screenshot taken while hidden is ignored');
+
+  m.shown.minimized = true; m.tick();
+  assert.equal(m.running(), false, 'minimized: no capture');
+  m.shown.minimized = false; m.sync();
+  c.set({ image: { width: 20, height: 10, pixels: 'chart-in-mini' } });
+  m.tick(3);
+  assert.equal(m.sent.length, 1);
+  assert.equal(m.sent[0][1].data, 'data:image/png;base64,' + Buffer.from('PNG:chart-in-mini').toString('base64'));
+
+  m.setMini(false);
+  assert.equal(m.running(), false, 'leaving the mini journal stops capture at once');
+  assert.equal(await m.capture(false), false);
 });
 
 // ------------------------------------------------------------- offline page

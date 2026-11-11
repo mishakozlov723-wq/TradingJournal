@@ -52,7 +52,7 @@ let trayMenu = null;
 let isQuitting = false;
 
 const crypto = require('crypto');
-let captureTimer=null, captureMark='';
+let captureTimer=null, captureMark='', captureWanted=false;
 function stopCapture(){if(captureTimer)clearInterval(captureTimer);captureTimer=null;captureMark='';}
 // Cheap per-tick identity of the clipboard image. Text-only clipboards are
 // skipped by format, raw PNG bytes are hashed when an app provides them and
@@ -95,7 +95,12 @@ const windowMotion = createWindowMotion({
 });
 const miniShortcut = createMiniShortcut({
   globalShortcut,
-  onToggle: () => requestMode(!miniMode),
+  // From the tray or a minimized window the hotkey brings back the MINI
+  // journal (it used to show the window and immediately switch to full).
+  onToggle: () => {
+    const away = !!win && !win.isDestroyed() && (!win.isVisible() || win.isMinimized());
+    requestMode(away || !miniMode);
+  },
   onUnavailable: (err) => {
     console.warn('Mini journal shortcut unavailable:', err ? err.message : 'already in use');
     if (win && !win.isDestroyed()) dialog.showMessageBox(win, {
@@ -157,6 +162,7 @@ async function setMiniMode(enabled, animate = true) {
   } else {
     miniBounds = win.getNormalBounds();
     miniMode = false;
+    syncCapture(); // leaving the mini journal stops screenshot capture at once
   }
   await windowMotion.move(target, animate, () => {
     if (enabled) {
@@ -196,7 +202,7 @@ async function setMiniMode(enabled, animate = true) {
     }
   });
   if (generation !== modeGeneration || !win || win.isDestroyed()) return { mini: miniMode, pinned: miniPinned };
-  layout(); saveState();
+  layout(); saveState(); syncCapture();
   return { mini: miniMode, pinned: miniPinned };
 }
 
@@ -346,13 +352,21 @@ ipcMain.handle('syter:mini-pin', (e, pinned) => {
   if (miniMode) win.setAlwaysOnTop(pinned);
   saveState(); return pinned;
 });
-ipcMain.handle('syter:clipboard-capture', (e,on)=>{
-  if(!fromSite(e)||typeof on!=='boolean')return false;
-  stopCapture();if(!on)return false;
-  // Whatever is already on the clipboard when capture starts is ignored.
+// The checkbox stores only the wish. The clipboard is read only while the mini
+// journal is really on screen: never in the full journal, in the tray or while
+// minimized, so screenshots taken for other work are not picked up.
+function captureAllowed(){
+  return captureWanted&&miniMode&&!!win&&!win.isDestroyed()&&win.isVisible()&&!win.isMinimized()&&
+    !!view&&!view.webContents.isDestroyed()&&isAppUrl(view.webContents.getURL());
+}
+function syncCapture(){
+  if(!captureAllowed()){stopCapture();return;}
+  if(captureTimer)return;
+  // Fresh baseline: whatever is on the clipboard when the mini journal appears
+  // (including screenshots taken while it was closed) is ignored.
   try{captureMark=clipboardFingerprint();}catch(err){captureMark='error:'+err.message;}
   captureTimer=setInterval(()=>{
-    if(!view||view.webContents.isDestroyed()||!isAppUrl(view.webContents.getURL())){stopCapture();return;}
+    if(!captureAllowed()){stopCapture();return;}
     let mark,failure=null;
     try{mark=clipboardFingerprint();}catch(err){failure=err;mark='error:'+err.message;}
     if(mark===captureMark)return;
@@ -362,7 +376,12 @@ ipcMain.handle('syter:clipboard-capture', (e,on)=>{
     try{if(failure)throw failure;message=clipboardPayload();if(!message)return;}
     catch(err){message={error:err.message};}
     view.webContents.send('syter:clipboard-captured',message);
-  },650);captureTimer.unref();return true;
+  },650);captureTimer.unref();
+}
+ipcMain.handle('syter:clipboard-capture', (e,on)=>{
+  if(!fromSite(e)||typeof on!=='boolean')return false;
+  captureWanted=on;stopCapture();syncCapture();
+  return captureWanted;
 });
 ipcMain.handle('syter:clipboard-image', (e) => {
   if (!fromSite(e)) return null;
@@ -469,9 +488,12 @@ function start() {
     saveState();
     if (!isQuitting) { e.preventDefault(); win.hide(); }
   });
-  win.on('hide', () => windowMotion.cancel());
-  win.on('minimize', () => windowMotion.cancel());
-  win.on('closed', () => { miniReady = false; stopCapture(); win = null; view = null; });
+  win.on('hide', () => { windowMotion.cancel(); stopCapture(); });
+  win.on('minimize', () => { windowMotion.cancel(); stopCapture(); });
+  // Back on screen: capture resumes only if it is wanted and the journal is mini.
+  win.on('show', () => setTimeout(syncCapture, 50));
+  win.on('restore', () => setTimeout(syncCapture, 50));
+  win.on('closed', () => { miniReady = false; captureWanted = false; stopCapture(); win = null; view = null; });
 
   createTray();
   miniShortcut.register();
@@ -507,7 +529,7 @@ function start() {
   // The same web view is resized: form fields and the image never cross windows.
   wc.on('did-start-navigation', (_e, _url, inPlace, mainFrame) => {
     if (mainFrame && !inPlace) {
-      miniReady = false; stopCapture();
+      miniReady = false; captureWanted = false; stopCapture();
       // Navigation cannot leave a resize timer touching a replaced page.
       if (miniMode) setMiniMode(false, false);
       else windowMotion.cancel(true);

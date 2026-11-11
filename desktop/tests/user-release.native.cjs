@@ -213,9 +213,10 @@ async function main(){
  fs.writeFileSync(path.join(__dirname,'../test-artifacts/mini-expand-origin.json'),JSON.stringify(results,null,2));
  console.log('PASS: both directions use verified source and completed animation; native expansion from three moved mini positions; no preposition/width change; original normal rectangle and draft restored.');
  for(const layout of ['00000419','00000409']){
-  w.hide();await wait(450);const before=shortcutCalls;pressShortcut(layout);
+  // > 1.1 s between presses: a quicker callback is treated as a held key.
+  w.hide();await wait(1200);const before=shortcutCalls;pressShortcut(layout);
   await until(()=>shortcutCalls===before+1,'actual global OEM_3 '+layout);await settled(true);assert.equal(w.isVisible(),true);
-  await wait(450);pressShortcut(layout);await settled(false);
+  await wait(1200);pressShortcut(layout);await settled(false);
  }
  w.show();w.focus();wc.focus();await wait(100);
  const zoom=wc.getZoomLevel();

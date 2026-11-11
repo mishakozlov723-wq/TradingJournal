@@ -93,6 +93,16 @@
       if (!enabled && journalView) journalView.leave(modeOwner);
       var state = await api.setMiniMode(enabled, !reducedMotion);
       if (!state) throw new Error('Не удалось переключить окно.');
+      // The site may close Add Trade while the window is being resized (e.g. a
+      // data reload calls closeModal()). Reopen the same user's form instead of
+      // collapsing the fresh mini journal: only a logout, an account switch or
+      // a backtest form may send it back to the full journal here.
+      if (enabled && signedIn() && viewingUser === modeOwner && !backtestTradeMode &&
+          !overlay.classList.contains('open') && form.dataset.saving !== '1') {
+        if (journalView) journalView.openDraft(viewingUser, function(){openModal(null);});
+        else openModal(null);
+        if (overlay.classList.contains('open')) { managedDraft = true; draftOwner = viewingUser; }
+      }
       // A logout/account change or closing the form can occur during the
       // native resize. Never finish in mini mode with a closed/foreign draft.
       if (enabled && (!signedIn() || viewingUser !== modeOwner ||

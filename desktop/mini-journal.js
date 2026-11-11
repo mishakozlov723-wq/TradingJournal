@@ -21,26 +21,35 @@
   $('syterMiniExpand').title = 'Ctrl + Shift + Ё — вернуться в полный журнал';
   $('closeModalBtn').before(fullButton);
   var capture = document.createElement('label'); capture.className='syter-capture-toggle';
-  capture.innerHTML='<input type="checkbox" id="syterCaptureImages"> Подхватывать изображения <span id="syterCaptureState">выкл.</span>';
+  capture.innerHTML='<input type="checkbox" id="syterCaptureImages"> Подхватывать изображения <span id="syterCaptureState" data-on="false">выкл.</span>';
   $('tradeScreenshotField').prepend(capture);
-  var captureOwner=null, captureRevision=0;
+  var captureOwner=null, captureRevision=0, captureWanted=false;
   async function setCapture(on){
     if(!api.setClipboardCapture||!window.TJMedia)return;
     if(on&&!signedIn())return;
     const owner=viewingUser,token=++captureRevision;
     captureOwner=on?owner:null;
-    const active=await api.setClipboardCapture(on);
+    const wanted=await api.setClipboardCapture(on);
     if(token!==captureRevision||owner!==viewingUser)return;
-    $('syterCaptureImages').checked=!!active;$('syterCaptureState').textContent=active?'● включено':'выкл.';
-    if(signedIn())localStorage.setItem('syter_capture_'+viewingUser,active?'1':'0');
+    captureWanted=!!wanted;showCapture();
+    if(signedIn())localStorage.setItem('syter_capture_'+viewingUser,captureWanted?'1':'0');
+  }
+  // The checkbox is a wish: images are picked up only while the MINI journal
+  // is on screen. Outside it the label says so instead of "on".
+  function showCapture(){
+    var label=$('syterCaptureState');
+    $('syterCaptureImages').checked=captureWanted;
+    label.textContent=!captureWanted?'выкл.':(mini?'● включено':'только в мини-журнале');
+    label.dataset.on=String(captureWanted&&mini);
+    capture.title=captureWanted&&!mini?'Скриншоты подхватываются только пока открыт мини-журнал':'';
   }
   $('syterCaptureImages').onchange=function(){setCapture(this.checked);};
   var capturedQueue=[],captureDraining=false;
   async function drainCapture(){
     if(captureDraining||switching||saving||form.dataset.saving==='1')return;
-    // Returning to the journal must not reopen Add Trade because an image
-    // arrived during the transition. Resume this queue with the draft instead.
-    if(journalView&&journalView.isParked()&&!mini)return;
+    // Images are taken only into the MINI journal. Leaving it drops the queue,
+    // so the full journal never reopens Add Trade because of a late screenshot.
+    if(!mini){capturedQueue=[];return;}
     captureDraining=true;
     try{while(capturedQueue.length&&!saving&&form.dataset.saving!=='1'){
       const item=capturedQueue.shift();if(!signedIn()||item.owner!==viewingUser)continue;
@@ -52,6 +61,7 @@
   }
   if(api.onClipboardImage)api.onClipboardImage(function(payload){
     if(!signedIn()||captureOwner!==viewingUser){setCapture(false);return;}
+    if(!mini)return; // only the mini journal on screen takes screenshots
     if(payload.error){error(payload.error);return;}
     if(capturedQueue.length>=10){error('Очередь заполнена. Сохраните позицию перед следующим копированием.');return;}
     capturedQueue.push({owner:viewingUser,data:payload.data});drainCapture();
@@ -129,6 +139,16 @@
       if (!enabled && journalView) journalView.leave(modeOwner);
       var state = await api.setMiniMode(enabled, !reducedMotion);
       if (!state) throw new Error('Не удалось переключить окно.');
+      // The site may close Add Trade while the window is being resized (e.g. a
+      // data reload calls closeModal()). Reopen the same user's form instead of
+      // collapsing the fresh mini journal: only a logout, an account switch or
+      // a backtest form may send it back to the full journal here.
+      if (enabled && signedIn() && viewingUser === modeOwner && !backtestTradeMode &&
+          !overlay.classList.contains('open') && form.dataset.saving !== '1') {
+        if (journalView) journalView.openDraft(viewingUser, function(){openModal(null);});
+        else openModal(null);
+        if (overlay.classList.contains('open')) { managedDraft = true; draftOwner = viewingUser; }
+      }
       // A logout/account change or closing the form can occur during the
       // native resize. Never finish in mini mode with a closed/foreign draft.
       if (enabled && (!signedIn() || viewingUser !== modeOwner ||
@@ -147,6 +167,7 @@
     finally {
       if (api.cancelMiniMode) await api.cancelMiniMode().catch(function(){});
       form.inert = wasInert; switching = false; delete document.body.dataset.syterModeTransition;
+      showCapture();
     }
   }
   api.onModeRequest(changeMode);

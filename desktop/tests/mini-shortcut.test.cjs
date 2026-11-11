@@ -25,11 +25,30 @@ test('registers the Windows OEM_3 accelerator, not a Cyrillic character', () => 
   assert.equal(ACCELERATOR, 'Control+Shift+`');
   assert.deepEqual(s.registered, [ACCELERATOR]);
 });
-test('one callback toggles; repeat events during the transition are suppressed', () => {
+// Windows repeats a HELD global shortcut (electron/electron#39718): first after
+// the keyboard delay (250-1000 ms), then every 33-400 ms.
+test('a held hotkey toggles once: Windows auto-repeat callbacks are ignored', () => {
   const s = setup(); s.shortcut.register();
-  s.fire(); s.fire(); s.advance(399); s.fire();
+  s.fire(); s.advance(500); s.fire();
+  for (let i = 0; i < 75; i++) { s.advance(33); s.fire(); }
   assert.equal(s.toggles(), 1);
-  s.advance(1); s.fire();
+});
+test('the slowest Windows repeat settings still count as one press', () => {
+  const s = setup(); s.shortcut.register();
+  s.fire(); s.advance(1000); s.fire();
+  for (let i = 0; i < 3; i++) { s.advance(400); s.fire(); }
+  assert.equal(s.toggles(), 1);
+});
+test('a new press after releasing the keys toggles again', () => {
+  const s = setup(); s.shortcut.register();
+  s.fire(); s.advance(1200); s.fire();
+  assert.equal(s.toggles(), 2);
+});
+test('a second press during the transition is ignored, a later press works', () => {
+  const s = setup(); s.shortcut.register();
+  s.fire(); s.advance(700); s.fire();
+  assert.equal(s.toggles(), 1);
+  s.advance(600); s.fire();
   assert.equal(s.toggles(), 2);
 });
 test('registration is idempotent and only its own shortcut is unregistered', () => {
