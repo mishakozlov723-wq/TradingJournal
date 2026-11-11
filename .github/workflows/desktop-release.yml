@@ -276,7 +276,8 @@ jobs:
           node scripts/verify-update-artifacts.js
           if ($LASTEXITCODE -ne 0) { throw 'Updater integrity verification failed' }
       - name: Save verified installer
-        if: ${{ !inputs.check_only }}
+        # Disabled: repo is public; persist-private-ci.cjs requires a private repo.
+        if: ${{ false }}
         uses: actions/github-script@v8
         with:
           script: |
