@@ -9,7 +9,7 @@ function setup({ maximized = false, fullscreen = false } = {}) {
   const events = {}, handlers = {}, sent = [];
   const normal = { x: 100, y: 80, width: 1200, height: 800 };
   const area = { x: 0, y: 0, width: 1920, height: 1040 };
-  let bounds = { ...(maximized || fullscreen ? area : normal) }, pinned = false, visible = true, focused=true;
+  let bounds = { ...(maximized || fullscreen ? area : normal) }, pinned = false, pinLevel, visible = true, focused=true;
   const presentationCalls=[], listeners={};
   let restoreBounds={...normal};
   const motionCalls = [], nativeCalls = [], prepareCalls = [];
@@ -24,7 +24,7 @@ function setup({ maximized = false, fullscreen = false } = {}) {
     setFullScreen: on => { nativeCalls.push({kind:'fullscreen',on,bounds:{...bounds}});if(on){restoreBounds={...bounds};fullscreen=true;bounds={...area};}else{fullscreen=false;bounds={...restoreBounds};for(const cb of listeners['leave-full-screen']||[])cb();} },
     setMaximizable: on => { maximizable = on; }, setFullScreenable: on => { fullscreenable = on; },
     setMinimumSize: (width, height) => { nativeCalls.push({kind:'minimum',width,height,bounds:{...bounds}}); },
-    setBounds: b => { nativeCalls.push({kind:"bounds",bounds:{...b}}); bounds = { ...b }; }, setAlwaysOnTop: on => { pinned = on; },
+    setBounds: b => { nativeCalls.push({kind:"bounds",bounds:{...b}}); bounds = { ...b }; }, setAlwaysOnTop: (on, level) => { pinned = on; pinLevel = level; },
     getContentSize: () => [bounds.width, bounds.height],
     isVisible: () => visible, isFocused:()=>focused,
     show() { visible = true;presentationCalls.push('show'); }, hide() { visible = false; },
@@ -68,7 +68,7 @@ function setup({ maximized = false, fullscreen = false } = {}) {
   context.testApi.configure(window, view);
   return { api: context.testApi, window, view, handlers, sent, motionCalls,presentationCalls,prepareCalls,
     blur:()=>{focused=false;},
-    bounds: () => bounds, pinned: () => pinned, nativeCalls,
+    bounds: () => bounds, pinned: () => pinned, pinLevel: () => pinLevel, nativeCalls,
     maximizable:()=>maximizable, fullscreenable:()=>fullscreenable,
     maximized: () => maximized, fullscreen: () => fullscreen };
 }
@@ -77,6 +77,8 @@ test('same window toggles both ways while preserving the original restore bounds
   const s = setup(), original = s.bounds();
   assert.equal((await s.api.setMiniMode(true)).mini, true);
   assert.equal(s.bounds().width, 420); assert.equal(s.pinned(), true);
+  // 'floating' (the default) is placed behind the taskbar and can lose topmost.
+  assert.equal(s.pinLevel(), 'pop-up-menu');
   assert.equal((await s.api.setMiniMode(false)).mini, false);
   assert.equal(s.pinned(), false);
   assert.deepEqual(s.bounds(), original);

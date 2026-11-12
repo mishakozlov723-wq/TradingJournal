@@ -146,6 +146,13 @@ function modeTarget(enabled) {
   if (fullState.maximized) return screen.getDisplayMatching(fullState.bounds).workArea;
   return widthPolicy.constrain(fitBounds(fullState.bounds, { x: 80, y: 80, width: 1440, height: 900 }));
 }
+// Electron's default 'floating' level re-inserts the window right behind the
+// Windows taskbar. When the taskbar is not topmost at that moment (fullscreen
+// journal or app, shell restart) the journal loses topmost and drops behind
+// every other window. This level skips the taskbar-relative placement.
+function pinWindow(pinned) {
+  if (pinned) win.setAlwaysOnTop(true, 'pop-up-menu'); else win.setAlwaysOnTop(false);
+}
 async function prepareMiniMode(enabled, animate = true) {
   if (!win || enabled === miniMode) return false;
   return windowMotion.prepare(modeTarget(enabled), animate, true);
@@ -169,7 +176,7 @@ async function setMiniMode(enabled, animate = true) {
       if (win.isFullScreen()) win.setFullScreen(false);
       if (win.isMaximized()) win.unmaximize();
       win.setMinimumSize(380, 480);
-      win.setAlwaysOnTop(miniPinned);
+      pinWindow(miniPinned);
       win.setBounds(target);
       win.setMaximizable(false);
       win.setFullScreenable(false);
@@ -349,7 +356,7 @@ ipcMain.handle('syter:mini-mode', (e, enabled, animate) => fromSite(e) && typeof
 ipcMain.handle('syter:mini-pin', (e, pinned) => {
   if (!fromSite(e) || typeof pinned !== 'boolean') return null;
   miniPinned = pinned;
-  if (miniMode) win.setAlwaysOnTop(pinned);
+  if (miniMode) pinWindow(pinned);
   saveState(); return pinned;
 });
 // The checkbox stores only the wish. The clipboard is read only while the mini
