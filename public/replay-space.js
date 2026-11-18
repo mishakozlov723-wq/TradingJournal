@@ -811,6 +811,7 @@
     if(!tfInputAllowedKey(key)) return false;
     var current=S.tfInput||'';
     if(/[mhdwM]/.test(key)&&/[mhdwM]/.test(current)) return true;
+    if(/\d/.test(key)&&/[mhdwM]/.test(current)) return true;
     if(/\d/.test(key)&&current.length>=TF_INPUT_MAX) return true;
     if(/[mhdwM]/.test(key)&&!/\d/.test(current.charAt(0))) return true;
     S.tfInput=current+key; renderTfInput(); return true;
