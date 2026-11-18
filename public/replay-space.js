@@ -596,7 +596,7 @@
         modelOptions();
         var info=assetInfo(asset), chip=$('rpAssetChip'); chip.style.setProperty('--rp-color',info.color); chip.querySelector('span').textContent=asset;
         S.series.applyOptions({ priceFormat:{ type:'price', precision:d.dp, minMove:Math.pow(10,-d.dp) } });
-        S.tf = tf || '1D'; if(S.tf==='3m'&&!(d.m3&&d.m3Start&&d.T[cur]>=d.m3Start)) S.tf='1D'; if((S.tf==='5m'||S.tf==='15m'||S.tf==='30m')&&!(d.m5Start&&cur>=d.m5Idx)) S.tf='1D';
+        S.tf = tf || '1D'; if(S.tf==='3m'&&!(d.m3&&d.m3.m3Start&&d.T[cur]>=d.m3.m3Start)) S.tf='1D'; if((S.tf==='5m'||S.tf==='15m'||S.tf==='30m')&&!(d.m5Start&&cur>=d.m5Idx)) S.tf='1D';
         S.sess.pos.slice().forEach(function(p){if(p.pendingClose)finishTrade(p,p.pendingClose.exit,p.pendingClose.reason,p.pendingClose.time);});
         updateTfButtons(); fullRefresh(false); saveSession(); reveal(); renderTrade(true);
       }).catch(function(err){
@@ -671,7 +671,7 @@
   /* ---------- timeframes ---------- */
   function isTfAvailable(id,s){
     s=s||S.sess; if(!s) return false;
-    if(id==='3m') return !!(s.d.m3&&s.d.m3Start&&s.d.T[s.cur]>=s.d.m3Start);
+    if(id==='3m') return !!(s.d.m3&&s.d.m3.m3Start&&s.d.T[s.cur]>=s.d.m3.m3Start);
     if(id==='5m'||id==='15m'||id==='30m') return !!(s.d.m5Start&&s.cur>=s.d.m5Idx);
     return true;
   }
