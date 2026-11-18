@@ -28,12 +28,12 @@ test('Hosting-only readback verifies exact frontend bytes with existing ruleset'
  const f=liveFixture();const result=await verifyLive({...f,source:'candidate',expectedRuleset:next,fetchFile:async url=>({ok:true,arrayBuffer:async()=>f.files['public/'+new URL(url).pathname.slice(1)]})});
  assert.equal(result.ruleset,next);assert.equal(result.files.length,5);assert.ok(f.calls.every(x=>x.method==='GET'));
 });
-test('workflow defaults to Hosting-only, keeps durable backup and explicit rules-write gate',()=>{
+test('workflow defaults to Hosting-only, keeps a local rollback snapshot and explicit rules-write gate',()=>{
  const s=fs.readFileSync(path.join(__dirname,'../.github/workflows/deploy-website.yml'),'utf8');
  assert.match(s,/deploy_rules:\n[\s\S]*?default: false/);
  assert.match(s,/Activate compatible Firestore rules and verify readback\n\s+if: \$\{\{ inputs.deploy_rules \}\}/);
  assert.match(s,/HOSTING_ONLY: \$\{\{ !inputs.deploy_rules \}\}/);
- assert.ok(s.indexOf('Persist rollback snapshot BEFORE any production write')<s.indexOf('Deploy verified frontend Hosting'));
+ assert.ok(s.indexOf('preflight snapshot')<s.indexOf('Deploy verified frontend Hosting'));assert.doesNotMatch(s,/persistPrivate[\s\S]*kind:'rollback'/);
  assert.match(s,/verify-unchanged-rules/);
 });
 

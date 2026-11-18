@@ -58,13 +58,9 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RETOCKER }}
           HOSTING_ONLY: ${{ !inputs.deploy_rules }}
         run: node scripts/firebase-release-preflight.cjs
-      - name: Persist and read back private rollback snapshot (no Actions quota)
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const {persistPrivate}=require('./scripts/persist-private-ci.cjs');
-            const result=await persistPrivate({github,context,kind:'rollback'});
-            await core.summary.addHeading('Read-only preflight backup').addLink('Verified private rollback export',result.url).write();
+      # This is a public release repository. The verified snapshot stays local
+      # to the runner and is uploaded only as the run artifact below; never
+      # attempt to store it in a public-repository draft release.
   # The complete PR regression suite (unit, browser scenarios and rules emulator)
   # must pass for the exact deployed commit before any production write.
   regression:
@@ -114,13 +110,8 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_RETOCKER }}
           HOSTING_ONLY: ${{ !inputs.deploy_rules }}
         run: node scripts/firebase-release-preflight.cjs
-      - name: Persist rollback snapshot BEFORE any production write
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const {persistPrivate}=require('./scripts/persist-private-ci.cjs');
-            const result=await persistPrivate({github,context,kind:'rollback'});
-            await core.summary.addLink('Byte-verified private rollback export',result.url).write();
+      # The preflight snapshot is kept on this runner until the deploy and
+      # readback finish. Private CI export is reserved for the Windows release.
       - name: Preserve existing public Notes image links before restricting originals
         if: ${{ inputs.deploy_rules }}
         env:
