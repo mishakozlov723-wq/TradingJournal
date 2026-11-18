@@ -113,6 +113,11 @@ body.replay-fullscreen .autumn-leaf, body.replay-fullscreen .winter-snowflake { 
 #rpChart { position:absolute; inset:0; }
 .rp-legend { position:absolute; z-index:5; left:14px; top:10px; pointer-events:none; font-size:12px; color:var(--textDim); display:flex; flex-wrap:wrap; gap:4px 12px; }
 .rp-legend b { color:var(--textMain); font-weight:700; }
+.rp-tf-overlay { display:none; position:absolute; z-index:8; left:50%; top:50%; transform:translate(-50%,-50%); min-width:112px; padding:14px 18px 12px; border:1px solid rgba(255,255,255,.22); border-radius:14px; background:rgba(12,14,19,.94); color:var(--textMain); box-shadow:0 18px 48px rgba(0,0,0,.48); text-align:center; pointer-events:none; backdrop-filter:blur(12px); }
+.rp-tf-overlay.is-visible { display:block; animation:rpTfIn .16s ease-out both; }
+.rp-tf-overlay-value { display:block; min-height:34px; font-size:30px; line-height:34px; font-weight:800; letter-spacing:.02em; }
+.rp-tf-overlay-hint { display:block; margin-top:6px; color:var(--textMuted); font-size:10px; font-weight:600; white-space:nowrap; }
+@keyframes rpTfIn { from { opacity:0; transform:translate(-50%,-46%) scale(.96); } to { opacity:1; transform:translate(-50%,-50%) scale(1); } }
 .rp-banner { display:none; position:absolute; z-index:6; left:50%; bottom:46px; transform:translateX(-50%); background:rgba(12,14,19,.94); border:1px solid rgba(255,255,255,.14); border-radius:14px; padding:10px 16px; font-size:13px; box-shadow:0 14px 34px rgba(0,0,0,.4); }
 .rp-banner.is-visible { display:block; animation:rpIn .35s cubic-bezier(.22,1,.36,1) both; }
 .rp-hint { color:var(--textMuted); font-size:11px; margin-top:8px; }
