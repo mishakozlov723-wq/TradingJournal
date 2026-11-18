@@ -95,8 +95,6 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
-      - name: Apply replay M3 availability fix
-        run: python3 tools/repair-replay-m3.py
       - name: Stamp content fingerprints
         run: python3 tools/stamp-versions.py
       - name: Verify syntax of every JavaScript file and the deploy payload

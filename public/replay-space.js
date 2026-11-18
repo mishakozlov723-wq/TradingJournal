@@ -124,6 +124,20 @@
     var aliases={3:'3m',5:'5m',15:'15m',30:'30m',60:'1h',240:'4h',1440:'1D',10080:'1W',43200:'1M',129600:'3M'};
     return aliases[mins]||null;
   }
+  /* Read the typed timeframe character from the physical key so Shift (M = months), Caps Lock and non-Latin layouts work. */
+  function tfKeyFromEvent(e){
+    if(!e||e.ctrlKey||e.altKey||e.metaKey||e.isComposing) return '';
+    var code=e.code||'', k=e.key||'', m;
+    if((m=/^(?:Digit|Numpad)(\d)$/.exec(code))) return (code.charAt(0)==='D'&&e.shiftKey)?'':m[1];
+    if(code==='KeyM') return e.shiftKey?'M':'m';
+    if(code==='KeyH') return 'h';
+    if(code==='KeyD') return 'd';
+    if(code==='KeyW') return 'w';
+    if(/^\d$/.test(k)) return e.shiftKey?'':k;
+    if(k==='M'||k==='m') return (e.shiftKey?'M':'m');
+    if(/^[hdwHDW]$/.test(k)) return k.toLowerCase();
+    return '';
+  }
   function tfInputAllowedKey(key){ return /^\d$/.test(key)||key==='m'||key==='h'||key==='d'||key==='w'||key==='M'; }
   function assetInfo(name){ for(var i=0;i<ASSETS.length;i++) if(ASSETS[i].name===name) return ASSETS[i]; return ASSETS[0]; }
   function lowerBound(arr, v, n){ var lo=0, hi=(n==null?arr.length:n); while(lo<hi){ var m=(lo+hi)>>1; if(arr[m]<v) lo=m+1; else hi=m; } return lo; }
@@ -308,7 +322,7 @@
         '<button class="rp-btn" id="rpHideDate" type="button" title="Hide dates on the chart">Hide dates</button>'+
         '<button class="rp-btn" id="rpFsBtn" type="button" title="Browser full screen"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg></button>'+
       '</div>'+
-      '<div class="rp-chart-card"><div class="rp-legend" id="rpLegend"></div><div class="rp-tf-overlay" id="rpTfOverlay" aria-live="polite" aria-hidden="true"><span class="rp-tf-overlay-value" id="rpTfOverlayValue"></span><span class="rp-tf-overlay-hint">Enter - Ð¿ÑÐ¸Ð¼ÐµÐ½Ð¸ÑÑ  |  Esc - Ð¾ÑÐ¼ÐµÐ½Ð°</span></div><div id="rpChart"></div><div class="rp-banner" id="rpBanner"></div><div class="rp-toast" id="rpToast"></div>'+
+      '<div class="rp-chart-card"><div class="rp-legend" id="rpLegend"></div><div class="rp-tf-overlay" id="rpTfOverlay" aria-live="polite" aria-hidden="true"><span class="rp-tf-overlay-value" id="rpTfOverlayValue"></span><span class="rp-tf-overlay-hint">Enter — применить  |  Esc — отмена</span></div><div id="rpChart"></div><div class="rp-banner" id="rpBanner"></div><div class="rp-toast" id="rpToast"></div>'+
         '<div class="rp-trade" id="rpTrade">'+
           '<div class="rp-trade-head"><span>Trade</span><button class="rp-mini" id="rpTradeToggle" type="button" title="Collapse / expand"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5 5 6.5 8 3.5"/></svg></button></div>'+
           '<div class="rp-collapse is-open" id="rpPanelWrap"><div class="rp-collapse-in"><div class="rp-trade-body">'+
@@ -676,7 +690,7 @@
     for(var k=from;k<=b;k++){ var row=barAt(s.d,bk,k,s.cur); if(row) data.push(row); }
     S.series.setData(data); S.dispFrom=from;
     if(!keepView){
-      var vis={ '5m':220,'15m':200,'30m':200,'1h':200,'4h':180,'1D':160,'1W':110,'1M':70,'3M':45 }[S.tf]||160;
+      var vis={ '3m':220,'5m':220,'15m':200,'30m':200,'1h':200,'4h':180,'1D':160,'1W':110,'1M':70,'3M':45 }[S.tf]||160;
       S.chart.timeScale().setVisibleLogicalRange({ from:data.length-vis, to:data.length+16 });
     }
     refreshHud();
@@ -906,7 +920,7 @@
       if(e.key==='Escape'){ e.preventDefault(); cancelTfInput(); return; }
       if(e.key==='Backspace'){ e.preventDefault(); S.tfInput=S.tfInput.slice(0,-1); if(!S.tfInput) cancelTfInput(); else renderTfInput(); return; }
       if(e.key==='Enter'){ e.preventDefault(); commitTfInput(); return; }
-      if(!e.ctrlKey&&!e.altKey&&!e.metaKey&&!e.shiftKey&&appendTfInput(e.key)){ e.preventDefault(); return; }
+      var tk=tfKeyFromEvent(e); if(tk&&appendTfInput(tk)){ e.preventDefault(); return; }
       return;
     }
     if(e.ctrlKey&&!e.altKey&&!e.metaKey&&!e.shiftKey&&e.key==='ArrowUp'){
@@ -918,7 +932,7 @@
       return;
     }
     if(/INPUT|SELECT|TEXTAREA/.test(tag)||(target&&target.isContentEditable)) return;
-    if(!e.ctrlKey&&!e.altKey&&!e.metaKey&&!e.shiftKey&&appendTfInput(e.key)){ e.preventDefault(); return; }
+    var tfk=tfKeyFromEvent(e); if(tfk&&appendTfInput(tfk)){ e.preventDefault(); return; }
     if(e.key==='Escape'){ if(S.menuFor) closeMenu(); else if(S.rewind) setRewind(false); else if(S.sess&&drEsc()){} else if(S.sess) cancelDraft(); else exitWorkspace(false); return; }
     if(!S.sess) return;
     if(drKey(e)) return;
@@ -1903,7 +1917,7 @@
           var p='sess.list.'+i+'.';
           return '<div class="rps-sec">'+esc(x.name)+'</div>'+chkRow(p+'show','Show','')+
             sessRow('Style',choiceBtn(p+'style'))+
-            sessRow('Time',timeBtn(p+'from')+'<span class="rps-dash">â</span>'+timeBtn(p+'to'))+
+            sessRow('Time',timeBtn(p+'from')+'<span class="rps-dash">–</span>'+timeBtn(p+'to'))+
             sessRow('Label',swatchHtml(p+'label'))+
             sessRow('Background',swatchHtml(p+'fill'))+
             sessRow('Border',swatchHtml(p+'border')+choiceBtn(p+'bstyle'))+
@@ -2102,7 +2116,7 @@
       var on=sameStyle(x.style,S.style);
       html+='<div class="rps-it"><button type="button" class="rps-li'+(on?' is-sel':'')+'" data-tpl="'+esc(x.id)+'" title="'+esc(x.name)+'"><span class="rps-nm">'+esc(x.name)+'</span>'+(x.local?'<small>on this device</small>':'')+'</button><button type="button" class="rps-del" data-del="'+esc(x.id)+'" title="Delete template" aria-label="Delete template">'+ICON_X+'</button></div>';
     });
-    if(S.profState==='cache') html+='<div class="rps-note">No database connection - showing this deviceâs templates</div>';
+    if(S.profState==='cache') html+='<div class="rps-note">No database connection - showing this device’s templates</div>';
     $('rpsPop').innerHTML=html; placePop(p.btn,'up');
   }
   function deleteProfile(id){
@@ -2157,7 +2171,7 @@
     b.profileSave({ id:rec.id, name:name, style:style }).then(function(){ finish(false); }).catch(function(err){ console.error('replay profile save failed:',err); finish(true); });
   }
 
-  /* ---- right-click menu: empty chart area -> Â«Settings...Â», price scale -> Â«More settings...Â» ---- */
+  /* ---- right-click menu: empty chart area -> «Settings...», price scale -> «More settings...» ---- */
   function candleAt(x,y){
     var s=S.sess; if(!s||!S.chart||!S.series) return false;
     var ts=S.chart.timeScale(), lg=ts.coordinateToLogical(x); if(lg==null) return false;
@@ -2224,7 +2238,7 @@
 
   /* ---- time / price  <->  pixels (drawings live in data space so they follow every timeframe) ---- */
   function bkReal(bk){
-    if(!bk.R){ var T=S.sess.d.T; bk.R=new Float64Array(bk.F.length); for(var i=0;i<bk.F.length;i++) bk.R[i]=T[bk.F[i]]; }
+    if(!bk.R){ var T=(bk.source||S.sess.d).T; bk.R=new Float64Array(bk.F.length); for(var i=0;i<bk.F.length;i++) bk.R[i]=T[bk.F[i]]; }
     return bk.R;
   }
   function tsToLg(ts){
@@ -2412,10 +2426,10 @@
   /* Strong Ctrl magnet: nearest revealed candle, with a small stability margin */
   function drMagnet(p,exclude){
     var sess=S.sess,bk=buckets(sess.d,S.tf),lg=xToLg(p.x); if(lg==null) return null;
-    var barIndex=Math.max(S.dispFrom,Math.min(bk.b2[sess.cur],Math.round(lg+S.dispFrom)));
+    var liveBar=activeBucket(sess),barIndex=Math.max(S.dispFrom,Math.min(liveBar,Math.round(lg+S.dispFrom)));
     var previous=S.dr.magnet;
     if(previous){var oldIndex=Math.round(tsToLg(previous.t)),oldX=lgToX(oldIndex-S.dispFrom),spacing=Math.abs(lgToX(oldIndex-S.dispFrom+1)-oldX);
-      if(oldIndex>=S.dispFrom&&oldIndex<=bk.b2[sess.cur]&&Math.abs(p.x-oldX)<=spacing/2+Math.min(2,spacing*.2))barIndex=oldIndex;
+      if(oldIndex>=S.dispFrom&&oldIndex<=liveBar&&Math.abs(p.x-oldX)<=spacing/2+Math.min(2,spacing*.2))barIndex=oldIndex;
     }
     var bar=barAt(sess.d,bk,barIndex,sess.cur),x=lgToX(barIndex-S.dispFrom),best=null,dist=Infinity;
     [bar.open,bar.high,bar.low,bar.close].forEach(function(v){
