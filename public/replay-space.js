@@ -672,7 +672,7 @@
     var s=S.sess; if(!s) return;
     var bk=buckets(s.d,S.tf), b=activeBucket(s);
     if(b<0){ S.tf='1h'; updateTfButtons(); bk=buckets(s.d,S.tf); b=bk.b2[s.cur]; }
-    var lim=(S.tf==='5m'||S.tf==='15m'||S.tf==='30m')?3000:(S.tf==='1h'||S.tf==='4h')?3500:99999, from=Math.max(0,b-lim), data=[];
+    var lim=(S.tf==='3m'||S.tf==='5m'||S.tf==='15m'||S.tf==='30m')?3000:(S.tf==='1h'||S.tf==='4h')?3500:99999, from=Math.max(0,b-lim), data=[];
     for(var k=from;k<=b;k++){ var row=barAt(s.d,bk,k,s.cur); if(row) data.push(row); }
     S.series.setData(data); S.dispFrom=from;
     if(!keepView){
@@ -684,6 +684,8 @@
   function stepRefresh(b0){
     var s=S.sess, bk=buckets(s.d,S.tf), b1=activeBucket(s);
     if(b1<0||b0<0||b1-b0>40) return fullRefresh(true);
+    var cap=(S.tf==='3m'||S.tf==='5m'||S.tf==='15m'||S.tf==='30m')?3000:(S.tf==='1h'||S.tf==='4h')?3500:99999;
+    if(b1-S.dispFrom>=cap-24) return fullRefresh(true);
     for(var k=b0;k<=b1;k++){ var row=barAt(s.d,bk,k,s.cur); if(row) S.series.update(row); }
     refreshHud();
   }
