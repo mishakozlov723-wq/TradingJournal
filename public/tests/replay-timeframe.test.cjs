@@ -30,3 +30,19 @@ test('hour, day, week and month suffixes normalize like TradingView', () => {
 test('invalid values are rejected without guessing', () => {
   for (const value of ['', '0', '2h', '7x', 'm', '1234567']) assert.equal(ctx.normalizeTfInput(value), null, value);
 });
+
+test('3m availability reads the nested published M3 metadata', () => {
+  const fnStart = source.indexOf('  function isTfAvailable');
+  const fnEnd = source.indexOf('  function updateTfButtons', fnStart);
+  assert.ok(fnStart >= 0 && fnEnd > fnStart);
+  const availabilityCtx = { S: {} };
+  vm.createContext(availabilityCtx);
+  vm.runInContext(
+    `var S = { sess: {
+      d: { m3: { m3Start: 100 }, T: [200] },
+      cur: 0
+    } };\n${source.slice(fnStart, fnEnd)}`,
+    availabilityCtx
+  );
+  assert.equal(availabilityCtx.isTfAvailable('3m'), true);
+});
