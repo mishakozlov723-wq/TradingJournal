@@ -1,13 +1,13 @@
-/* Trading Journal â Replay Space (v3: trading + Backtest Space bridge; fullscreen session, loading curtain, M5 for every year since 2013)
+/* Trading Journal - Replay Space (v3: trading + Backtest Space bridge; fullscreen session, loading curtain, M5 for every year since 2013)
    Self-contained module (same pattern as accounts-space.js): builds its own workspace section,
-   opens from Settings â Workspace â Replay.
+   opens from Settings -> Workspace -> Replay.
    v1 scope: asset + date range selection, price loading (H1 since 2003, M5 for the last ~3 years),
    all timeframes, bar-by-bar replay, progress ("days tested"). Trading, rewind-cut, customisation,
    drawing tools and the Backtest Space bridge come in the next steps. */
 (function(){
   'use strict';
 
-  /* tier 1 â always visible; tier 2 â collapsible "Tier 2 assets" section, shown once the quotes site publishes them */
+  /* tier 1 - always visible; tier 2 - collapsible "Tier 2 assets" section, shown once the quotes site publishes them */
   var ASSETS = [
     { name:'EURUSD', color:'#a78bfa', label:'EUR / USD', tier:1 },
     { name:'GBPUSD', color:'#fbbf24', label:'GBP / USD', tier:1 },
@@ -97,7 +97,7 @@
   function tzTagFor(id,ts){
     if(id==='UTC') return 'UTC';
     var o=tzParts(ts,tzById(id).zone), off=Math.round((Date.UTC(o.year,o.month-1,o.day,o.hour,o.minute)/1000-Math.floor(ts/60)*60)/60), a=Math.abs(off);
-    return 'UTC'+(off<0?'â':'+')+Math.floor(a/60)+(a%60?':'+pad(a%60):'');
+    return 'UTC'+(off<0?'-':'+')+Math.floor(a/60)+(a%60?':'+pad(a%60):'');
   }
   function tzTag(ts){ return tzTagFor(S.tz,ts); }
   function fmtTz(ts,withTime){
@@ -284,7 +284,7 @@
         '<details class="rp-tier2" id="rpTier2" hidden><summary class="rp-tier2-head"><span>Tier 2 assets</span><span class="rp-tier2-count" id="rpTier2Count"></span>'+ICON_CHEV+'</summary>'+
         '<div class="rp-assets rp-assets-t2" id="rpAssets2"></div></details>'+
         '<div class="rp-card"><div class="rp-form-row">'+
-          '<div class="rp-field"><label for="rpRangeBtn">Backtest period</label><button class="rp-input rp-range-btn" id="rpRangeBtn" type="button">Select datesâ¦</button>'+
+          '<div class="rp-field"><label for="rpRangeBtn">Backtest period</label><button class="rp-input rp-range-btn" id="rpRangeBtn" type="button">Select dates...</button>'+
           '<input type="hidden" id="rpStart"><input type="hidden" id="rpEnd"></div>'+
           '<div class="rp-range-note" id="rpRangeNote"></div>'+
           '<button class="rp-primary" id="rpStartBtn" type="button">Start replay</button>'+
@@ -308,7 +308,7 @@
         '<button class="rp-btn" id="rpHideDate" type="button" title="Hide dates on the chart">Hide dates</button>'+
         '<button class="rp-btn" id="rpFsBtn" type="button" title="Browser full screen"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg></button>'+
       '</div>'+
-      '<div class="rp-chart-card"><div class="rp-legend" id="rpLegend"></div><div class="rp-tf-overlay" id="rpTfOverlay" aria-live="polite" aria-hidden="true"><span class="rp-tf-overlay-value" id="rpTfOverlayValue"></span><span class="rp-tf-overlay-hint">Enter â Ð¿ÑÐ¸Ð¼ÐµÐ½Ð¸ÑÑ Â· Esc â Ð¾ÑÐ¼ÐµÐ½Ð°</span></div><div id="rpChart"></div><div class="rp-banner" id="rpBanner"></div><div class="rp-toast" id="rpToast"></div>'+
+      '<div class="rp-chart-card"><div class="rp-legend" id="rpLegend"></div><div class="rp-tf-overlay" id="rpTfOverlay" aria-live="polite" aria-hidden="true"><span class="rp-tf-overlay-value" id="rpTfOverlayValue"></span><span class="rp-tf-overlay-hint">Enter - Ð¿ÑÐ¸Ð¼ÐµÐ½Ð¸ÑÑ  |  Esc - Ð¾ÑÐ¼ÐµÐ½Ð°</span></div><div id="rpChart"></div><div class="rp-banner" id="rpBanner"></div><div class="rp-toast" id="rpToast"></div>'+
         '<div class="rp-trade" id="rpTrade">'+
           '<div class="rp-trade-head"><span>Trade</span><button class="rp-mini" id="rpTradeToggle" type="button" title="Collapse / expand"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5 5 6.5 8 3.5"/></svg></button></div>'+
           '<div class="rp-collapse is-open" id="rpPanelWrap"><div class="rp-collapse-in"><div class="rp-trade-body">'+
@@ -317,7 +317,7 @@
               '<div class="rp-draft-title" id="rpDraftTitle"></div>'+
               '<div class="rp-draft-grid"><label>Entry<input class="rp-input" id="rpInEntry" type="text" inputmode="decimal" autocomplete="off"></label><label>SL<input class="rp-input" id="rpInSL" type="text" inputmode="decimal" autocomplete="off"></label><label>TP<input class="rp-input" id="rpInTP" type="text" inputmode="decimal" autocomplete="off"></label></div>'+
               '<div class="rp-muted rp-draft-info" id="rpDraftInfo"></div>'+
-              '<div class="rp-draft-actions"><button class="rp-primary" id="rpDraftOk" type="button" aria-keyshortcuts="Control+ArrowUp" title="Open (Ctrl+â)">Open</button><button class="rp-btn" id="rpDraftCancel" type="button">Cancel</button></div>'+
+              '<div class="rp-draft-actions"><button class="rp-primary" id="rpDraftOk" type="button" aria-keyshortcuts="Control+ArrowUp" title="Open (Ctrl+^)">Open</button><button class="rp-btn" id="rpDraftCancel" type="button">Cancel</button></div>'+
             '</div></div></div>'+
             '<div class="rp-trade-row"><label for="rpRisk">Risk, %</label><input class="rp-input" id="rpRisk" type="text" inputmode="decimal" autocomplete="off" value="1"></div>'+
             '<div class="rp-trade-row" id="rpModelRow"><label for="rpModel">Model</label><button class="rp-input rp-dd" id="rpModelBtn" type="button"><span></span>'+ICON_CHEV+'</button><input type="hidden" id="rpModel" value=""></div>'+
@@ -326,20 +326,20 @@
           '</div></div></div></div>'+
       '</div>'+
       '<div class="rp-bottombar"><div class="rp-ctl" id="rpCtl"><div class="rpd-grip rp-ctl-grip" data-grip="ctl" title="Drag">'+ICO.grip+'</div>'+
-        '<button class="rp-cbtn" id="rpBtnCut" type="button" title="Cut: hover a candle and click â the chart is cut there (Esc â cancel)">'+ICON_CUT+'<span>Cut</span></button>'+
+        '<button class="rp-cbtn" id="rpBtnCut" type="button" title="Cut: hover a candle and click - the chart is cut there (Esc - cancel)">'+ICON_CUT+'<span>Cut</span></button>'+
         '<i class="rp-sep"></i>'+
         '<button class="rp-cbtn rp-ico" id="rpBtnPlay" type="button" title="Play / pause (Space)">'+ICON_PLAY+'</button>'+
-        '<button class="rp-cbtn rp-ico" id="rpBtnStep" type="button" title="Step forward (â)">'+ICON_STEP+'</button>'+
+        '<button class="rp-cbtn rp-ico" id="rpBtnStep" type="button" title="Step forward (->)">'+ICON_STEP+'</button>'+
         '<i class="rp-sep"></i>'+
         '<button class="rp-cbtn" id="rpSpeedBtn" type="button" title="Simulation speed"><span>1x</span></button>'+
         '<button class="rp-cbtn" id="rpStepBtn" type="button" title="Simulation step"><span>Auto</span></button>'+
       '</div>'+
-      '<button class="rp-clock" id="rpClockBtn" type="button" title="Chart time Â· click to choose a time zone"><span>--:--</span></button>'+
+      '<button class="rp-clock" id="rpClockBtn" type="button" title="Chart time  |  click to choose a time zone"><span>--:--</span></button>'+
       '</div>'+
       '<div class="rp-menu" id="rpMenu"></div>';
     document.body.appendChild(ses);
 
-    /* Loading curtain â same look as the Notes space intro. */
+    /* Loading curtain - same look as the Notes space intro. */
     var cur=document.createElement('div');
     cur.className='rp-curtain'; cur.id='rpCurtain'; cur.setAttribute('aria-hidden','true');
     cur.innerHTML='<div class="rp-curtain-stack"><div class="rp-curtain-mark"><span>Your Replay Space</span></div><div class="rp-curtain-track" aria-hidden="true"><div class="rp-curtain-progress"></div></div></div>';
@@ -441,10 +441,20 @@
     return buckets(s.d,S.tf).b2[s.cur];
   }
   function activeDone(s){ return inM3(s)?s.m3Cur>=s.m3EndIdx:s.cur>=s.endIdx; }
+  function activeMaxIndex(s){
+    if(!s) return -1;
+    if(!inM3(s)) return Math.max(s.maxIdx,s.cur);
+    if(s.m3MaxIdx==null){
+      var base=Math.max(s.maxIdx,s.cur), end=s.d.T[base]+s.d.D[base];
+      s.m3MaxIdx=Math.min(s.m3EndIdx,Math.max(s.m3StartIdx,lowerBound(s.d.m3.T,end,s.d.m3.n)-1));
+    }
+    return Math.max(s.m3MaxIdx,s.m3Cur);
+  }
+  function hasAfterCut(s){ return activeMaxIndex(s)>activeIndex(s); }
   function sessionDone(s){ return activeDone(s); }
   function sessionEmpty(s){ return activeIndex(s)<=(inM3(s)?s.m3StartIdx:s.startIdx)&&!s.btId&&!(s.pos&&s.pos.length)&&!(s.drawings&&s.drawings.length); }
   function stateOf(s){
-    var d=activeData(s), i=activeIndex(s), mx=inM3(s)?s.m3Cur:Math.max(s.maxIdx,s.cur);
+    var d=activeData(s), i=activeIndex(s), mx=activeMaxIndex(s);
     return { sid:s.sid, asset:s.asset, startTs:s.startTs, endTs:s.endTs, curT:d.T[i], tf:S.tf, btId:s.btId||null, pos:s.pos||[], maxT:d.T[mx] };
   }
   function saveSession(){
@@ -535,7 +545,7 @@
   }
   function syncRange(){
     var s=$('rpStart').value, e=$('rpEnd').value, note=$('rpRangeNote'); $('rpError').classList.remove('is-visible');
-    $('rpRangeBtn').textContent=(s&&e)?prettyDate(s)+'  â  '+prettyDate(e):'Select datesâ¦';
+    $('rpRangeBtn').textContent=(s&&e)?prettyDate(s)+' - '+prettyDate(e):'Select dates...';
     if(s&&e&&e>=s){ var days=Math.round((dateToTs(e)-dateToTs(s))/86400)+1; note.innerHTML='Period: <b>'+days+'</b> days'; } else note.textContent='';
   }
   function showError(msg){ var el=$('rpError'); if(!el) return; el.textContent=msg; el.classList.toggle('is-visible',!!msg); }
@@ -546,7 +556,7 @@
     if(bb&&bb.ready()&&bb.isOwnAccount()&&bb.backtestsLoaded&&!bb.backtestsLoaded()&&resumeTry++<20) renderResume.t=setTimeout(function(){ if(!S.sess&&S.mode) renderResume(); },700); else resumeTry=0;
     if(!list.length){ box.innerHTML=''; return; }
     box.innerHTML=list.map(function(r){
-      return '<div class="rp-card rp-resume" data-sid="'+esc(r.sid)+'"><div><div class="rp-resume-title">Continue: '+esc(r.asset)+'</div><div class="rp-resume-sub">'+fmtDate(r.startTs)+' â '+fmtDate(r.endTs)+' Â· stopped at '+fmtDate(r.curT)+'</div></div><div style="display:flex;gap:8px"><button class="rp-btn" data-resume-drop="'+esc(r.sid)+'" type="button">Reset</button><button class="rp-primary" data-resume="'+esc(r.sid)+'" type="button">Continue</button></div></div>';
+      return '<div class="rp-card rp-resume" data-sid="'+esc(r.sid)+'"><div><div class="rp-resume-title">Continue: '+esc(r.asset)+'</div><div class="rp-resume-sub">'+fmtDate(r.startTs)+' - '+fmtDate(r.endTs)+' | stopped at '+fmtDate(r.curT)+'</div></div><div style="display:flex;gap:8px"><button class="rp-btn" data-resume-drop="'+esc(r.sid)+'" type="button">Reset</button><button class="rp-primary" data-resume="'+esc(r.sid)+'" type="button">Continue</button></div></div>';
     }).join('');
   }
   function bindResume(){
@@ -583,7 +593,7 @@
     if(e<s) return showError('The end date is before the start date.');
     var m=instMeta(S.selected); if(!m) return showError('Data is not loaded yet.');
     var startTs=dateToTs(s), endTs=dateToTs(e);
-    if(startTs<m.h1.first+14*86400) return showError('The start is too close to the beginning of history â leave at least 2 weeks of context.');
+    if(startTs<m.h1.first+14*86400) return showError('The start is too close to the beginning of history - leave at least 2 weeks of context.');
     if(endTs>m.h1.last) return showError('The end date is after the latest available data ('+fmtDate(m.h1.last)+').');
     if(!guardOwn()) return;
     showError(''); startSession(S.selected,startTs,endTs,null,null,null);
@@ -603,13 +613,16 @@
         var cur=startIdx; if(resumeT!=null){ cur=Math.min(Math.max(lowerBound(d.T,resumeT,d.n),startIdx),endIdx); }
         var m3StartIdx=d.m3?Math.max(-1,lowerBound(d.m3.T,startTs,d.m3.n)-1):null;
         var m3EndIdx=d.m3?lowerBound(d.m3.T,endTs+86400,d.m3.n)-1:null;
-        var m3Cur=m3StartIdx;
+        var m3Cur=m3StartIdx, m3MaxIdx=m3StartIdx;
         if(d.m3&&resumeT!=null) m3Cur=Math.min(Math.max(lowerBound(d.m3.T,resumeT,d.m3.n),m3StartIdx),m3EndIdx);
-        S.sess={ sid:(extra&&extra.sid)||newId(), asset:asset, d:d, startTs:startTs, endTs:endTs, startIdx:startIdx, endIdx:endIdx, cur:cur, m3StartIdx:m3StartIdx, m3EndIdx:m3EndIdx, m3Cur:m3Cur, btId:null, pos:[], closed:[], draft:null, maxIdx:cur, drawings:[], drawAt:0 };
+        S.sess={ sid:(extra&&extra.sid)||newId(), asset:asset, d:d, startTs:startTs, endTs:endTs, startIdx:startIdx, endIdx:endIdx, cur:cur, m3StartIdx:m3StartIdx, m3EndIdx:m3EndIdx, m3Cur:m3Cur, m3MaxIdx:m3MaxIdx, btId:null, pos:[], closed:[], draft:null, maxIdx:cur, drawings:[], drawAt:0 };
         drReset(); drLoad(extra); drSync(); drPlaceBars(); syncPrefs();
         if(extra&&extra.maxT!=null){
           S.sess.maxIdx=Math.min(Math.max(lowerBound(d.T,extra.maxT,d.n),cur),endIdx);
-          if(d.m3) S.sess.m3Cur=Math.min(Math.max(lowerBound(d.m3.T,extra.maxT,d.m3.n),m3StartIdx),m3EndIdx);
+          if(d.m3){
+            S.sess.m3Cur=Math.min(Math.max(lowerBound(d.m3.T,extra.maxT,d.m3.n),m3StartIdx),m3EndIdx);
+            S.sess.m3MaxIdx=S.sess.m3Cur;
+          }
         }
         S.rewind=false; S.shown={};
         var br=bridge();
@@ -678,15 +691,15 @@
     var s=S.sess; if(!s) return;
     var d=s.d, ad=activeData(s), i=activeIndex(s), endT=activeEnd(s);
     var days=Math.max(0,Math.floor((endT-s.startTs)/86400)), total=Math.round((s.endTs-s.startTs)/86400)+1;
-    var mxI=inM3(s)?s.m3Cur:Math.max(s.maxIdx,i), mxD=inM3(s)?s.d.m3:d, mxT=mxD.T[mxI]+mxD.D[mxI], mxDays=Math.min(total,Math.max(0,Math.floor((mxT-s.startTs)/86400)));
-    $('rpDayText').innerHTML='<b>'+Math.min(days,total)+'</b> of '+total+' days'+((inM3(s)?s.m3Cur:Math.max(s.maxIdx,i))>i?' <span class="rp-warn">Â· max '+mxDays+'</span>':'');
-    $('rpDateText').textContent=S.hideDate?'â¢â¢â¢â¢ â â¢â¢ â â¢â¢':fmtTz(ad.T[i],true)+' '+tzTag(endT);
+    var mxI=activeMaxIndex(s), mxD=inM3(s)?s.d.m3:d, mxT=mxD.T[mxI]+mxD.D[mxI], mxDays=Math.min(total,Math.max(0,Math.floor((mxT-s.startTs)/86400)));
+    $('rpDayText').innerHTML='<b>'+Math.min(days,total)+'</b> of '+total+' days'+(hasAfterCut(s)?' <span class="rp-warn">/ max '+mxDays+'</span>':'');
+    $('rpDateText').textContent=S.hideDate?'****-**-**':fmtTz(ad.T[i],true)+' '+tzTag(endT);
     var done=activeDone(s), pct=Math.min(100,Math.max(0,(endT-s.startTs)/(s.endTs+86400-s.startTs)*100));
     $('rpProgressFill').style.width=pct.toFixed(1)+'%';
     var bk=buckets(d,S.tf), b=activeBucket(s), bar=b>=0?barAt(d,bk,b,i):null, f=function(v){ return v.toFixed(d.dp); };
-    $('rpLegend').innerHTML='<span><b>'+esc(s.asset)+'</b> Â· '+esc(S.tf)+'</span>'+(s.maxIdx>i?'<span class="rp-warn">After cut Â· already seen zone â new trades will be marked</span>':'')+(bar?'<span>O <b>'+f(bar.open)+'</b></span><span>H <b>'+f(bar.high)+'</b></span><span>L <b>'+f(bar.low)+'</b></span><span>C <b>'+f(bar.close)+'</b></span>':'');
+    $('rpLegend').innerHTML='<span><b>'+esc(s.asset)+'</b> | '+esc(S.tf)+'</span>'+(hasAfterCut(s)?'<span class="rp-warn">After cut - already seen zone - new trades will be marked</span>':'')+(bar?'<span>O <b>'+f(bar.open)+'</b></span><span>H <b>'+f(bar.high)+'</b></span><span>L <b>'+f(bar.low)+'</b></span><span>C <b>'+f(bar.close)+'</b></span>':'');
     updateTfButtons(); updateClock();
-    if(done){ showBanner('Backtest period complete â '+total+' days.'+(s.btId?' Results are in Backtest Space.':'')); stopPlay(); saveSession(); } else hideBanner();
+    if(done){ showBanner('Backtest period complete - '+total+' days.'+(s.btId?' Results are in Backtest Space.':'')); stopPlay(); saveSession(); } else hideBanner();
     $('rpBtnStep').disabled=$('rpBtnPlay').disabled=done;
     if(done) pushDays(true); else pushDays(false);
     if(growBoxes()) saveSession();
@@ -722,9 +735,16 @@
     if(id==='3m'&&s.d.m3){
       var at=s.d.T[s.cur]+s.d.D[s.cur];
       s.m3Cur=Math.min(s.m3EndIdx,Math.max(s.m3StartIdx,lowerBound(s.d.m3.T,at,s.d.m3.n)-1));
+      var baseMax=Math.max(s.maxIdx,s.cur), maxEnd=s.d.T[baseMax]+s.d.D[baseMax];
+      s.m3MaxIdx=Math.max(s.m3MaxIdx==null?s.m3StartIdx:s.m3MaxIdx,
+        Math.min(s.m3EndIdx,Math.max(s.m3StartIdx,lowerBound(s.d.m3.T,maxEnd,s.d.m3.n)-1)));
     } else if(S.tf==='3m'&&s.d.m3&&s.m3Cur>=0){
       var mt=s.d.m3.T[s.m3Cur]+s.d.m3.D[s.m3Cur];
       s.cur=Math.min(s.endIdx,Math.max(s.startIdx,lowerBound(s.d.T,mt,s.d.n)-1));
+      if(s.m3MaxIdx!=null){
+        var mm=s.d.m3.T[s.m3MaxIdx]+s.d.m3.D[s.m3MaxIdx];
+        s.maxIdx=Math.max(s.maxIdx,Math.min(s.endIdx,Math.max(s.startIdx,lowerBound(s.d.T,mm,s.d.n)-1)));
+      }
     }
     S.tf=id; S.stepTf='auto'; saveCtl(); updateCtlButtons(); updateTfButtons(); fullRefresh(false); saveSession();
   }
@@ -743,7 +763,7 @@
     s.cur=stopAt; if(s.cur>s.maxIdx) s.maxIdx=s.cur;
     if(s.cur>=s.endIdx) finishPeriod();
     stepRefresh(b0); saveSession();
-    if(evs){ stopPlay(); toast(evs.join(' Â· '),/Stop:/.test(evs.join())?'bad':'ok'); }
+    if(evs){ stopPlay(); toast(evs.join('  |  '),/Stop:/.test(evs.join())?'bad':'ok'); }
   }
   function tfLabel(id){ for(var i=0;i<TFS.length;i++) if(TFS[i].id===id) return TFS[i].label; return id; }
   /* the step is independent of the chart timeframe; 'auto' follows it. Intraday steps fall back to 1H where there is no M5 data. */
@@ -758,12 +778,13 @@
     cancelAnim();
     var b0=activeBucket(s), to=Math.min(s.m3Cur+1,s.m3EndIdx), evs=null;
     s.m3Cur=to;
+    if(s.m3MaxIdx==null||to>s.m3MaxIdx) s.m3MaxIdx=to;
     var mt=s.d.m3.T[to]+s.d.m3.D[to];
     s.cur=Math.min(s.endIdx,Math.max(s.startIdx,lowerBound(s.d.T,mt,s.d.n)-1));
     if(s.pos.length) evs=processBar(to,s.d.m3);
     if(activeDone(s)) finishPeriod();
     stepRefresh(b0); saveSession();
-    if(evs){ stopPlay(); toast(evs.join(' Â· '),/Stop:/.test(evs.join())?'bad':'ok'); }
+    if(evs){ stopPlay(); toast(evs.join('  |  '),/Stop:/.test(evs.join())?'bad':'ok'); }
   }
   function stepTF(){ var s=S.sess; if(!s) return; if(S.tf==='3m'&&s.d.m3){ advance3m(); return; } advanceTo(nextEnd(stepTfEff())); }
   function setPlayIcon(on){
@@ -835,7 +856,7 @@
   function updateClock(){
     var b=$('rpClockBtn'), s=S.sess; if(!b||!s) return;
     var ts=activeEnd(s), o=tzParts(ts); // show the current moment (close of the last bar), not its open
-    b.firstChild.textContent=(S.hideDate?'â¢â¢:â¢â¢':pad(o.hour)+':'+pad(o.minute))+' '+tzTag(ts);
+    b.firstChild.textContent=(S.hideDate?'--:--':pad(o.hour)+':'+pad(o.minute))+' '+tzTag(ts);
   }
   function applyTz(){
     if(S.chart){ S.chart.applyOptions({ timeScale:{ tickMarkFormatter:tickFmt }, localization:{ timeFormatter:function(t){ return S.hideDate?'':fmtAxis(t); } } }); }
@@ -953,7 +974,7 @@
     var d=new Date(ts*1000); return d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate())+'T'+pad(d.getUTCHours())+':'+pad(d.getUTCMinutes());
   }
   function newId(){ return Math.random().toString(36).slice(2,9); }
-  function sgnR(v){ return (v>0?'+':v<0?'â':'')+Math.abs(v).toFixed(2)+'R'; }
+  function sgnR(v){ return (v>0?'+':v<0?'-':'')+Math.abs(v).toFixed(2)+'R'; }
   function toast(msg,kind){
     var t=$('rpToast'); if(!t) return; t.textContent=msg; t.className='rp-toast is-visible'+(kind?' is-'+kind:'');
     clearTimeout(toast._t); toast._t=setTimeout(function(){ t.classList.remove('is-visible'); },3600);
@@ -980,11 +1001,11 @@
   function cancelDraft(){ if(S.sess&&S.sess.draft){ S.sess.draft=null; renderTrade(true); requestDraw(); } }
   function ensureBacktest(){
     var s=S.sess, b=bridge();
-    if(!b||!b.ready()) { toast('The journal is not ready yet â try again in a second.','warn'); return false; }
-    if(!b.isOwnAccount()){ toast('A student journal is open â switch to your own account.','warn'); return false; }
+    if(!b||!b.ready()) { toast('The journal is not ready yet - try again in a second.','warn'); return false; }
+    if(!b.isOwnAccount()){ toast('A student journal is open - switch to your own account.','warn'); return false; }
     if(s.btId&&b.getBacktest(s.btId)) return true;
     var info=assetInfo(s.asset);
-    var bt=b.createBacktest({ name:'Replay Â· '+s.asset, asset:s.asset, startYMD:fmtDate(s.startTs), endYMD:fmtDate(s.endTs), daysTested:currentDays() });
+    var bt=b.createBacktest({ name:'Replay  |  '+s.asset, asset:s.asset, startYMD:fmtDate(s.startTs), endYMD:fmtDate(s.endTs), daysTested:currentDays() });
     if(!bt){ toast('Could not create the backtest.','warn'); return false; }
     s.btId=bt.id; s.closed=[]; saveSession(); if((s.drawings||[]).length){ s.drawAt=s.drawAt||Date.now(); drFlush(); } return true;
   }
@@ -1003,9 +1024,9 @@
       status='pending';
       kind = dr.dir>0 ? (entry>price?'stop':'limit') : (entry<price?'stop':'limit');
     }
-    var p={ id:newId(), dir:dr.dir, entry:entry, sl:dr.sl, tp:dr.tp, status:status, kind:kind, risk0:Math.abs(entry-dr.sl), riskPct:risk, modelId:$('rpModel').value||'', placedT:nowT(), openT:status==='open'?nowT():null, endT:dr.endT!=null?dr.endT:newEndT(), ar:s.cur<s.maxIdx };
+    var p={ id:newId(), dir:dr.dir, entry:entry, sl:dr.sl, tp:dr.tp, status:status, kind:kind, risk0:Math.abs(entry-dr.sl), riskPct:risk, modelId:$('rpModel').value||'', placedT:nowT(), openT:status==='open'?nowT():null, endT:dr.endT!=null?dr.endT:newEndT(), ar:hasAfterCut(s) };
     s.pos.push(p); s.draft=null; saveSession(); renderTrade(true); requestDraw();
-    toast((status==='open'?(dr.dir>0?'Long':'Short')+' opened at '+fp(entry):'Pending '+(kind==='stop'?'Stop':'Limit')+' order at '+fp(entry))+(p.ar?' Â· marked âafter cutâ':''),p.ar?'warn':'ok');
+    toast((status==='open'?(dr.dir>0?'Long':'Short')+' opened at '+fp(entry):'Pending '+(kind==='stop'?'Stop':'Limit')+' order at '+fp(entry))+(p.ar?'  |  marked "after cut"':''),p.ar?'warn':'ok');
   }
   function posR(p,price){ return p.risk0>0?p.dir*(price-p.entry)/p.risk0:0; }
   function finishTrade(p,exitPrice,reason,closeT){
@@ -1029,7 +1050,7 @@
   /* returns an event description when something happened on bar i */
   /* PR2: realistic gaps. If the bar opens beyond an order or exit level, the fill happens at the
      bar's open price (worse for stops, better for limits/targets) instead of exactly at the level.
-     R stays measured against the planned risk (planned entry â stop). */
+     R stays measured against the planned risk (planned entry -> stop). */
   function gapFill(dir,kind,level,O){
     // dir: +1 buy / -1 sell; kind: 'stop' (buy above / sell below the market), 'limit' (buy below / sell above).
     var above=dir>0?kind==='stop':kind==='limit';
@@ -1074,10 +1095,10 @@
       if(p.status==='pending') s.pos=s.pos.filter(function(x){ return x!==p; });
       else { if(finishTrade(p,curPrice(),'End of period',nowT())!==null)n++; }
     });
-    if(n) toast('Period complete â open trades were closed at market.','warn');
+    if(n) toast('Period complete - open trades were closed at market.','warn');
   }
 
-  /* days tested â Backtest */
+  /* days tested -> Backtest */
   function currentDays(){
     var s=S.sess; if(!s) return 0; var endT=activeEnd(s), total=Math.round((s.endTs-s.startTs)/86400)+1;
     return Math.min(total,Math.max(0,Math.floor((endT-s.startTs)/86400)));
@@ -1109,7 +1130,7 @@
     $('rpDraftWrap').classList.toggle('is-open',!!dr);
     $('rpLong').classList.toggle('is-on',!!dr&&dr.dir>0); $('rpShort').classList.toggle('is-on',!!dr&&dr.dir<0);
     if(dr){
-      $('rpDraftTitle').textContent=(dr.dir>0?'Long':'Short')+(dr.market?' Â· market':' Â· pending');
+      $('rpDraftTitle').textContent=(dr.dir>0?'Long':'Short')+(dr.market?'  |  market':'  |  pending');
       [['rpInEntry',dr.market?price:dr.entry],['rpInSL',dr.sl],['rpInTP',dr.tp]].forEach(function(x){ var el=$(x[0]); if(document.activeElement!==el) el.value=x[1]==null?'':fp(x[1]); });
       var rk=Math.abs((dr.market?price:dr.entry)-dr.sl), rw=dr.tp!=null&&rk>0?Math.abs(dr.tp-(dr.market?price:dr.entry))/rk:null;
       $('rpDraftInfo').textContent=rw!=null?'Risk : reward = 1 : '+rw.toFixed(2):'No take profit';
@@ -1125,7 +1146,7 @@
     var st=tradeStats(), nAr=s.closed.filter(function(t){ return t.ar; }).length, nHid=s.closed.filter(function(t){ return t.hid; }).length;
     $('rpStats').innerHTML=(st.n?('<span>Trades <b>'+st.n+'</b></span><span>WR <b>'+st.wr.toFixed(0)+'%</b></span><span class="'+(st.r>=0?'pos':'neg')+'"><b>'+sgnR(r2(st.r))+'</b></span><span class="'+(st.pct>=0?'pos':'neg')+'"><b>'+(st.pct>=0?'+':'')+st.pct.toFixed(2)+'%</b></span>'):'<span class="rp-muted">'+(nAr&&cleanOnly()?'No clean trades':'No trades yet')+'</span>')+
       (nAr?'<div class="rp-filter"><span class="rp-warn">After cut: '+nAr+'</span><span class="rp-seg-mini"><button type="button" data-f="all" class="'+(cleanOnly()?'':'is-on')+'">All</button><button type="button" data-f="clean" class="'+(cleanOnly()?'is-on':'')+'">Clean</button></span></div>':'')+
-      (nHid?'<div class="rp-filter"><span class="rp-muted" title="Hidden on the chart â still counted in stats">Hidden: '+nHid+'</span><button type="button" class="rp-mini" data-unhide="1">Show hidden</button></div>':'');
+      (nHid?'<div class="rp-filter"><span class="rp-muted" title="Hidden on the chart - still counted in stats">Hidden: '+nHid+'</span><button type="button" class="rp-mini" data-unhide="1">Show hidden</button></div>':'');
     var dis=activeDone(s); $('rpLong').disabled=$('rpShort').disabled=dis;
   }
   function bindTradeUi(){
@@ -1201,8 +1222,8 @@
     var lx=(x0+x1)/2, tc=st.text.color, ts=st.text.size, R=function(price){ return o.risk>0?o.dir*(price-o.entry)/o.risk:0; };
     var tag=(o.dir>0?'LONG':'SHORT')+((o.state==='pending'||(o.state==='draft'&&o.kind))?(o.kind==='stop'?' STOP':' LIMIT'):'')+(o.state==='open'?'  '+sgnR(r2(R(o.price))):'');
     drawLabel(ctx,hr,vr,tag,lx,yE,o.state==='open'?(R(o.price)>=0?'rgba(52,211,153,.92)':'rgba(248,113,113,.92)'):'#c9ced8',tc,W,ts);
-    drawLabel(ctx,hr,vr,sgnR(r2(R(o.sl)))+(st.ticks?' Â· '+posTicks(o.entry,o.sl):''),lx,ySL,mulAlpha(opaque(st.stop),0.92),tc,W,ts);
-    if(yTP!=null) drawLabel(ctx,hr,vr,sgnR(r2(R(o.tp)))+(st.ticks?' Â· '+posTicks(o.entry,o.tp):''),lx,yTP,mulAlpha(opaque(st.target),0.92),tc,W,ts);
+    drawLabel(ctx,hr,vr,sgnR(r2(R(o.sl)))+(st.ticks?'  |  '+posTicks(o.entry,o.sl):''),lx,ySL,mulAlpha(opaque(st.stop),0.92),tc,W,ts);
+    if(yTP!=null) drawLabel(ctx,hr,vr,sgnR(r2(R(o.tp)))+(st.ticks?'  |  '+posTicks(o.entry,o.tp):''),lx,yTP,mulAlpha(opaque(st.target),0.92),tc,W,ts);
     if(o.live){
       if(o.entryDrag) S.hits.push({ kind:'entry', ref:o.ref, y:yE, x0:x0, x1:x1 });
       S.hits.push({ kind:'sl', ref:o.ref, y:ySL, x0:x0, x1:x1 }); if(yTP!=null) S.hits.push({ kind:'tp', ref:o.ref, y:yTP, x0:x0, x1:x1 });
@@ -1321,7 +1342,7 @@
     try { accepted=!!(b&&b.patchTrade&&b.patchTrade(id,{ hiddenOnChart:true })===true); } catch(_){}
     if(!accepted){ toast('Could not save this change. The trade is still shown.','warn'); return false; }
     t.hid=true;
-    saveSession(); renderTrade(true); requestDraw(); toast('Trade hidden on the chart â still counted in stats (Ctrl + middle click â delete permanently)');
+    saveSession(); renderTrade(true); requestDraw(); toast('Trade hidden on the chart - still counted in stats (Ctrl + middle click - delete permanently)');
     return true;
   }
   function unhideAll(){
@@ -1342,7 +1363,7 @@
     try { accepted=!!(b&&b.deleteTrade&&b.deleteTrade(id)===true); } catch(_){}
     if(!accepted){ toast('Could not save the deletion. The trade was not removed.','warn'); return false; }
     s.closed=s.closed.filter(function(x){ return x.id!==id; });
-    saveSession(); renderTrade(true); requestDraw(); toast('Trade deleted â saved for sync ('+sgnR(t.r)+')','warn');
+    saveSession(); renderTrade(true); requestDraw(); toast('Trade deleted - saved for sync ('+sgnR(t.r)+')','warn');
     return true;
   }
 
@@ -1351,7 +1372,7 @@
     var s=S.sess; if(on&&!s) return;
     if(on&&S.dr&&S.dr.tool!=='cursor') drSetTool('cursor'); S.rewind=!!on; S.cut=null; $('rpBtnCut').classList.toggle('is-on',S.rewind); $('rpChart').classList.toggle('is-cut',S.rewind);
     if(S.chart) S.chart.applyOptions({ crosshair:{ vertLine:{ visible:!S.rewind, labelVisible:!S.rewind } } });
-    if(S.rewind){ stopPlay(); cancelDraft(); closeMenu(); toast('Cut: hover a candle and click â the chart is cut there. Esc â cancel.'); }
+    if(S.rewind){ stopPlay(); cancelDraft(); closeMenu(); toast('Cut: hover a candle and click - the chart is cut there. Esc - cancel.'); }
     requestDraw();
   }
   function hideRewindLine(){ if(S.cut){ S.cut=null; requestDraw(); } }
@@ -1395,7 +1416,7 @@
   }
   function doRewind(tg){
     var s=S.sess; if(!s) return;
-    if(tg.last){ toast('This is the current candle â nothing to cut.','warn'); return; }
+    if(tg.last){ toast('This is the current candle - nothing to cut.','warn'); return; }
     var m3=inM3(s), d=m3?s.d.m3:s.d, bk=m3?buckets(d,'3m'):buckets(s.d,S.tf);
     var newCur=m3?bk.La[tg.b]:bucketEndIndex(s.d,bk,tg.b);
     if(newCur<(m3?s.m3StartIdx:s.startIdx)){ toast('You can only cut inside the selected period.','warn'); return; }
@@ -1417,7 +1438,7 @@
     if(lr){ var sh=(len-1)-oldIdx; animateRange({ from:lr.from+sh, to:lr.to+sh },fin,200,500); }
     else S.chart.timeScale().setVisibleLogicalRange(fin);
     saveSession(); renderTrade(true); requestDraw();
-    toast('Chart cut at '+(S.hideDate?'the selected candle':fmtTz(activeStart(s),true)+' '+tzTag(activeStart(s)))+(dropped?' Â· orders/positions cancelled: '+dropped:''),'warn');
+    toast('Chart cut at '+(S.hideDate?'the selected candle':fmtTz(activeStart(s),true)+' '+tzTag(activeStart(s)))+(dropped?'  |  orders/positions cancelled: '+dropped:''),'warn');
   }
 
   /* cursor shapes: position levels / right edge (pcur-*) and drawings (dcur-*) are separate class sets on the chart */
@@ -1474,7 +1495,7 @@
     el.addEventListener('pointerup',end,true); el.addEventListener('pointercancel',end,true);
   }
 
-  /* ================= step 4 Â· chart customisation + templates ================= */
+  /* ================= step 4  |  chart customisation + templates ================= */
   var LINE_CODE = { solid:0, dotted:1, dashed:2 };
   var CROSS_CODE = { solid:0, dotted:1, dashed:3 };
   var SIZES = [10,11,12,13,14,16,18,20,24,28,32,40];
@@ -1607,8 +1628,8 @@
   function sessStore(key,shownMin){ setPath(S.style,key,(((shownMin-sessOff())%1440)+1440)%1440); }
 
   /* high / low of every session instance, from the base candles up to the current one only (nothing from the future) */
-  function sessScan(d,x,arr,st,en){
-    var sec=x.from*60, dur=(((x.to-x.from+1440)%1440)||1440)*60, cur=null;
+  function sessScan(d,x,arr,st,en,carry){
+    var sec=x.from*60, dur=(((x.to-x.from+1440)%1440)||1440)*60, cur=carry||null;
     for(var i=st;i<=en;i++){
       var t=d.T[i], q=Math.floor((t-sec)/86400), off=t-sec-q*86400;
       if(off>=dur) continue;
@@ -1629,9 +1650,8 @@
     if(C.cur<cursor){
       var base=C.cur<0?lowerBound(d.T,d.T[cursor]-SESS_DAYS*86400,cursor+1):C.cur+1;
       cfg.list.forEach(function(x,k){
-        if(!x.show) return; var arr=C.arr[k], st=base;
-        if(arr.length) st=arr.pop().i0;
-        sessScan(d,x,arr,st,cursor);
+        if(!x.show) return; var arr=C.arr[k], st=base, carry=arr.length?arr[arr.length-1]:null;
+        sessScan(d,x,arr,st,cursor,carry);
       });
       C.cur=cursor;
     }
@@ -1872,7 +1892,7 @@
       html='<div class="rps-sec">Fair Value Gaps (FVG)</div>'+chkRow('fvg.on','Show imbalances','')+
         plainRow('Bullish imbalance',swatchHtml('fvg.up'))+plainRow('Bearish imbalance',swatchHtml('fvg.down'))+
         chkRow('fvg.mid.on','Midline',swatchHtml('fvg.mid.color',{ line:'fvg.mid.style', width:'fvg.mid.width' }))+
-        '<div class="rps-sec">Three closed candles Â· current timeframe</div>';
+        '<div class="rps-sec">Three closed candles  |  current timeframe</div>';
     } else if(tab==='sess'){
       var sc=sessCfg();
       html='<div class="rps-sec">History</div>'+chkRow('sess.on','Sessions','')+
@@ -2071,16 +2091,16 @@
   function refreshTplMenu(){ if(S.set&&S.set.pop&&S.set.pop.kind==='tpl') renderTplMenu(); }
   function renderTplMenu(){
     var p=S.set&&S.set.pop; if(!p||p.kind!=='tpl') return;
-    var html='<button type="button" class="rps-li" data-tpl="default">Apply default</button><button type="button" class="rps-li" data-tpl="save">Save asâ¦</button>';
+    var html='<button type="button" class="rps-li" data-tpl="default">Apply default</button><button type="button" class="rps-li" data-tpl="save">Save as...</button>';
     var list=S.profiles||[];
-    if(S.profState==='loading'&&!list.length) html+='<div class="rps-lsep"></div><div class="rps-note">Loadingâ¦</div>';
+    if(S.profState==='loading'&&!list.length) html+='<div class="rps-lsep"></div><div class="rps-note">Loading...</div>';
     else if(list.length||S.profState==='cache') html+='<div class="rps-lsep"></div>';
     list.forEach(function(x){
-      if(p.confirm===x.id){ html+='<div class="rps-li rps-conf"><span>Delete â'+esc(x.name)+'â?</span><button type="button" class="rps-mb" data-delyes="'+esc(x.id)+'">Yes</button><button type="button" class="rps-mb" data-delno="1">No</button></div>'; return; }
+      if(p.confirm===x.id){ html+='<div class="rps-li rps-conf"><span>Delete "'+esc(x.name)+'"?</span><button type="button" class="rps-mb" data-delyes="'+esc(x.id)+'">Yes</button><button type="button" class="rps-mb" data-delno="1">No</button></div>'; return; }
       var on=sameStyle(x.style,S.style);
       html+='<div class="rps-it"><button type="button" class="rps-li'+(on?' is-sel':'')+'" data-tpl="'+esc(x.id)+'" title="'+esc(x.name)+'"><span class="rps-nm">'+esc(x.name)+'</span>'+(x.local?'<small>on this device</small>':'')+'</button><button type="button" class="rps-del" data-del="'+esc(x.id)+'" title="Delete template" aria-label="Delete template">'+ICON_X+'</button></div>';
     });
-    if(S.profState==='cache') html+='<div class="rps-note">No database connection â showing this deviceâs templates</div>';
+    if(S.profState==='cache') html+='<div class="rps-note">No database connection - showing this deviceâs templates</div>';
     $('rpsPop').innerHTML=html; placePop(p.btn,'up');
   }
   function deleteProfile(id){
@@ -2088,7 +2108,7 @@
     S.profiles=(S.profiles||[]).filter(function(y){ return y.id!==id; }); writeProfCache();
     if(S.set&&S.set.pop) S.set.pop.confirm=null; renderTplMenu();
     if(b&&b.profileDelete&&!x.local) b.profileDelete(id).catch(function(err){ console.error('replay profile delete failed:',err); toast('Could not delete the template in the database','warn'); });
-    toast('Template â'+x.name+'â deleted');
+    toast('Template "'+x.name+'" deleted');
   }
   function openSave(){
     var sv=$('rpsSave'); S.save={ confirm:null }; sv.classList.add('is-open'); sv.setAttribute('aria-hidden','false'); renderSave();
@@ -2099,7 +2119,7 @@
     var body=$('rpsSaveBody'), sv=S.save; if(!sv) return;
     if(sv.confirm){
       $('rpsSaveTitle').textContent='Replace template?';
-      body.innerHTML='<div class="rps-msg">Template â'+esc(sv.confirm.name)+'â already exists. Replace it with the current settings?</div><div class="rps-card-foot"><button type="button" class="rps-b" id="rpsSvNo">Cancel</button><button type="button" class="rps-b rps-ok" id="rpsSvYes">Replace</button></div>';
+      body.innerHTML='<div class="rps-msg">Template "'+esc(sv.confirm.name)+'" already exists. Replace it with the current settings?</div><div class="rps-card-foot"><button type="button" class="rps-b" id="rpsSvNo">Cancel</button><button type="button" class="rps-b rps-ok" id="rpsSvYes">Replace</button></div>';
       $('rpsSvNo').addEventListener('click',function(){ sv.confirm=null; renderSave(); });
       $('rpsSvYes').addEventListener('click',function(){ doSave(sv.confirm.name,sv.confirm.id); });
       return;
@@ -2128,14 +2148,14 @@
     var b=bridge(), style=chartOnly(S.style), rec={ id:id||('rp'+Date.now().toString(36)+newId()), name:name, style:style };
     var finish=function(local){
       rec.local=!!local; var l=(S.profiles||[]).filter(function(x){ return x.id!==rec.id; }); l.push(rec); S.profiles=sortProfiles(l); writeProfCache();
-      closeSave(); toast(local?'Template â'+name+'â saved on this device only â no database connection':'Template â'+name+'â saved',local?'warn':'ok');
+      closeSave(); toast(local?'Template "'+name+'" saved on this device only - no database connection':'Template "'+name+'" saved',local?'warn':'ok');
     };
     if(!(b&&b.profileSave&&b.ready())){ finish(true); return; }
     var ok=$('rpsSvYes')||$('rpsSvOk'); if(ok) ok.disabled=true;
     b.profileSave({ id:rec.id, name:name, style:style }).then(function(){ finish(false); }).catch(function(err){ console.error('replay profile save failed:',err); finish(true); });
   }
 
-  /* ---- right-click menu: empty chart area â Â«Settingsâ¦Â», price scale â Â«More settingsâ¦Â» ---- */
+  /* ---- right-click menu: empty chart area -> Â«Settings...Â», price scale -> Â«More settings...Â» ---- */
   function candleAt(x,y){
     var s=S.sess; if(!s||!S.chart||!S.series) return false;
     var ts=S.chart.timeScale(), lg=ts.coordinateToLogical(x); if(lg==null) return false;
@@ -2158,7 +2178,7 @@
   }
   function openCtx(x,y,kind){
     buildSettingsDom(); var m=$('rpsCtx');
-    m.innerHTML='<button type="button" class="rps-ci" data-open="1">'+(kind==='scale'?'More settingsâ¦':'Settingsâ¦')+'</button>';
+    m.innerHTML='<button type="button" class="rps-ci" data-open="1">'+(kind==='scale'?'More settings...':'Settings...')+'</button>';
     m.style.left='0px'; m.style.top='0px'; m.classList.add('is-open'); S.ctxOpen=true;
     var w=m.offsetWidth, h=m.offsetHeight;
     m.style.left=Math.round(Math.min(x,window.innerWidth-w-8))+'px'; m.style.top=Math.round(Math.min(y,window.innerHeight-h-8))+'px';
@@ -2175,7 +2195,7 @@
     el.addEventListener('wheel',function(){ closeCtx(); },{ capture:true, passive:true });
   }
 
-  /* ================= step 5 Â· drawing tools (brush, line, rectangle) ================= */
+  /* ================= step 5  |  drawing tools (brush, line, rectangle) ================= */
   var DR_KEY='tj_replay_draw_ui';
   var DR_DEF={ ray:{ color:'#2962ff', w:2, style:'solid' }, line:{ color:'#2962ff', w:2, style:'solid' }, rect:{ color:'#2962ff', fill:'rgba(41,98,255,0.2)', w:2, style:'solid' }, brush:{ color:'#2962ff', w:3, style:'solid' } };
   var TFSEC={ '3m':180, '5m':300,'15m':900,'30m':1800,'1h':3600,'4h':14400,'1D':86400,'1W':604800,'1M':2592000,'3M':7776000 };
@@ -2279,7 +2299,7 @@
     var D=S.dr; clearTimeout(D.tm); D.tm=null;
     var s=S.sess, b=bridge(); if(!s||!s.btId||!b||!b.getBacktest(s.btId)||!s.drawAt) return;
     var js=D.op&&D.op.pre?D.op.pre:JSON.stringify(drList());
-    if(js.length>900000){ toast('Drawings are too large for the backtest â they stay on this device.','warn'); return; }
+    if(js.length>900000){ toast('Drawings are too large for the backtest - they stay on this device.','warn'); return; }
     b.updateBacktest(s.btId,{ drawings:js, drawingsAt:s.drawAt });
   }
   /* on resume take the newest copy: device session or the backtest document */
@@ -2317,7 +2337,7 @@
   }
   function drHideSel(){
     var D=S.dr, sel=drSel(); if(!sel.length) return; drPushUndo(); sel.forEach(function(d){ d.hidden=true; }); D.sel=[]; drClosePop(); drCommit();
-    toast('Drawing hidden â the âeyeâ button on the toolbar brings hidden ones back.');
+    toast('Drawing hidden - the "eye" button on the toolbar brings hidden ones back.');
   }
   function drToggleEye(){
     var D=S.dr, l=drList(), anyHid=l.some(function(d){ return d.hidden; });
@@ -2492,7 +2512,7 @@
     ctx.save();ctx.scale(hr,vr);ctx.fillStyle=up?'rgba(41,98,255,.15)':'rgba(239,83,80,.15)';ctx.strokeStyle=color;ctx.lineWidth=1;
     ctx.fillRect(a.x,a.y,b.x-a.x,b.y-a.y);ctx.strokeRect(a.x,a.y,b.x-a.x,b.y-a.y);
     ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
-    ctx.font='12px sans-serif';var lines=[m.text,m.bars+' bars Â· '+m.time],width=Math.max(ctx.measureText(lines[0]).width,ctx.measureText(lines[1]).width)+20;
+    ctx.font='12px sans-serif';var lines=[m.text,m.bars+' bars  |  '+m.time],width=Math.max(ctx.measureText(lines[0]).width,ctx.measureText(lines[1]).width)+20;
     var el=$('rpChart'),x=Math.max(4,Math.min((a.x+b.x-width)/2,el.clientWidth-S.chart.priceScale('right').width()-width-4)),y=Math.max(4,Math.min(Math.min(a.y,b.y)-52,el.clientHeight-70));
     ctx.fillStyle=color;ctx.fillRect(x,y,width,46);ctx.fillStyle='#fff';ctx.fillText(lines[0],x+10,y+18);ctx.fillText(lines[1],x+10,y+36);ctx.restore();
   }
@@ -2716,9 +2736,9 @@
     tools.innerHTML='<div class="rpd-grip" data-grip="tools" title="Drag">'+ICO.grip+'</div>'+
       '<button type="button" class="rpd-b" data-tool="cursor" title="Cursor (Esc). Measure: Shift + drag">'+ICO.cursor+'</button>'+
       '<button type="button" class="rpd-b" data-tool="brush" title="Brush">'+ICO.brush+'</button>'+
-      '<button type="button" class="rpd-b" data-tool="line" title="Line: click â click">'+ICO.line+'</button>'+
+      '<button type="button" class="rpd-b" data-tool="line" title="Line: click - click">'+ICO.line+'</button>'+
       '<button type="button" class="rpd-b" data-tool="ray" title="Ray: one click. Change the direction with the handle">'+ICO.ray+'</button>'+
-      '<button type="button" class="rpd-b" data-tool="rect" title="Rectangle: click â click">'+ICO.rect+'</button>'+
+      '<button type="button" class="rpd-b" data-tool="rect" title="Rectangle: click - click">'+ICO.rect+'</button>'+
       '<i class="rpd-sep"></i><button type="button" class="rpd-b" data-act="eye" title="Hide all drawings">'+ICO.eye+'</button>';
     var props=document.createElement('div'); props.className='rpd-bar rpd-props'; props.id='rpdProps';
     props.innerHTML='<div class="rpd-grip" data-grip="props" title="Drag">'+ICO.grip+'</div>'+
@@ -2959,7 +2979,7 @@
     },true);
     document.addEventListener('pointerup',function(){ S.dr.capture=false; S.dr.fastPan=false; },true);
   }
-  /* keyboard: Delete, Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z â returns true when handled */
+  /* keyboard: Delete, Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z - returns true when handled */
   function drKey(e){
     var D=S.dr; if(!S.sess) return false;
     var mod=(e.ctrlKey||e.metaKey)&&!e.altKey;
