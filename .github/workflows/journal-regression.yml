@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
+      - name: Stamp content fingerprints
+        run: python3 tools/stamp-versions.py
       - name: Install isolated browser test dependency
         run: npm install --prefix /tmp/tj-browser --no-save playwright@1.63.0 acorn@8.15.0
       - name: Syntax and unit/browser regression suite
