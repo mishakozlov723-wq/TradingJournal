@@ -597,6 +597,7 @@
         var info=assetInfo(asset), chip=$('rpAssetChip'); chip.style.setProperty('--rp-color',info.color); chip.querySelector('span').textContent=asset;
         S.series.applyOptions({ priceFormat:{ type:'price', precision:d.dp, minMove:Math.pow(10,-d.dp) } });
         S.tf = tf || '1D'; if(S.tf==='3m'&&!(d.m3&&d.m3.m3Start&&d.T[cur]>=d.m3.m3Start)) S.tf='1D'; if((S.tf==='5m'||S.tf==='15m'||S.tf==='30m')&&!(d.m5Start&&cur>=d.m5Idx)) S.tf='1D';
+        if(tf==null){ S.stepTf='auto'; saveCtl(); }
         S.sess.pos.slice().forEach(function(p){if(p.pendingClose)finishTrade(p,p.pendingClose.exit,p.pendingClose.reason,p.pendingClose.time);});
         updateTfButtons(); fullRefresh(false); saveSession(); reveal(); renderTrade(true);
       }).catch(function(err){
@@ -687,7 +688,7 @@
   function setTF(id){
     var s=S.sess; if(!s) return;
     if(!isTfAvailable(id,s)){ toast(id==='3m'?'3m data is not published for this archive yet':'This timeframe is unavailable for the selected period','warn'); return; }
-    cancelAnim(); S.tf=id; updateTfButtons(); fullRefresh(false); saveSession();
+    cancelAnim(); S.tf=id; S.stepTf='auto'; saveCtl(); updateCtlButtons(); updateTfButtons(); fullRefresh(false); saveSession();
   }
 
   /* ---------- stepping ---------- */
