@@ -23,6 +23,7 @@
   var DATA_BASE = window.TJ_REPLAY_DATA_BASE || 'replay-data/';
   if(DATA_BASE.charAt(DATA_BASE.length-1)!=='/') DATA_BASE+='/';
   var TFS = [
+    { id:'3m',  label:'3m',  intraday:true },
     { id:'5m',  label:'5m',  intraday:true },
     { id:'15m', label:'15m', intraday:true },
     { id:'30m', label:'30m', intraday:true },
@@ -103,7 +104,7 @@
     if(S.tz==='UTC') return fmtDate(ts,withTime);
     var o=tzParts(ts); return o.year+'-'+pad(o.month)+'-'+pad(o.day)+(withTime?' '+pad(o.hour)+':'+pad(o.minute):'');
   }
-  function isIntra(tf){ return tf==='5m'||tf==='15m'||tf==='30m'||tf==='1h'||tf==='4h'; }
+  function isIntra(tf){ return tf==='3m'||tf==='5m'||tf==='15m'||tf==='30m'||tf==='1h'||tf==='4h'; }
   function fmtAxis(t){ return isIntra(S.tf)?fmtTz(t,true):fmtDate(t,true); }
   function tickFmt(t){
     if(S.tz==='UTC'||!isIntra(S.tf)||typeof t!=='number') return null;
@@ -111,6 +112,19 @@
     if(o.hour===0&&o.minute===0){ if(o.month===1&&o.day===1) return String(o.year); if(o.day===1) return MON[o.month-1]; return String(o.day); }
     return pad(o.hour)+':'+pad(o.minute);
   }
+  /* TradingView-style timeframe entry: digits first, optional unit suffix, Enter to apply.
+     Plain digits mean minutes; accepted suffixes are m, h, d, w and M (months). */
+  var TF_INPUT_MAX=6;
+  function normalizeTfInput(raw){
+    raw=String(raw||'').trim();
+    var m=raw.match(/^(\d{1,6})([mhdwM]?)$/); if(!m) return null;
+    var n=Number(m[1]), u=m[2]||'m'; if(!n||!Number.isFinite(n)) return null;
+    if(!m[2] && ({3:1,5:1,15:1,30:1,60:1,240:1,1440:1,10080:1,43200:1,129600:1})[n]) u='m';
+    var mins=u==='m'?n:u==='h'?n*60:u==='d'?n*1440:u==='w'?n*10080:n*43200;
+    var aliases={3:'3m',5:'5m',15:'15m',30:'30m',60:'1h',240:'4h',1440:'1D',10080:'1W',43200:'1M',129600:'3M'};
+    return aliases[mins]||null;
+  }
+  function tfInputAllowedKey(key){ return /^\d$/.test(key)||key==='m'||key==='h'||key==='d'||key==='w'||key==='M'; }
   function assetInfo(name){ for(var i=0;i<ASSETS.length;i++) if(ASSETS[i].name===name) return ASSETS[i]; return ASSETS[0]; }
   function lowerBound(arr, v, n){ var lo=0, hi=(n==null?arr.length:n); while(lo<hi){ var m=(lo+hi)>>1; if(arr[m]<v) lo=m+1; else hi=m; } return lo; }
 
@@ -154,15 +168,25 @@
   function loadSession(asset,startTs,endTs){
     var m=instMeta(asset), y0=new Date((startTs-60*86400)*1000).getUTCFullYear(), y1=new Date(endTs*1000).getUTCFullYear();
     var years=((m&&m.m5Years)||[]).filter(function(y){ return y>=y0&&y<=y1; });
-    var key=asset+'|'+years.join(',')+'|'+(S.meta&&S.meta.generated||'');
+    var m3Years=((m&&m.m3Years)||[]).filter(function(y){ return y>=y0&&y<=y1; });
+    var key=asset+'|'+years.join(',')+'|m3:'+m3Years.join(',')+'|'+(S.meta&&S.meta.generated||'');
     if(S.tl&&S.tl.key===key) return Promise.resolve(S.tl.d);
-    return Promise.all([getBin(asset,'h1')].concat(years.map(function(y){ return getBin(asset,'m5_'+y); }))).then(function(r){
-      var h1=r[0], m5=r.slice(1), sc=h1.sc, m5n=0; m5.forEach(function(x){ m5n+=x.n; });
+    var jobs=[getBin(asset,'h1')].concat(years.map(function(y){ return getBin(asset,'m5_'+y); }));
+    /* M3 is an optional published resolution. Older quote archives remain fully compatible. */
+    if(m3Years.length) jobs=jobs.concat(m3Years.map(function(y){ return getBin(asset,'m3_'+y); }));
+    return Promise.all(jobs).then(function(r){
+      var h1=r[0], m5=r.slice(1,1+years.length), m3=m3Years.length?r.slice(1+years.length):[], sc=h1.sc, m5n=0; m5.forEach(function(x){ m5n+=x.n; });
       var cut = m5n ? lowerBound(h1.t, m5[0].t[0], h1.n) : h1.n, n=cut+m5n;
       var T=new Float64Array(n), O=new Float64Array(n), H=new Float64Array(n), L=new Float64Array(n), C=new Float64Array(n), D=new Uint16Array(n), i, k;
       for(i=0;i<cut;i++){ T[i]=h1.t[i]; O[i]=h1.o[i]/sc; H[i]=h1.h[i]/sc; L[i]=h1.l[i]/sc; C[i]=h1.c[i]/sc; D[i]=3600; }
       k=cut; m5.forEach(function(x){ for(var j=0;j<x.n;j++,k++){ T[k]=x.t[j]; O[k]=x.o[j]/sc; H[k]=x.h[j]/sc; L[k]=x.l[j]/sc; C[k]=x.c[j]/sc; D[k]=300; } });
-      var d={ name:asset, n:n, T:T, O:O, H:H, L:L, C:C, D:D, m5Idx:cut, m5Start:m5n?m5[0].t[0]:null, buckets:{}, dp:(m&&m.dp)||2, shifted:null };
+      var d={ name:asset, n:n, T:T, O:O, H:H, L:L, C:C, D:D, m5Idx:cut, m5Start:m5n?m5[0].t[0]:null, buckets:{}, dp:(m&&m.dp)||2, shifted:null, m3:null };
+      if(m3.length){
+        var m3n=0; m3.forEach(function(x){ m3n+=x.n; });
+        var mt=new Float64Array(m3n), mo=new Float64Array(m3n), mh=new Float64Array(m3n), ml=new Float64Array(m3n), mc=new Float64Array(m3n), md=new Uint16Array(m3n), q=0;
+        m3.forEach(function(x){ for(var j=0;j<x.n;j++,q++){ mt[q]=x.t[j]; mo[q]=x.o[j]/sc; mh[q]=x.h[j]/sc; ml[q]=x.l[j]/sc; mc[q]=x.c[j]/sc; md[q]=180; } });
+        d.m3={ name:asset, n:m3n, T:mt, O:mo, H:mh, L:ml, C:mc, D:md, m3Idx:0, m3Start:m3n?mt[0]:null, buckets:{}, dp:d.dp, shifted:null };
+      }
       S.tl={ key:key, d:d }; return d;
     });
   }
@@ -187,13 +211,20 @@
     return d.shifted=s;
   }
   function buckets(d, tfId){
+    if(tfId==='3m'&&d.m3){
+      if(d.buckets[tfId]) return d.buckets[tfId];
+      var inner=buckets(d.m3,'3m'), map=new Int32Array(d.n).fill(-1), j=0;
+      for(var bi=0;bi<d.n;bi++){ var until=d.T[bi]+d.D[bi]; while(j<d.m3.n&&d.m3.T[j]+d.m3.D[j]<=until) j++; map[bi]=j?inner.b2[Math.min(j-1,d.m3.n-1)]:-1; }
+      return d.buckets[tfId]={ F:inner.F, La:inner.La, Tm:inner.Tm, b2:map, source:d.m3, inner:inner };
+    }
     if(d.buckets[tfId]) return d.buckets[tfId];
     var n=d.n, T=d.T, sh=shiftedTimes(d), F=[], La=[], Tm=[], b2=new Int32Array(n).fill(-1), prev=null;
-    var intraday = tfId==='5m'||tfId==='15m'||tfId==='30m';
-    var startI = intraday ? d.m5Idx : 0;
+    var intraday = tfId==='3m'||tfId==='5m'||tfId==='15m'||tfId==='30m';
+    var startI = intraday ? (tfId==='3m'?(d.m3Idx||0):(d.m5Idx||0)) : 0;
     for(var i=startI;i<n;i++){
       var s=sh[i], day=Math.floor(s/86400), key, tm, ymd;
       switch(tfId){
+        case '3m':  key=Math.floor(T[i]/180); break;
         case '5m':  key=T[i]; break;
         case '15m': key=Math.floor(T[i]/900); break;
         case '30m': key=Math.floor(T[i]/1800); break;
@@ -220,9 +251,17 @@
     return d.buckets[tfId]={F:F,La:La,Tm:Tm,b2:b2};
   }
   function barAt(d,bk,b,cur){
-    var a=bk.F[b], z=Math.min(bk.La[b],cur), h=d.H[a], l=d.L[a];
-    for(var i=a+1;i<=z;i++){ if(d.H[i]>h) h=d.H[i]; if(d.L[i]<l) l=d.L[i]; }
-    return { time:bk.Tm[b], open:d.O[a], high:h, low:l, close:d.C[z] };
+    var src=bk.source||d, inner=bk.inner||bk, sourceCur=cur;
+    if(bk.source){ var until=d.T[cur]+d.D[cur]; sourceCur=lowerBound(src.T,until,src.n)-1; }
+    var a=inner.F[b], z=Math.min(inner.La[b],sourceCur), h=src.H[a], l=src.L[a];
+    for(var i=a+1;i<=z;i++){ if(src.H[i]>h) h=src.H[i]; if(src.L[i]<l) l=src.L[i]; }
+    return { time:inner.Tm[b], open:src.O[a], high:h, low:l, close:src.C[z] };
+  }
+  function bucketOpenTime(d,bk,b){ return (bk.source||d).T[(bk.inner||bk).F[b]]; }
+  function bucketEndIndex(d,bk,b){
+    if(!bk.source) return bk.La[b];
+    var src=bk.source, end=src.T[bk.La[b]]+src.D[bk.La[b]];
+    return Math.max(0,lowerBound(d.T,end,d.n)-1);
   }
 
   /* ---------- UI build ---------- */
@@ -265,7 +304,7 @@
         '<button class="rp-btn" id="rpHideDate" type="button" title="Hide dates on the chart">Hide dates</button>'+
         '<button class="rp-btn" id="rpFsBtn" type="button" title="Browser full screen"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg></button>'+
       '</div>'+
-      '<div class="rp-chart-card"><div class="rp-legend" id="rpLegend"></div><div id="rpChart"></div><div class="rp-banner" id="rpBanner"></div><div class="rp-toast" id="rpToast"></div>'+
+      '<div class="rp-chart-card"><div class="rp-legend" id="rpLegend"></div><div class="rp-tf-overlay" id="rpTfOverlay" aria-live="polite" aria-hidden="true"><span class="rp-tf-overlay-value" id="rpTfOverlayValue"></span><span class="rp-tf-overlay-hint">Enter — применить · Esc — отмена</span></div><div id="rpChart"></div><div class="rp-banner" id="rpBanner"></div><div class="rp-toast" id="rpToast"></div>'+
         '<div class="rp-trade" id="rpTrade">'+
           '<div class="rp-trade-head"><span>Trade</span><button class="rp-mini" id="rpTradeToggle" type="button" title="Collapse / expand"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5 5 6.5 8 3.5"/></svg></button></div>'+
           '<div class="rp-collapse is-open" id="rpPanelWrap"><div class="rp-collapse-in"><div class="rp-trade-body">'+
@@ -557,7 +596,7 @@
         modelOptions();
         var info=assetInfo(asset), chip=$('rpAssetChip'); chip.style.setProperty('--rp-color',info.color); chip.querySelector('span').textContent=asset;
         S.series.applyOptions({ priceFormat:{ type:'price', precision:d.dp, minMove:Math.pow(10,-d.dp) } });
-        S.tf = tf || '1D'; if(S.tf==='5m'||S.tf==='15m'||S.tf==='30m'){ if(!(d.m5Start&&cur>=d.m5Idx)) S.tf='1D'; }
+        S.tf = tf || '1D'; if(S.tf==='3m'&&!(d.m3&&d.m3Start&&d.T[cur]>=d.m3Start)) S.tf='1D'; if((S.tf==='5m'||S.tf==='15m'||S.tf==='30m')&&!(d.m5Start&&cur>=d.m5Idx)) S.tf='1D';
         S.sess.pos.slice().forEach(function(p){if(p.pendingClose)finishTrade(p,p.pendingClose.exit,p.pendingClose.reason,p.pendingClose.time);});
         updateTfButtons(); fullRefresh(false); saveSession(); reveal(); renderTrade(true);
       }).catch(function(err){
@@ -630,18 +669,25 @@
   function hideBanner(){ var b=$('rpBanner'); if(b) b.classList.remove('is-visible'); }
 
   /* ---------- timeframes ---------- */
+  function isTfAvailable(id,s){
+    s=s||S.sess; if(!s) return false;
+    if(id==='3m') return !!(s.d.m3&&s.d.m3Start&&s.d.T[s.cur]>=s.d.m3Start);
+    if(id==='5m'||id==='15m'||id==='30m') return !!(s.d.m5Start&&s.cur>=s.d.m5Idx);
+    return true;
+  }
   function updateTfButtons(){
-    var s=S.sess; var m5ok = !!(s && s.d.m5Start && s.cur>=s.d.m5Idx);
+    var s=S.sess;
     document.querySelectorAll('#rpTfs button').forEach(function(b){
-      var id=b.getAttribute('data-tf'), t=TFS.filter(function(x){return x.id===id;})[0];
-      var off=t.intraday&&!m5ok;
-      b.disabled=off; b.title=off?'5m / 15m / 30m are unavailable for this period (M5 data starts in 2013)':'';
+      var id=b.getAttribute('data-tf'), off=!isTfAvailable(id,s);
+      b.disabled=off; b.title=off?(id==='3m'?'3m data is not published for this archive yet':'Intraday data starts in 2013'):'';
       b.classList.toggle('is-on',id===S.tf);
     });
     updateStepBtn();
   }
   function setTF(id){
-    var s=S.sess; if(!s) return; cancelAnim(); S.tf=id; updateTfButtons(); fullRefresh(false); saveSession();
+    var s=S.sess; if(!s) return;
+    if(!isTfAvailable(id,s)){ toast(id==='3m'?'3m data is not published for this archive yet':'This timeframe is unavailable for the selected period','warn'); return; }
+    cancelAnim(); S.tf=id; updateTfButtons(); fullRefresh(false); saveSession();
   }
 
   /* ---------- stepping ---------- */
@@ -649,7 +695,7 @@
     var s=S.sess, bk=buckets(s.d,tfId), b=bk.b2[s.cur];
     if(b<0) return s.cur+1;
     if(bk.La[b]<=s.cur) b++;
-    return bk.La[Math.min(b,bk.La.length-1)];
+    return bucketEndIndex(s.d,bk,Math.min(b,bk.La.length-1));
   }
   function advanceTo(target){
     var s=S.sess; if(!s||s.cur>=s.endIdx) return; cancelAnim();
@@ -664,6 +710,7 @@
   /* the step is independent of the chart timeframe; 'auto' follows it. Intraday steps fall back to 1H where there is no M5 data. */
   function stepTfEff(){
     var id=S.stepTf==='auto'?S.tf:S.stepTf, ss=S.sess;
+    if(id==='3m'&&!(ss&&isTfAvailable('3m',ss))) id='1h';
     if((id==='5m'||id==='15m'||id==='30m')&&!(ss&&ss.d.m5Start&&ss.cur>=ss.d.m5Idx)) id='1h';
     return id;
   }
@@ -728,9 +775,9 @@
     });
   }
   function openStepMenu(){
-    var s=S.sess, m5ok=!!(s&&s.d.m5Start&&s.cur>=s.d.m5Idx);
+    var s=S.sess;
     var items=[{ v:'auto', label:'Auto', sub:tfLabel(S.tf), sel:S.stepTf==='auto' }].concat(TFS.map(function(t){
-      var off=t.intraday&&!m5ok; return { v:t.id, label:t.label, sel:S.stepTf===t.id, disabled:off, tip:off?'5m / 15m / 30m are unavailable for this period':'' };
+      var off=!isTfAvailable(t.id,s); return { v:t.id, label:t.label, sel:S.stepTf===t.id, disabled:off, tip:off?(t.id==='3m'?'3m data is not published for this archive yet':'Intraday data starts in 2013'):'' };
     }));
     openMenu('step',$('rpStepBtn'),'Simulation step',items,function(v){ S.stepTf=v; saveCtl(); updateCtlButtons(); });
   }
@@ -749,6 +796,26 @@
       S.tz=v; saveCtl(); applyTz();
     });
   }
+  function renderTfInput(){
+    var ov=$('rpTfOverlay'), val=$('rpTfOverlayValue'); if(!ov||!val) return;
+    var active=!!S.tfInput; val.textContent=active?S.tfInput:''; ov.classList.toggle('is-visible',active); ov.setAttribute('aria-hidden',active?'false':'true');
+  }
+  function cancelTfInput(){ if(S.tfInput){ S.tfInput=''; renderTfInput(); } }
+  function commitTfInput(){
+    var raw=S.tfInput; if(!raw) return;
+    var id=normalizeTfInput(raw); cancelTfInput();
+    if(!id){ toast('Unknown timeframe: '+raw,'warn'); return; }
+    setTF(id);
+  }
+  function appendTfInput(key){
+    if(!tfInputAllowedKey(key)) return false;
+    var current=S.tfInput||'';
+    if(/[mhdwM]/.test(key)&&/[mhdwM]/.test(current)) return true;
+    if(/\d/.test(key)&&/[mhdwM]/.test(current)) return true;
+    if(/\d/.test(key)&&current.length>=TF_INPUT_MAX) return true;
+    if(/[mhdwM]/.test(key)&&!/\d/.test(current.charAt(0))) return true;
+    S.tfInput=current+key; renderTfInput(); return true;
+  }
   function openModelMenu(){
     var cur=$('rpModel').value;
     openMenu('model',$('rpModelBtn'),'Model',(S.models||[]).map(function(m){ return { v:m.id, label:m.name, sel:m.id===cur }; }),function(v){ setModel(v); });
@@ -761,6 +828,13 @@
   function onKey(e){
     if(!S.mode||S.set||S.save) return;
     var target=e.target, tag=(target&&target.tagName)||'';
+    if(S.tfInput){
+      if(e.key==='Escape'){ e.preventDefault(); cancelTfInput(); return; }
+      if(e.key==='Backspace'){ e.preventDefault(); S.tfInput=S.tfInput.slice(0,-1); if(!S.tfInput) cancelTfInput(); else renderTfInput(); return; }
+      if(e.key==='Enter'){ e.preventDefault(); commitTfInput(); return; }
+      if(!e.ctrlKey&&!e.altKey&&!e.metaKey&&!e.shiftKey&&appendTfInput(e.key)){ e.preventDefault(); return; }
+      return;
+    }
     if(e.ctrlKey&&!e.altKey&&!e.metaKey&&!e.shiftKey&&e.key==='ArrowUp'){
       if(e.defaultPrevented||e.isComposing||!S.sess||!S.sess.draft||S.menuFor||S.rewind||S.drag||(S.dr&&(S.dr.op||S.dr.place||S.dr.pop))) return;
       // Allow confirmation from the draft's price fields, not from unrelated editors.
@@ -770,6 +844,7 @@
       return;
     }
     if(/INPUT|SELECT|TEXTAREA/.test(tag)||(target&&target.isContentEditable)) return;
+    if(!e.ctrlKey&&!e.altKey&&!e.metaKey&&!e.shiftKey&&appendTfInput(e.key)){ e.preventDefault(); return; }
     if(e.key==='Escape'){ if(S.menuFor) closeMenu(); else if(S.rewind) setRewind(false); else if(S.sess&&drEsc()){} else if(S.sess) cancelDraft(); else exitWorkspace(false); return; }
     if(!S.sess) return;
     if(drKey(e)) return;
@@ -1269,7 +1344,7 @@
   function doRewind(tg){
     var s=S.sess; if(!s) return;
     if(tg.last){ toast('This is the current candle — nothing to cut.','warn'); return; }
-    var bk=buckets(s.d,S.tf), newCur=bk.La[tg.b];
+    var bk=buckets(s.d,S.tf), newCur=bucketEndIndex(s.d,bk,tg.b);
     if(newCur<s.startIdx){ toast('You can only cut inside the selected period.','warn'); return; }
     cancelAnim();
     var lr=S.chart.timeScale().getVisibleLogicalRange(), w=lr?(lr.to-lr.from):160, oldIdx=tg.b-S.dispFrom;
@@ -1382,7 +1457,7 @@
   function fvgClosed(d,bk,b,cur,tf){
     if(b<0||bk.La[b]>cur) return false;
     if(b+1<bk.F.length&&bk.F[b+1]<=cur) return true;
-    var t=d.T[bk.F[b]], end=d.T[cur]+d.D[cur], step={ '5m':300,'15m':900,'30m':1800,'1h':3600 }[tf];
+    var t=bucketOpenTime(d,bk,b), end=d.T[cur]+d.D[cur], step={ '3m':180,'5m':300,'15m':900,'30m':1800,'1h':3600 }[tf];
     if(step) return end>=Math.floor(t/step)*step+step;
     var sh=t-nyOff(t)*3600+25200, es=end-nyOff(end-1)*3600+25200, day=Math.floor(sh/86400), boundary;
     if(tf==='4h') boundary=Math.floor(sh/14400)*14400+14400;
@@ -1438,7 +1513,7 @@
   /* ---------- trading sessions indicator (Asia / Frankfurt / London / New York) ----------
      Settings live in S.style.sess (kept per account in the prefs document, not in chart templates).
      Session times are stored in UTC minutes; the settings window shows them in the chosen time zone (no daylight saving). */
-  var SESS_TFS={ '5m':1, '15m':1, '30m':1, '1h':1, '4h':1 };
+  var SESS_TFS={ '3m':1, '5m':1, '15m':1, '30m':1, '1h':1, '4h':1 };
   var SESS_DAYS=420;
   var SESS_TZ=[ { id:'UTC', name:'UTC', off:0 }, { id:'TYO', name:'Tokyo (UTC+9)', off:540 }, { id:'MSK', name:'Moscow (UTC+3)', off:180 } ];
   var SESS_STYLES=[ { id:'box', name:'Box' }, { id:'solid', name:'Solid' } ];
@@ -1512,7 +1587,7 @@
     var C=sessInstances(); if(!C) return;
     var ts=S.chart.timeScale(), a0=ts.logicalToCoordinate(0), a1=ts.logicalToCoordinate(1), vl=ts.getVisibleLogicalRange(); if(a0==null||a1==null||!vl) return;
     var ctx=sc.context, hr=sc.horizontalPixelRatio, vr=sc.verticalPixelRatio, W=sc.mediaSize.width, Hh=sc.mediaSize.height, Hb=Math.round(Hh*vr);
-    var bk=buckets(s.d,S.tf), b2=bk.b2, Tm=bk.Tm, d=s.d, intra=(S.tf==='5m'||S.tf==='15m'||S.tf==='30m'), mi=intra?s.d.m5Idx:0, lw=Math.max(1,Math.round(hr)), tfs=TFSEC[S.tf]||3600;
+    var bk=buckets(s.d,S.tf), b2=bk.b2, Tm=bk.Tm, d=s.d, intra=(S.tf==='3m'||S.tf==='5m'||S.tf==='15m'||S.tf==='30m'), mi=(S.tf==='3m'&&s.d.m3)?0:(intra?s.d.m5Idx:0), lw=Math.max(1,Math.round(hr)), tfs=TFSEC[S.tf]||3600;
     /* exact time -> fractional bar position, so a session that starts or ends inside a candle (e.g. on 4h) is drawn to scale */
     var tLg=function(i,t){ var b=b2[i], st=Math.floor(Tm[b]/tfs)*tfs, f=(t-st)/tfs; if(f<0) f=0; else if(f>1) f=1; return b-S.dispFrom-.5+f; };
     cfg.list.forEach(function(x,k){
@@ -2043,7 +2118,7 @@
   /* ================= step 5 · drawing tools (brush, line, rectangle) ================= */
   var DR_KEY='tj_replay_draw_ui';
   var DR_DEF={ ray:{ color:'#2962ff', w:2, style:'solid' }, line:{ color:'#2962ff', w:2, style:'solid' }, rect:{ color:'#2962ff', fill:'rgba(41,98,255,0.2)', w:2, style:'solid' }, brush:{ color:'#2962ff', w:3, style:'solid' } };
-  var TFSEC={ '5m':300,'15m':900,'30m':1800,'1h':3600,'4h':14400,'1D':86400,'1W':604800,'1M':2592000,'3M':7776000 };
+  var TFSEC={ '3m':180, '5m':300,'15m':900,'30m':1800,'1h':3600,'4h':14400,'1D':86400,'1W':604800,'1M':2592000,'3M':7776000 };
   var DR_TYPES={ line:1, ray:1, rect:1, brush:1 }, DR_STYLES={ solid:1, dashed:1, dotted:1 };
   S.dr={ tool:'cursor', pan:false, lastE:null, crossSet:false, xr:0, sel:[], undo:[], redo:[], place:null, op:null, marq:null, snap:null, hideAll:false, capture:false, lastKey:'', lastAt:0, tm:null, pop:null, listen:false, scrollOff:false,
          ui:{ tools:null, props:null }, def:JSON.parse(JSON.stringify(DR_DEF)) };
