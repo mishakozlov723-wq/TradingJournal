@@ -442,7 +442,7 @@
   }
   function activeDone(s){ return inM3(s)?s.m3Cur>=s.m3EndIdx:s.cur>=s.endIdx; }
   function sessionDone(s){ return activeDone(s); }
-  function sessionEmpty(s){ return activeIndex(s)<=s.startIdx&&!s.btId&&!(s.pos&&s.pos.length)&&!(s.drawings&&s.drawings.length); }
+  function sessionEmpty(s){ return activeIndex(s)<=(inM3(s)?s.m3StartIdx:s.startIdx)&&!s.btId&&!(s.pos&&s.pos.length)&&!(s.drawings&&s.drawings.length); }
   function stateOf(s){
     var d=activeData(s), i=activeIndex(s), mx=inM3(s)?s.m3Cur:Math.max(s.maxIdx,s.cur);
     return { sid:s.sid, asset:s.asset, startTs:s.startTs, endTs:s.endTs, curT:d.T[i], tf:S.tf, btId:s.btId||null, pos:s.pos||[], maxT:d.T[mx] };
@@ -679,7 +679,7 @@
     var d=s.d, ad=activeData(s), i=activeIndex(s), endT=activeEnd(s);
     var days=Math.max(0,Math.floor((endT-s.startTs)/86400)), total=Math.round((s.endTs-s.startTs)/86400)+1;
     var mxI=inM3(s)?s.m3Cur:Math.max(s.maxIdx,i), mxD=inM3(s)?s.d.m3:d, mxT=mxD.T[mxI]+mxD.D[mxI], mxDays=Math.min(total,Math.max(0,Math.floor((mxT-s.startTs)/86400)));
-    $('rpDayText').innerHTML='<b>'+Math.min(days,total)+'</b> of '+total+' days'+(s.maxIdx>i?' <span class="rp-warn">Â· max '+mxDays+'</span>':'');
+    $('rpDayText').innerHTML='<b>'+Math.min(days,total)+'</b> of '+total+' days'+((inM3(s)?s.m3Cur:Math.max(s.maxIdx,i))>i?' <span class="rp-warn">Â· max '+mxDays+'</span>':'');
     $('rpDateText').textContent=S.hideDate?'â¢â¢â¢â¢ â â¢â¢ â â¢â¢':fmtTz(ad.T[i],true)+' '+tzTag(endT);
     var done=activeDone(s), pct=Math.min(100,Math.max(0,(endT-s.startTs)/(s.endTs+86400-s.startTs)*100));
     $('rpProgressFill').style.width=pct.toFixed(1)+'%';
@@ -1018,7 +1018,7 @@
     if(b&&s.btId&&b.ready()&&!b.getBacktest(s.btId)){ var keep=s.closed; s.btId=null; if(ensureBacktest()) s.closed=keep; else { s.closed=keep; s.btId=null; } }
     if(b&&s.btId){
       rec=b.addTrade(s.btId,{ id:close.id, asset:s.asset, direction:p.dir>0?'LONG':'SHORT', openDT:dtStr(p.openT), closeDT:dtStr(closeT), r:r, riskPercent:p.riskPct, modelId:p.modelId,
-        source:'replay', entry:p.entry, sl:p.sl, tp:p.tp==null?null:p.tp, exit:exitPrice, exitReason:reason, openTs:p.openT, closeTs:closeT, afterRewind:!!p.ar, seenUntilTs:p.ar?(s.d.T[s.maxIdx]+s.d.D[s.maxIdx]):null });
+        source:'replay', entry:p.entry, sl:p.sl, tp:p.tp==null?null:p.tp, exit:exitPrice, exitReason:reason, openTs:p.openT, closeTs:closeT, afterRewind:!!p.ar, seenUntilTs:p.ar?(inM3(s)?s.d.m3.T[s.m3Cur]+s.d.m3.D[s.m3Cur]:s.d.T[s.maxIdx]+s.d.D[s.maxIdx]):null });
     }
     if(!rec){saveSession();toast('Close not saved. Position and exit intent are kept; free local storage and retry.','bad');return null;}
     s.pos=s.pos.filter(function(x){return x!==p;});
@@ -1155,9 +1155,9 @@
   /* chart overlay: TradingView-style boxes (series primitive) + dragging of entry / SL / TP */
   function requestDraw(){ if(S.primReq) S.primReq(); }
   function xOfTs(ts){
-    var s=S.sess, d=s.d; if(ts==null) return null;
-    var idx=lowerBound(d.T,ts+1,d.n)-1; if(idx<0) return null; if(idx>s.cur) idx=s.cur;
-    var bk=buckets(d,S.tf), b=bk.b2[idx]; if(b<0) return -50;
+    var s=S.sess, d=s.d, src=inM3(s)?s.d.m3:d, cur=activeIndex(s); if(ts==null) return null;
+    var idx=lowerBound(src.T,ts+1,src.n)-1; if(idx<0) return null; if(idx>cur) idx=cur;
+    var bk=inM3(s)?buckets(src,'3m'):buckets(d,S.tf), b=bk.b2[idx]; if(b<0) return -50;
     if(b<S.dispFrom) return -50;
     var x=S.chart.timeScale().timeToCoordinate(bk.Tm[b]); return x==null?null:x;
   }
@@ -1358,8 +1358,8 @@
   function rewindTargetAt(e){
     var s=S.sess; if(!s||!S.chart) return null;
     var x=e.clientX-$('rpChart').getBoundingClientRect().left, t=S.chart.timeScale().coordinateToTime(x); if(t==null) return null;
-    var bk=buckets(s.d,S.tf), b=lowerBound(bk.Tm,t,bk.Tm.length); if(b>=bk.Tm.length||bk.Tm[b]!==t) return null;
-    var cb=bk.b2[s.cur]; if(b>cb) return null;
+    var d=inM3(s)?s.d.m3:s.d, bk=inM3(s)?buckets(d,'3m'):buckets(s.d,S.tf), b=lowerBound(bk.Tm,t,bk.Tm.length); if(b>=bk.Tm.length||bk.Tm[b]!==t) return null;
+    var cb=activeBucket(s); if(b>cb) return null;
     var cx=S.chart.timeScale().timeToCoordinate(t); if(cx==null) return null;
     return { b:b, t:t, x:cx, last:b===cb };
   }
@@ -1396,22 +1396,28 @@
   function doRewind(tg){
     var s=S.sess; if(!s) return;
     if(tg.last){ toast('This is the current candle â nothing to cut.','warn'); return; }
-    var bk=buckets(s.d,S.tf), newCur=bucketEndIndex(s.d,bk,tg.b);
-    if(newCur<s.startIdx){ toast('You can only cut inside the selected period.','warn'); return; }
+    var m3=inM3(s), d=m3?s.d.m3:s.d, bk=m3?buckets(d,'3m'):buckets(s.d,S.tf);
+    var newCur=m3?bk.La[tg.b]:bucketEndIndex(s.d,bk,tg.b);
+    if(newCur<(m3?s.m3StartIdx:s.startIdx)){ toast('You can only cut inside the selected period.','warn'); return; }
     cancelAnim();
     var lr=S.chart.timeScale().getVisibleLogicalRange(), w=lr?(lr.to-lr.from):160, oldIdx=tg.b-S.dispFrom;
     if(s.cur>s.maxIdx) s.maxIdx=s.cur;
-    s.cur=newCur; s.draft=null;
+    if(m3){
+      s.m3Cur=newCur;
+      var mt=d.T[newCur]+d.D[newCur];
+      s.cur=Math.min(s.endIdx,Math.max(s.startIdx,lowerBound(s.d.T,mt,s.d.n)-1));
+    } else s.cur=newCur;
+    s.draft=null;
     var now=nowT(), dropped=0;
     s.pos=s.pos.filter(function(p){ var t=p.status==='open'?p.openT:p.placedT; if(t>now){ dropped++; return false; } return true; });
     setRewind(false); stopPlay();
     fullRefresh(true);
-    var b2=buckets(s.d,S.tf).b2[s.cur], len=b2-S.dispFrom+1, fin={ from:len+14-w, to:len+14 };
+    var b2=activeBucket(s), len=b2-S.dispFrom+1, fin={ from:len+14-w, to:len+14 };
     /* like TradingView: the chart first stays put with the chosen candle where it was, then glides so the last candle sits at the right edge */
     if(lr){ var sh=(len-1)-oldIdx; animateRange({ from:lr.from+sh, to:lr.to+sh },fin,200,500); }
     else S.chart.timeScale().setVisibleLogicalRange(fin);
     saveSession(); renderTrade(true); requestDraw();
-    toast('Chart cut at '+(S.hideDate?'the selected candle':fmtTz(s.d.T[s.cur],true)+' '+tzTag(s.d.T[s.cur]))+(dropped?' Â· orders/positions cancelled: '+dropped:''),'warn');
+    toast('Chart cut at '+(S.hideDate?'the selected candle':fmtTz(activeStart(s),true)+' '+tzTag(activeStart(s)))+(dropped?' Â· orders/positions cancelled: '+dropped:''),'warn');
   }
 
   /* cursor shapes: position levels / right edge (pcur-*) and drawings (dcur-*) are separate class sets on the chart */
@@ -1520,18 +1526,19 @@
   }
   function fvgInstances(){
     var s=S.sess; if(!s) return null;
-    var d=s.d, bk=buckets(d,S.tf), last=bk.b2[s.cur];
-    if(!fvgClosed(d,bk,last,s.cur,S.tf)) last--;
+    var m3=inM3(s), d=m3?s.d.m3:s.d, tf=m3?'3m':S.tf, bk=buckets(d,tf), last=bk.b2[m3?s.m3Cur:s.cur];
+    if(!fvgClosed(d,bk,last,m3?s.m3Cur:s.cur,tf)) last--;
     var C=S.fvgC;
-    if(!C||C.s!==s||C.tf!==S.tf||s.cur<C.cur) C=S.fvgC={ s:s, tf:S.tf, cur:-1, last:1, zones:[] };
+    var cursor=m3?s.m3Cur:s.cur, sourceKey=m3?d:s.d;
+    if(!C||C.s!==s||C.tf!==tf||C.source!==sourceKey||cursor<C.cur) C=S.fvgC={ s:s, tf:tf, source:sourceKey, cur:-1, last:1, zones:[] };
     // Visible candles have at most 3500 intraday/hourly bars; retain their complete history.
     var first=Math.max(2,(S.dispFrom||0));
     for(var b=Math.max(first,C.last+1);b<=last;b++){
-      var a=barAt(d,bk,b-2,s.cur), z=barAt(d,bk,b,s.cur);
+      var a=barAt(d,bk,b-2,cursor), z=barAt(d,bk,b,cursor);
       if(a.high<z.low) C.zones.push({ first:b-2, last:b, low:a.high, high:z.low, up:true });
       else if(a.low>z.high) C.zones.push({ first:b-2, last:b, low:z.high, high:a.low, up:false });
     }
-    C.last=Math.max(C.last,last); C.cur=s.cur; return C;
+    C.last=Math.max(C.last,last); C.cur=cursor; return C;
   }
   function drawImbalances(sc){
     var cfg=S.style&&S.style.fvg; if(!cfg||!cfg.on||!S.sess||!S.chart||!S.series) return;
@@ -1616,16 +1623,17 @@
   }
   function sessInstances(){
     var s=S.sess, cfg=sessCfg(); if(!s) return null;
-    var d=s.d, sig=cfg.list.map(function(x){ return (x.show?1:0)+':'+x.from+':'+x.to; }).join('|'), C=S.sessC;
-    if(!C||C.s!==s||C.d!==d||C.sig!==sig||s.cur<C.cur) C=S.sessC={ s:s, d:d, sig:sig, cur:-1, arr:cfg.list.map(function(){ return []; }) };
-    if(C.cur<s.cur){
-      var base=C.cur<0?lowerBound(d.T,d.T[s.cur]-SESS_DAYS*86400,s.cur+1):C.cur+1;
+    var m3=inM3(s), d=m3?s.d.m3:s.d, cursor=m3?s.m3Cur:s.cur;
+    var sig=(m3?'3m:':'base:')+cfg.list.map(function(x){ return (x.show?1:0)+':'+x.from+':'+x.to; }).join('|'), C=S.sessC;
+    if(!C||C.s!==s||C.d!==d||C.sig!==sig||cursor<C.cur) C=S.sessC={ s:s, d:d, sig:sig, cur:-1, arr:cfg.list.map(function(){ return []; }) };
+    if(C.cur<cursor){
+      var base=C.cur<0?lowerBound(d.T,d.T[cursor]-SESS_DAYS*86400,cursor+1):C.cur+1;
       cfg.list.forEach(function(x,k){
         if(!x.show) return; var arr=C.arr[k], st=base;
         if(arr.length) st=arr.pop().i0;
-        sessScan(d,x,arr,st,s.cur);
+        sessScan(d,x,arr,st,cursor);
       });
-      C.cur=s.cur;
+      C.cur=cursor;
     }
     return C;
   }
@@ -1639,7 +1647,7 @@
     var C=sessInstances(); if(!C) return;
     var ts=S.chart.timeScale(), a0=ts.logicalToCoordinate(0), a1=ts.logicalToCoordinate(1), vl=ts.getVisibleLogicalRange(); if(a0==null||a1==null||!vl) return;
     var ctx=sc.context, hr=sc.horizontalPixelRatio, vr=sc.verticalPixelRatio, W=sc.mediaSize.width, Hh=sc.mediaSize.height, Hb=Math.round(Hh*vr);
-    var bk=buckets(s.d,S.tf), b2=bk.b2, Tm=bk.Tm, d=s.d, intra=(S.tf==='3m'||S.tf==='5m'||S.tf==='15m'||S.tf==='30m'), mi=(S.tf==='3m'&&s.d.m3)?0:(intra?s.d.m5Idx:0), lw=Math.max(1,Math.round(hr)), tfs=TFSEC[S.tf]||3600;
+    var m3=inM3(s), d=m3?s.d.m3:s.d, chartTf=m3?'3m':S.tf, bk=buckets(d,chartTf), b2=bk.b2, Tm=bk.Tm, intra=(chartTf==='3m'||chartTf==='5m'||chartTf==='15m'||chartTf==='30m'), mi=intra?(m3?0:s.d.m5Idx):0, lw=Math.max(1,Math.round(hr)), tfs=TFSEC[chartTf]||3600;
     /* exact time -> fractional bar position, so a session that starts or ends inside a candle (e.g. on 4h) is drawn to scale */
     var tLg=function(i,t){ var b=b2[i], st=Math.floor(Tm[b]/tfs)*tfs, f=(t-st)/tfs; if(f<0) f=0; else if(f>1) f=1; return b-S.dispFrom-.5+f; };
     cfg.list.forEach(function(x,k){
@@ -2131,8 +2139,8 @@
   function candleAt(x,y){
     var s=S.sess; if(!s||!S.chart||!S.series) return false;
     var ts=S.chart.timeScale(), lg=ts.coordinateToLogical(x); if(lg==null) return false;
-    var bk=buckets(s.d,S.tf), cb=bk.b2[s.cur], b=S.dispFrom+Math.round(lg); if(b<S.dispFrom||b>cb) return false;
-    var bar=barAt(s.d,bk,b,s.cur), cx=ts.timeToCoordinate(bk.Tm[b]); if(cx==null) return false;
+    var d=inM3(s)?s.d.m3:s.d, tf=inM3(s)?'3m':S.tf, bk=buckets(d,tf), cb=activeBucket(s), b=S.dispFrom+Math.round(lg); if(b<S.dispFrom||b>cb) return false;
+    var bar=barAt(d,bk,b,inM3(s)?s.m3Cur:s.cur), cx=ts.timeToCoordinate(bk.Tm[b]); if(cx==null) return false;
     var bs=ts.options().barSpacing||6; if(Math.abs(x-cx)>Math.max(3,bs*0.42)) return false;
     var yh=S.series.priceToCoordinate(bar.high), yl=S.series.priceToCoordinate(bar.low); if(yh==null||yl==null) return false;
     return y>=Math.min(yh,yl)-3&&y<=Math.max(yh,yl)+3;
@@ -2520,6 +2528,10 @@
     var p=evPos(e); if(!drInPlot(p)) return;
     drClosePop(); var tool=D.tool, q;
     if(D.place){ drStop(e); drPlaceFinish(e,p); return; }
+    /* Shift+Ctrl/Cmd is reserved for fast chart navigation. Do not let the
+       drawing layer turn it into a measure/marquee gesture halfway through a
+       drag; Lightweight Charts keeps ownership of the pointer movement. */
+    if(tool==='cursor'&&e.shiftKey&&(e.ctrlKey||e.metaKey)){ D.fastPan=true; return; }
     if(tool==='cursor'&&e.shiftKey){
       q=drMeasurePoint(p); if(!q) return; drStop(e); D.snap=null; D.op={kind:'measure',a:q,b:q}; drBegin(); requestDraw(); return;
     }
@@ -2945,7 +2957,7 @@
       var p=evPos(e), h=drInPlot(p)?drHitAt(p):null;
       if(h){ e.preventDefault(); e.stopImmediatePropagation(); if(D.sel.indexOf(h.id)<0){ D.sel=[h.id]; drSync(); requestDraw(); } }
     },true);
-    document.addEventListener('pointerup',function(){ S.dr.capture=false; },true);
+    document.addEventListener('pointerup',function(){ S.dr.capture=false; S.dr.fastPan=false; },true);
   }
   /* keyboard: Delete, Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z â returns true when handled */
   function drKey(e){
