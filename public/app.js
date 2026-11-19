@@ -2723,6 +2723,7 @@
       var rrCountEl = document.getElementById('backtestRRCount');
       if (rrCountEl) rrCountEl.textContent = backtestTrades.length + (backtestTrades.length === 1 ? ' value' : ' values');
       var filteredBacktestTrades = filterBacktestTradesByModel(backtestTrades);
+      window.BacktestInsights.update(bt, filteredBacktestTrades, function(){ renderBacktestChart(backtestTrades); });
       var s = computeStats(filteredBacktestTrades);
       document.getElementById('backtestTradeCount').textContent = s.total + ' trade' + (s.total === 1 ? '' : 's');
       document.getElementById('backtestTotalRR').textContent = fmtPercent(s.totalPercent); document.getElementById('backtestTotalRR').style.color = s.totalPercent >= 0 ? 'var(--green)' : 'var(--red)';

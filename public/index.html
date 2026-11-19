@@ -16,13 +16,13 @@
 <link rel="manifest" href="site.webmanifest">
 <meta name="theme-color" content="#000000">
 <link rel="stylesheet" href="accounts-space.css?v=2cf295ae18">
-<link rel="stylesheet" href="replay-space.css?v=f1fa586474">
+<link rel="stylesheet" href="replay-space.css?v=86c477a923">
 <script>
 /* v3.43: Accounts and Replay are not needed to show the journal, so their code
    (~450 KB) loads right after the page is ready instead of before it. Their menu
    entries stay hidden until the code has loaded, exactly as before. */
 (function(){
-  var files=['accounts-config.js?v=af5df91544','accounts-space.js?v=5730b0c50a','vendor/lightweight-charts.js?v=e21cc5caa0','replay-data-config.js?v=da53d8be61','replay-space.js?v=3f01a35691'];
+  var files=['accounts-config.js?v=af5df91544','accounts-space.js?v=5730b0c50a','vendor/lightweight-charts.js?v=e21cc5caa0','replay-data-config.js?v=da53d8be61','replay-space.js?v=d8f16bf65e'];
   var started=false;
   function next(i){
     if(i>=files.length)return;
@@ -69,7 +69,7 @@
     } catch (e) {}
   })();
 </script>
-<link rel="stylesheet" href="app.css?v=22427647c7">
+<link rel="stylesheet" href="app.css?v=29a7291202">
 
 
 
@@ -687,7 +687,7 @@ separated by commas or new lines"></textarea>
         <div class="backtest-preview-panel">
           <div class="backtest-preview-card" id="backtestPreviewCard">
             <div class="backtest-preview-brand-row"><span class="backtest-preview-dot"></span><span class="backtest-preview-brand-title">Backtest Statistics</span><span class="backtest-preview-brand-sub" id="backtestDaysTestedDisplay"></span><button class="backtest-export-btn" id="backtestExportBtn" type="button"><span class="backtest-export-btn-label">Export PNG</span></button></div>
-            <div class="card" style="margin-bottom:0;"><div class="row" style="margin-bottom:10px;"><div class="backtest-equity-title"><div class="card-title" style="margin-bottom:0;">Equity Curve</div><span class="backtest-model-summary" id="backtestModelSummary" hidden></span></div><div class="card-sub mono" id="backtestTradeCount">0 trades</div></div><div class="chart-wrap"><div class="empty-chart" id="backtestEmptyChart">Paste your trade list on the left to see the equity curve</div><svg class="backtest-chart" id="backtestChart" style="display:none;"></svg></div></div>
+            <div class="card" style="margin-bottom:0;"><div class="row" style="margin-bottom:10px;"><div class="backtest-equity-title"><div class="bt-replay-seg bt-view-select" role="group" aria-label="Statistics view"><button type="button" id="btEquityView" aria-pressed="true" class="is-on">Equity Curve</button><button type="button" id="btMonthlyView" aria-pressed="false">Monthly Statistics</button></div><span class="backtest-model-summary" id="backtestModelSummary" hidden></span></div><div class="card-sub mono" id="backtestTradeCount">0 trades</div></div><div class="bt-insight-plot" id="btMonthlyPlot" hidden></div><div class="chart-wrap" id="btEquityPlot"><div class="empty-chart" id="backtestEmptyChart">Paste your trade list on the left to see the equity curve</div><svg class="backtest-chart" id="backtestChart" style="display:none;"></svg></div></div>
             <div class="top-stats">
               <div class="stat-card"><div class="stat-label">Total Gain (%)</div><div class="stat-value mono" id="backtestTotalRR">0.0%</div><div class="stat-sub" id="backtestTotalRRSub">0 trades</div></div>
               <div class="stat-card"><div class="stat-label">Win Rate</div><div class="stat-value mono" id="backtestWinRate">0.0%</div><div class="stat-sub" id="backtestWinRateSub">0W / 0L</div></div>
@@ -716,6 +716,7 @@ separated by commas or new lines"></textarea>
                 </div>
               </div>
             </div>
+            <details id="btDrawdown" class="bt-dd"><summary>Drawdown <span id="btDrawdownMax" class="mono"></span></summary><div id="btDrawdownPlot" class="bt-insight-plot"></div></details>
           </div>
         </div>
       </div>
@@ -1528,7 +1529,8 @@ separated by commas or new lines"></textarea>
   var db = firebase.firestore();
 </script>
 <script src="calendar-navigation.js?v=c24a235c35"></script>
-<script src="app.js?v=bad9d54893"></script>
+<script src="backtest-insights.js?v=8ffcde7108"></script>
+<script src="app.js?v=1fdc3cc374"></script>
 <script src="trade-media.js?v=b4c9d17a13"></script>
 <script src="desktop-autologin.js?v=5cd7b49cc7"></script>
 <script src="passkey-login.js?v=8d63046681"></script>
