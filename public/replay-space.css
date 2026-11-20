@@ -1,6 +1,16 @@
 /* Trading Journal — Replay Space (skeleton v1)
    Uses the journal's variables (--bg, --card, --green, --red …) so it matches the rest of the site. */
 .replay-workspace { display:none; }
+.rp-season { box-sizing:border-box; width:min(440px,calc(100vw - 32px)); max-height:85vh; padding:24px; border:1px solid var(--border,#484a50); border-radius:16px; background:var(--card,#232427); color:var(--textMain,#f2f2f2); font:inherit; }
+.rp-season::backdrop { background:rgba(10,12,16,.68); }
+.rp-season small,.rp-season p { font-size:13px; line-height:1.5; }
+.rp-season h2 { font-size:21px; margin:8px 0; }
+.rp-season dl { border-block:1px solid var(--border,#484a50); padding:8px 0; }
+.rp-season dl div { display:flex; gap:8px; justify-content:space-between; flex-wrap:wrap; margin:8px 0; }
+.rp-season dd { margin:0; font-variant-numeric:tabular-nums; font-size:14px; }
+.rp-season button { width:100%; min-height:44px; border:none; border-radius:9px; background:var(--textMain,#eee); color:var(--bg,#181818); font:inherit; cursor:pointer; }
+.rp-season button:disabled { opacity:.55; cursor:default; }
+@media(prefers-reduced-motion:no-preference){.rp-season[open]{animation:rp-season-in .18s ease-out;} @keyframes rp-season-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}}
 body.replay-workspace-mode { overflow-x:hidden; }
 body.replay-workspace-mode #journalHeader,
 body.replay-workspace-mode #journalTabs,
