@@ -772,14 +772,52 @@
     if(bk.La[b]<=s.cur) b++;
     return bucketEndIndex(s.d,bk,Math.min(b,bk.La.length-1));
   }
-  function advanceTo(target){
+  // Find the first clock change in the requested step, including weekends without bars.
+  function seasonChange(list,zone,from,to){
+    if(to<=from||Math.floor(from/3600)===Math.floor(to/3600)) return null;
+    var visible=list.filter(function(x){return x.show;}); if(!visible.length) return null;
+    function diff(a,b){
+      var ca=sessionOffset(zone,a), cb=sessionOffset(zone,b), rows=[];
+      visible.forEach(function(x){ var sa=sessionShift(x,a), sb=sessionShift(x,b);
+        if(sa!==sb||ca!==cb) rows.push({x:x,before:sa+ca,after:sb+cb,market:sa!==sb,summer:sb<sa}); });
+      return rows;
+    }
+    for(var a=from;a<to;){ var b=Math.min(a+604800,to), rows=diff(a,b);
+      if(rows.length){ var lo=Math.floor(a/3600), hi=Math.floor(b/3600);
+        while(hi-lo>1){var mid=Math.floor((hi+lo)/2); if(diff(a,mid*3600).length) hi=mid; else lo=mid;}
+        return {at:hi*3600,rows:diff(hi*3600-1,hi*3600)};
+      } a=b;
+    } return null;
+  }
+  var seasonDialog=null;
+  function seasonNotice(change,accept){
+    stopPlay(); var s=S.sess, at=change.at, dlg=document.createElement('dialog'); seasonDialog=dlg;
+    dlg.className='rp-season'; dlg.setAttribute('aria-labelledby','rpSeasonTitle');
+    var market=change.rows.find(function(r){return r.market;});
+    function range(x,shift){return sessHm(x.from+shift)+'–'+sessHm(x.to+shift);}
+    dlg.innerHTML='<small>'+esc(fmtTz(at,false))+' · '+esc(tzById(S.tz).label)+' · '+esc(tzTag(at-1)===tzTag(at)?tzTag(at):tzTag(at-1)+' → '+tzTag(at))+'</small><h2 id="rpSeasonTitle">'+(market?(market.summer?'Переход на летнее время':'Переход на зимнее время'):'Перевод часов графика')+'</h2><p>Replay на паузе. Время сессий указано в часовом поясе графика.</p><dl>'+change.rows.map(function(r){return '<div><dt>'+esc(r.x.name)+'</dt><dd>'+range(r.x,r.before)+(r.before===r.after?' (без сдвига на графике)':' → '+range(r.x,r.after))+'</dd></div>';}).join('')+'</dl><button type="button" disabled>ОК · 3 с</button>';
+    (document.fullscreenElement||document.body).appendChild(dlg); dlg.addEventListener('cancel',function(e){e.preventDefault();});
+    ['keydown','keyup'].forEach(function(type){dlg.addEventListener(type,function(e){e.stopPropagation();if(e.key==='Escape')e.preventDefault();});});
+    dlg.showModal(); var btn=dlg.querySelector('button'), ready=performance.now()+3000;
+    var timer=setInterval(function(){var n=Math.ceil((ready-performance.now())/1000); if(n>0){btn.textContent='ОК · '+n+' с';return;} clearInterval(timer);btn.disabled=false;btn.textContent='ОК';btn.focus();},100);
+    btn.onclick=function(){if(btn.disabled||performance.now()<ready)return; clearInterval(timer);dlg.close();dlg.remove();seasonDialog=null;if(S.sess===s)accept();};
+  }
+  function pendingSeason(from,to){ var cfg=S.style&&S.style.sess; return cfg&&cfg.on&&seasonChange(cfg.list,tzById(S.tz).zone,from,to); }
+  function advanceTo(target,accepted){
+    if(seasonDialog) return;
     var s=S.sess; if(!s||s.cur>=s.endIdx) return; cancelAnim();
     var b0=curBucket(), to=Math.min(Math.max(target,s.cur+1),s.endIdx), stopAt=to, evs=null;
+    var change=pendingSeason(Math.max(s.d.T[s.cur],accepted||0),s.d.T[to]);
+    if(change){var cut=lowerBound(s.d.T,change.at,to+1)-1;
+      if(cut>s.cur && (advanceTo(cut,accepted)||s.cur!==cut)) return;
+      seasonNotice(change,function(){advanceTo(target,change.at);});return;
+    }
     if(s.pos.length){ for(var i=s.cur+1;i<=to;i++){ evs=processBar(i); if(evs){ stopAt=i; break; } } }
     s.cur=stopAt; if(s.cur>s.maxIdx) s.maxIdx=s.cur;
     if(s.cur>=s.endIdx) finishPeriod();
     stepRefresh(b0); saveSession();
     if(evs){ stopPlay(); toast(evs.join('  |  '),/Stop:/.test(evs.join())?'bad':'ok'); }
+    return !!evs;
   }
   function tfLabel(id){ for(var i=0;i<TFS.length;i++) if(TFS[i].id===id) return TFS[i].label; return id; }
   /* the step is independent of the chart timeframe; 'auto' follows it. Intraday steps fall back to 1H where there is no M5 data. */
@@ -789,10 +827,13 @@
     if((id==='5m'||id==='15m'||id==='30m')&&!(ss&&ss.d.m5Start&&ss.cur>=ss.d.m5Idx)) id='1h';
     return id;
   }
-  function advance3m(){
+  function advance3m(accepted){
+    if(seasonDialog) return;
     var s=S.sess; if(!s||!isTfAvailable('3m',s)||activeDone(s)) return;
     cancelAnim();
     var b0=activeBucket(s), to=Math.min(s.m3Cur+1,s.m3EndIdx), evs=null;
+    var change=pendingSeason(Math.max(s.d.m3.T[s.m3Cur],accepted||0),s.d.m3.T[to]);
+    if(change){seasonNotice(change,function(){advance3m(change.at);});return;}
     s.m3Cur=to;
     if(s.m3MaxIdx==null||to>s.m3MaxIdx) s.m3MaxIdx=to;
     var mt=s.d.m3.T[to]+s.d.m3.D[to];
@@ -1608,14 +1649,38 @@
 
   /* ---------- trading sessions indicator (Asia / Frankfurt / London / New York) ----------
      Settings live in S.style.sess (kept per account in the prefs document, not in chart templates).
-     Session times are stored in UTC minutes; the settings window shows them in the chosen time zone (no daylight saving). */
+     Automatic windows store minutes relative to the original summer UTC schedule. */
+  var marketZones={frankfurt:['Europe/Berlin',120],london:['Europe/London',60],newyork:['America/New_York',-240]};
+  var offsetCache=new Map();
+  function sessionOffset(zone,t){
+    if(zone==='UTC') return 0;
+    var hour=Math.floor(t/3600), key=zone+':'+hour, cached=offsetCache.get(key);
+    if(cached!==undefined) return cached;
+    var p=tzParts(hour*3600,zone), offset=Date.UTC(p.year,p.month-1,p.day,p.hour,p.minute)/60000-hour*60;
+    if(offsetCache.size>=65000) offsetCache.clear();
+    offsetCache.set(key,offset); return offset;
+  }
+  function sessionShift(x,t){ var z=marketZones[x.id]; return x.seasonal&&z?z[1]-sessionOffset(z[0],t):0; }
+  function sessBoundary(x,nominal){
+    var a=nominal+60*sessionShift(x,nominal-86400), b=nominal+60*sessionShift(x,nominal+86400);
+    // Repeated wall time: use its first occurrence. Missing wall time: move forward by the gap.
+    if(a===b||a===nominal+60*sessionShift(x,a)) return a;
+    return b===nominal+60*sessionShift(x,b)?b:Math.max(a,b);
+  }
+  function sessWindow(x,t){
+    var q=Math.floor((t-60*(x.from+sessionShift(x,t)))/86400), start=q*86400+x.from*60;
+    if(sessBoundary(x,start)>t){ q--; start-=86400; }
+    else if(sessBoundary(x,start+86400)<=t){ q++; start+=86400; }
+    var e=sessBoundary(x,start+(((x.to-x.from+1440)%1440)||1440)*60);
+    return t<e?{q:q,e:e}:null;
+  }
   var SESS_TFS={ '3m':1, '5m':1, '15m':1, '30m':1, '1h':1, '4h':1 };
   var SESS_DAYS=420;
   var SESS_TZ=[ { id:'UTC', name:'UTC', off:0 }, { id:'TYO', name:'Tokyo (UTC+9)', off:540 }, { id:'MSK', name:'Moscow (UTC+3)', off:180 } ];
   var SESS_STYLES=[ { id:'box', name:'Box' }, { id:'solid', name:'Solid' } ];
   var SESS_LINES=[ { id:'dotted', name:'Dotted' }, { id:'dashed', name:'Dashed' }, { id:'solid', name:'Solid' } ];
   function sessDef(id,name,from,to,fill){
-    return { id:id, name:name, show:true, style:'box', from:from, to:to, label:'rgba(255,255,255,.85)', fill:fill, border:'rgba(255,255,255,.35)', bstyle:'dotted', hl:'rgba(255,255,255,.6)', hlstyle:'solid' };
+    return { id:id, name:name, seasonal:!!marketZones[id], show:true, style:'box', from:from, to:to, label:'rgba(255,255,255,.85)', fill:fill, border:'rgba(255,255,255,.35)', bstyle:'dotted', hl:'rgba(255,255,255,.6)', hlstyle:'solid' };
   }
   var SESS_DEF={ on:false, tz:'UTC', list:[
     sessDef('asia','Asia',1260,360,'rgba(41,98,255,.13)'),
@@ -1632,6 +1697,7 @@
       if(typeof s.show==='boolean') d.show=s.show;
       if(s.style==='box'||s.style==='solid') d.style=s.style;
       ['from','to'].forEach(function(k){ var v=s[k]; if(typeof v==='number'&&isFinite(v)) d[k]=(((Math.round(v/15)*15)%1440)+1440)%1440; });
+      d.seasonal=!!marketZones[d.id]&&(typeof s.seasonal==='boolean'?s.seasonal:(d.from===SESS_DEF.list[i].from&&d.to===SESS_DEF.list[i].to));
       ['label','fill','border','hl'].forEach(function(k){ if(parseColor(s[k])) d[k]=s[k]; });
       ['bstyle','hlstyle'].forEach(function(k){ if(typeof s[k]==='string'&&LINE_CODE[s[k]]!=null) d[k]=s[k]; });
     });
@@ -1640,28 +1706,29 @@
   function sessCfg(){ if(!S.style.sess) S.style.sess=normSess(null); return S.style.sess; }
   function sessOff(){ var t=sessCfg().tz; for(var i=0;i<SESS_TZ.length;i++) if(SESS_TZ[i].id===t) return SESS_TZ[i].off; return 0; }
   function sessHm(m){ m=((m%1440)+1440)%1440; return pad(Math.floor(m/60))+':'+pad(m%60); }
-  function sessShown(utcMin){ return (((utcMin+sessOff())%1440)+1440)%1440; }
-  function sessStore(key,shownMin){ setPath(S.style,key,(((shownMin-sessOff())%1440)+1440)%1440); }
+  function sessEditorOffset(key){ return sessOff()+sessionShift(sessCfg().list[+key.split('.')[2]],activeStart(S.sess)); }
+  function sessShown(key){ return (getPath(S.style,key)+sessEditorOffset(key)+1440)%1440; }
+  function sessStore(key,shownMin){ setPath(S.style,key,(shownMin-sessEditorOffset(key)+1440)%1440); }
 
   /* high / low of every session instance, from the base candles up to the current one only (nothing from the future) */
   function sessScan(d,x,arr,st,en,carry){
-    var sec=x.from*60, dur=(((x.to-x.from+1440)%1440)||1440)*60, cur=carry||null;
+    var cur=carry||null;
     for(var i=st;i<=en;i++){
-      var t=d.T[i], q=Math.floor((t-sec)/86400), off=t-sec-q*86400;
-      if(off>=dur) continue;
+      var w=sessWindow(x,d.T[i]); if(!w) continue;
+      var q=w.q;
       if(cur&&cur.q===q){ cur.i1=i; if(d.H[i]>cur.hi) cur.hi=d.H[i]; if(d.L[i]<cur.lo) cur.lo=d.L[i]; }
       else {
         /* a session cut short by the weekend close and carried on right after the reopening is one session, not two */
         var pv=arr[arr.length-1];
-        if(pv&&pv.i1+1===i&&d.T[pv.i1]+d.D[pv.i1]<pv.e){ pv.q=q; pv.e=q*86400+sec+dur; pv.i1=i; if(d.H[i]>pv.hi) pv.hi=d.H[i]; if(d.L[i]<pv.lo) pv.lo=d.L[i]; cur=pv; }
-        else { cur={ q:q, i0:i, i1:i, hi:d.H[i], lo:d.L[i], e:q*86400+sec+dur }; arr.push(cur); }
+        if(pv&&pv.i1+1===i&&d.T[pv.i1]+d.D[pv.i1]<pv.e){ pv.q=q; pv.e=w.e; pv.i1=i; if(d.H[i]>pv.hi) pv.hi=d.H[i]; if(d.L[i]<pv.lo) pv.lo=d.L[i]; cur=pv; }
+        else { cur={ q:q, i0:i, i1:i, hi:d.H[i], lo:d.L[i], e:w.e }; arr.push(cur); }
       }
     }
   }
   function sessInstances(){
     var s=S.sess, cfg=sessCfg(); if(!s) return null;
     var m3=inM3(s), d=m3?s.d.m3:s.d, cursor=m3?s.m3Cur:s.cur;
-    var sig=(m3?'3m:':'base:')+cfg.list.map(function(x){ return (x.show?1:0)+':'+x.from+':'+x.to; }).join('|'), C=S.sessC;
+    var sig=(m3?'3m:':'base:')+cfg.list.map(function(x){ return (x.show?1:0)+':'+Number(x.seasonal)+':'+x.from+':'+x.to; }).join('|'), C=S.sessC;
     if(!C||C.s!==s||C.d!==d||C.sig!==sig||cursor<C.cur) C=S.sessC={ s:s, d:d, sig:sig, cur:-1, arr:cfg.list.map(function(){ return []; }) };
     if(C.cur<cursor){
       var base=C.cur<0?lowerBound(d.T,d.T[cursor]-SESS_DAYS*86400,cursor+1):C.cur+1;
@@ -1836,7 +1903,13 @@
     $('rpsPane').addEventListener('click',onPaneClick);
     $('rpsPane').addEventListener('change',function(e){
       var c=e.target.closest('[data-chk]'); if(!c||!S.set) return;
-      setPath(S.style,c.getAttribute('data-chk'),!!c.checked); closePop(); applyStyle(); refreshPane();
+      var ck=c.getAttribute('data-chk');
+      if(ck.endsWith('.seasonal')){
+        var x=sessCfg().list[+ck.split('.')[2]], t=activeStart(S.sess), old=sessionShift(x,t);
+        x.seasonal=!!c.checked; var delta=old-sessionShift(x,t);
+        x.from=(x.from+delta+1440)%1440; x.to=(x.to+delta+1440)%1440;
+      }
+      setPath(S.style,ck,!!c.checked); closePop(); applyStyle(); refreshPane();
     });
     $('rpsOk').addEventListener('click',function(){ closeSettings(true); });
     $('rpsCancel').addEventListener('click',function(){ closeSettings(false); });
@@ -1894,7 +1967,7 @@
   function sessOpts(key){ var k=key.split('.').pop(); return k==='tz'?SESS_TZ:k==='style'?SESS_STYLES:SESS_LINES; }
   function optLabel(key){ var v=getPath(S.style,key), o=sessOpts(key); for(var i=0;i<o.length;i++) if(o[i].id===v) return o[i].name; return ''; }
   function choiceBtn(key){ return '<button type="button" class="rps-dd rps-ch" data-ch="'+key+'"><span>'+esc(optLabel(key))+'</span>'+ICON_CHEV+'</button>'; }
-  function timeBtn(key){ return '<button type="button" class="rps-dd rps-tm" data-tm="'+key+'"><span>'+sessHm(sessShown(getPath(S.style,key)))+'</span>'+ICON_CLOCK+'</button>'; }
+  function timeBtn(key){ return '<button type="button" class="rps-dd rps-tm" data-tm="'+key+'"><span>'+sessHm(sessShown(key))+'</span>'+ICON_CLOCK+'</button>'; }
   function renderSettings(keepScroll){
     if(!S.set) return; var tab=S.set.tab, html='';
     document.querySelectorAll('#rpsNav .rps-tab').forEach(function(b){ b.classList.toggle('is-on',b.getAttribute('data-tab')===tab); });
@@ -1916,6 +1989,7 @@
         sc.list.map(function(x,i){
           var p='sess.list.'+i+'.';
           return '<div class="rps-sec">'+esc(x.name)+'</div>'+chkRow(p+'show','Show','')+
+            (marketZones[x.id]?chkRow(p+'seasonal','Follow market clock',''):'')+
             sessRow('Style',choiceBtn(p+'style'))+
             sessRow('Time',timeBtn(p+'from')+'<span class="rps-dash">–</span>'+timeBtn(p+'to'))+
             sessRow('Label',swatchHtml(p+'label'))+
@@ -1957,7 +2031,7 @@
     document.querySelectorAll('#rpsPane [data-chk]').forEach(function(c){ c.checked=!!getPath(S.style,c.getAttribute('data-chk')); });
     document.querySelectorAll('#rpsPane [data-size]').forEach(function(b){ var sp=b.querySelector('span'); if(sp) sp.textContent=getPath(S.style,b.getAttribute('data-size')); });
     document.querySelectorAll('#rpsPane [data-ch]').forEach(function(b){ var sp=b.querySelector('span'); if(sp) sp.textContent=optLabel(b.getAttribute('data-ch')); });
-    document.querySelectorAll('#rpsPane [data-tm]').forEach(function(b){ var sp=b.querySelector('span'); if(sp) sp.textContent=sessHm(sessShown(getPath(S.style,b.getAttribute('data-tm')))); });
+    document.querySelectorAll('#rpsPane [data-tm]').forEach(function(b){ var sp=b.querySelector('span'); if(sp) sp.textContent=sessHm(sessShown(b.getAttribute('data-tm'))); });
   }
   function openSettings(tab,posDir){
     if(S.set||!S.sess) return;
@@ -2019,7 +2093,7 @@
     if(S.set.pop&&S.set.pop.kind==='choice'&&S.set.pop.key===key){ closePop(); return; }
     closePop();
     var items=[], cur;
-    if(isTime){ for(var m=0;m<1440;m+=15) items.push({ id:m, name:sessHm(m) }); cur=sessShown(getPath(S.style,key)); }
+    if(isTime){ for(var m=0;m<1440;m+=15) items.push({ id:m, name:sessHm(m) }); cur=sessShown(key); }
     else { items=sessOpts(key); cur=getPath(S.style,key); }
     var pop=$('rpsPop'); pop.className='rps-pop rps-pop-list'; pop.style.minWidth=Math.round(btn.getBoundingClientRect().width)+'px';
     pop.innerHTML=items.map(function(it){ return '<button type="button" class="rps-li'+(it.id===cur?' is-sel':'')+'" data-cv="'+it.id+'">'+esc(it.name)+'</button>'; }).join('');
